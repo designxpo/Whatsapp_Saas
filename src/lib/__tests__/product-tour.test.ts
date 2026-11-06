@@ -92,4 +92,25 @@ describe("workspace onboarding", () => {
     expect(() => controller!.start()).not.toThrow();
     expect(mock.drive).toHaveBeenCalledTimes(1);
   });
+
+  it("does not open by itself on a phone or tablet, but Take a tour still works", () => {
+    controller = installProductTour({ storageKey: key, autoStart: () => false });
+    frame?.();
+    expect(mock.drive).not.toHaveBeenCalled();
+    expect(localStorage.getItem(key)).toBeNull();
+    controller.start();
+    expect(mock.drive).toHaveBeenCalledTimes(1);
+  });
+
+  it("points at what is on screen: the bottom bar when the phone menu is closed", () => {
+    document.body.innerHTML = '<aside style="visibility:hidden"><button data-tour-nav="livechat" data-tour-title="Live Chat" data-help="Menu item.">Live Chat hint</button></aside>'
+      + '<nav><button data-tour-nav="livechat" data-tour-side="top" data-tour-title="Inbox" data-help="Bottom bar.">Inbox 3</button><button data-tour-nav="more" data-tour-side="top" data-help="Everything else.">More</button></nav>';
+    vi.stubGlobal("getComputedStyle", (el: Element) => ({ visibility: el.closest("aside") ? "hidden" : "visible", display: "block" }));
+    const steps = workspaceTourSteps();
+    const live = steps.find(st => st.popover?.description === "Bottom bar.");
+    expect(live?.popover?.title).toBe("Inbox");
+    expect(live?.popover?.side).toBe("top");
+    expect(steps.some(st => st.popover?.description === "Menu item.")).toBe(false);
+    expect(steps.some(st => st.popover?.description === "Everything else.")).toBe(true);
+  });
 });

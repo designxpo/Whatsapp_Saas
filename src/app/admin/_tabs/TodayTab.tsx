@@ -9,6 +9,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, Circle, Clock, ListTodo, Loader2, Plus, Settings2, UserRound, X } from "lucide-react";
 import { Notice, useNotice } from "@/components/Notice";
 import { requestReviewFocus } from "@/lib/review-focus";
+import { toast } from "@/components/toast";
+import { fmtNum } from "@/lib/format";
 import { inp, type GoTo } from "../_shared";
 
 type Kind = "reply" | "ready_to_pay" | "approval" | "unpaid_order" | "task" | "review_case" | "commitment" | "connection" | "booking";
@@ -76,8 +78,18 @@ export default function TodayTab({ goTo }: { goTo: GoTo }) {
       const r = await fetch(`/api/admin/tasks/${i.taskId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "done" }) });
       const j = await r.json().catch(() => ({}));
       if (!r.ok || j.error) setNote(j.error || "Couldn't mark it done.");
-      else { setD(cur => cur && { ...cur, items: cur.items.filter(x => x.key !== i.key) }); setNote("Done.", "ok"); }
+      else {
+        setD(cur => cur && { ...cur, items: cur.items.filter(x => x.key !== i.key) });
+        // Ticking a task off is undone by reopening it.
+        toast({ text: `“${i.title}” done`, action: { label: "Undo", onClick: () => void reopen(i) } });
+      }
     } finally { setBusy(null); }
+  }
+  async function reopen(i: Item) {
+    if (!i.taskId) return;
+    const r = await fetch(`/api/admin/tasks/${i.taskId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "open" }) }).catch(() => null);
+    if (r?.ok) toast(`“${i.title}” is back on the list`); else toast({ text: "Couldn't reopen the task. Please try again.", tone: "error" });
+    void load();
   }
 
   if (!d && !err) return <div className="flex items-center gap-2 p-6 text-sm text-ink-500"><Loader2 className="h-4 w-4 animate-spin" /> Loading today&apos;s work…</div>;
@@ -90,11 +102,11 @@ export default function TodayTab({ goTo }: { goTo: GoTo }) {
           <p className="text-sm text-ink-600">Everything waiting for a person — who should do it, and by when. Overdue first.</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => setAdding(a => !a)} className="inline-flex items-center gap-1.5 rounded-control bg-brand-700 px-3 py-2 text-xs font-bold text-white hover:bg-brand-600">
+          <button onClick={() => setAdding(a => !a)} aria-expanded={adding} className="inline-flex min-h-10 items-center gap-1.5 rounded-control bg-brand-700 px-3 py-2 text-xs font-bold text-white hover:bg-brand-600">
             <Plus className="h-3.5 w-3.5" /> Add a task
           </button>
           {d?.me.role === "admin" && (
-            <button onClick={() => setShowSettings(s => !s)} aria-expanded={showSettings} className="inline-flex items-center gap-1.5 rounded-control border border-line bg-white px-3 py-2 text-xs font-bold text-ink-700 hover:bg-canvas">
+            <button onClick={() => setShowSettings(s => !s)} aria-expanded={showSettings} className="inline-flex min-h-10 items-center gap-1.5 rounded-control border border-line bg-white px-3 py-2 text-xs font-bold text-ink-700 hover:bg-canvas">
               <Settings2 className="h-3.5 w-3.5" /> Settings
             </button>
           )}
@@ -109,8 +121,8 @@ export default function TodayTab({ goTo }: { goTo: GoTo }) {
         </div>
       )}
 
-      {d && showSettings && <TodaySettings initial={d.settings} onSaved={s => { setD({ ...d, settings: s }); setShowSettings(false); setNote("Settings saved.", "ok"); void load(); }} onClose={() => setShowSettings(false)} />}
-      {d && adding && <AddTask team={d.team} myId={d.me.id} onDone={() => { setAdding(false); setNote("Task added.", "ok"); void load(); }} onCancel={() => setAdding(false)} />}
+      {d && showSettings && <TodaySettings initial={d.settings} onSaved={s => { setD({ ...d, settings: s }); setShowSettings(false); toast("Settings saved"); void load(); }} onClose={() => setShowSettings(false)} />}
+      {d && adding && <AddTask team={d.team} myId={d.me.id} onDone={() => { setAdding(false); toast("Task added"); void load(); }} onCancel={() => setAdding(false)} />}
 
       {d && (
         <>
@@ -126,7 +138,7 @@ export default function TodayTab({ goTo }: { goTo: GoTo }) {
           <div role="tablist" aria-label="Whose work" className="inline-flex rounded-control border border-line bg-white p-0.5">
             {([["all", "Everyone"], ["mine", "Mine"], ["unassigned", "Unassigned"]] as const).map(([k, label]) => (
               <button key={k} role="tab" aria-selected={filter === k} onClick={() => setFilter(k)}
-                className={`rounded-control px-3 py-1.5 text-xs font-bold ${filter === k ? "bg-brand-700 text-white" : "text-ink-600 hover:bg-canvas"}`}>{label}</button>
+                className={`min-h-9 rounded-control px-3 py-1.5 text-xs font-bold ${filter === k ? "bg-brand-700 text-white" : "text-ink-600 hover:bg-canvas"}`}>{label}</button>
             ))}
           </div>
 
@@ -145,7 +157,7 @@ export default function TodayTab({ goTo }: { goTo: GoTo }) {
                     <li key={i.key} className="flex items-start gap-3 px-4 py-3">
                       <span aria-hidden className={`mt-1 h-10 w-1 shrink-0 rounded-full ${i.overdue ? "bg-red-500" : soon ? "bg-amber-400" : "bg-line"}`} />
                       {i.taskId ? (
-                        <button onClick={() => void finish(i)} disabled={busy === i.key} aria-label={`Mark “${i.title}” done`} className="mt-0.5 text-ink-400 hover:text-emerald-600 disabled:opacity-50">
+                        <button onClick={() => void finish(i)} disabled={busy === i.key} aria-label={`Mark “${i.title}” done`} className="-m-1.5 grid h-8 w-8 shrink-0 place-items-center rounded-full text-ink-400 hover:text-emerald-600 disabled:opacity-50">
                           {busy === i.key ? <Loader2 className="h-5 w-5 animate-spin" /> : <Circle className="h-5 w-5" />}
                         </button>
                       ) : null}
@@ -166,7 +178,7 @@ export default function TodayTab({ goTo }: { goTo: GoTo }) {
                         </p>
                       </div>
                       {i.open.tab !== "today" && (
-                        <button onClick={() => open(i)} className="shrink-0 rounded-control border border-line px-2.5 py-1.5 text-[11px] font-bold text-ink-900 hover:bg-canvas">Open</button>
+                        <button onClick={() => open(i)} className="min-h-9 shrink-0 rounded-control border border-line px-3 py-1.5 text-[12px] font-bold text-ink-900 hover:bg-canvas">Open</button>
                       )}
                     </li>
                   );
@@ -185,7 +197,7 @@ export default function TodayTab({ goTo }: { goTo: GoTo }) {
 
 function Tile({ label, value, tone, onClick }: { label: string; value: number; tone?: "bad" | "warn" | "ok"; onClick?: () => void }) {
   const color = tone === "bad" ? "text-red-600" : tone === "warn" ? "text-amber-700" : tone === "ok" ? "text-emerald-700" : "text-ink-900";
-  const body = <><p className="text-[11px] font-bold uppercase tracking-wide text-ink-400">{label}</p><p className={`mt-1 text-2xl font-extrabold tabular-nums ${color}`}>{value}</p></>;
+  const body = <><p className="text-[11px] font-bold uppercase tracking-wide text-ink-400">{label}</p><p className={`mt-1 text-2xl font-extrabold tabular-nums ${color}`}>{fmtNum(value)}</p></>;
   return onClick
     ? <button onClick={onClick} className="rounded-card border border-line bg-white p-3 text-left hover:bg-canvas">{body}</button>
     : <div className="rounded-card border border-line bg-white p-3">{body}</div>;
@@ -204,13 +216,13 @@ function ResponseCard({ times, target }: { times: Times | null; target: number }
       </div>
       <div>
         <p className="text-[11px] font-bold uppercase tracking-wide text-ink-400">Within your {target}-min target</p>
-        <p className={`text-sm font-bold ${(times.withinTargetPct ?? 0) >= 90 ? "text-emerald-700" : (times.withinTargetPct ?? 0) >= 70 ? "text-amber-700" : "text-red-600"}`}>{times.withinTargetPct}% of {times.answered} replies</p>
+        <p className={`text-sm font-bold ${(times.withinTargetPct ?? 0) >= 90 ? "text-emerald-700" : (times.withinTargetPct ?? 0) >= 70 ? "text-amber-700" : "text-red-600"}`}>{times.withinTargetPct}% of {fmtNum(times.answered)} replies</p>
       </div>
       <div>
         <p className="text-[11px] font-bold uppercase tracking-wide text-ink-400">When a person replied</p>
-        <p className="text-sm text-ink-800">{times.byPeople.answered ? <><b className="text-ink-900">{fmtMin(times.byPeople.medianMinutes)}</b> typical ({times.byPeople.answered})</> : "No replies from people yet"}</p>
+        <p className="text-sm text-ink-800">{times.byPeople.answered ? <><b className="text-ink-900">{fmtMin(times.byPeople.medianMinutes)}</b> typical ({fmtNum(times.byPeople.answered)})</> : "No replies from people yet"}</p>
       </div>
-      {times.partial && <p className="w-full text-[11px] text-ink-400">Based on the most recent 20,000 messages.</p>}
+      {times.partial && <p className="w-full text-[11px] text-ink-400">Based on the most recent {fmtNum(20000)} messages.</p>}
     </div>
   );
 }
@@ -221,8 +233,12 @@ function AddTask({ team, myId, onDone, onCancel }: { team: { id: string; name: s
   const [assignee, setAssignee] = useState(myId ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tried, setTried] = useState(false);
+  const problems = taskProblems({ title, due });
   async function save(e: React.FormEvent) {
     e.preventDefault();
+    setTried(true);
+    if (problems.title || problems.due) return;
     setSaving(true); setError(null);
     try {
       const r = await fetch("/api/admin/tasks", { method: "POST", headers: { "Content-Type": "application/json" },
@@ -232,17 +248,23 @@ function AddTask({ team, myId, onDone, onCancel }: { team: { id: string; name: s
     } finally { setSaving(false); }
   }
   return (
-    <form onSubmit={save} className="space-y-3 rounded-card border border-line bg-white p-4">
+    <form onSubmit={save} noValidate aria-label="New task" className="space-y-3 rounded-card border border-line bg-white p-4">
       <div className="flex items-center justify-between">
         <p className="flex items-center gap-1.5 text-sm font-bold text-ink-900"><ListTodo className="h-4 w-4" /> New task</p>
-        <button type="button" onClick={onCancel} aria-label="Close" className="text-ink-400 hover:text-ink-900"><X className="h-4 w-4" /></button>
+        <button type="button" onClick={onCancel} aria-label="Close" className="-m-2 grid h-10 w-10 place-items-center rounded-control text-ink-400 hover:text-ink-900"><X className="h-4 w-4" /></button>
       </div>
       <label className="block text-[12px] font-semibold text-ink-700">What needs doing
-        <input value={title} onChange={e => setTitle(e.target.value)} maxLength={300} required autoFocus placeholder="Call back about the bulk order" className={`${inp} mt-1 w-full`} />
+        <input value={title} onChange={e => setTitle(e.target.value)} maxLength={300} required autoFocus placeholder="Call back about the bulk order"
+          aria-invalid={!!(tried && problems.title)} aria-describedby={tried && problems.title ? "task-title-err" : undefined}
+          className={`${inp} mt-1 w-full ${tried && problems.title ? "border-red-400" : ""}`} />
+        {tried && problems.title && <span id="task-title-err" className="mt-1 block text-[12px] font-normal text-red-700">{problems.title}</span>}
       </label>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block text-[12px] font-semibold text-ink-700">Due
-          <input type="datetime-local" value={due} onChange={e => setDue(e.target.value)} className={`${inp} mt-1 w-full`} />
+          <input type="datetime-local" value={due} onChange={e => setDue(e.target.value)} onBlur={() => due && setTried(true)}
+            aria-invalid={!!(tried && problems.due)} aria-describedby={tried && problems.due ? "task-due-err" : undefined}
+            className={`${inp} mt-1 w-full ${tried && problems.due ? "border-red-400" : ""}`} />
+          {tried && problems.due && <span id="task-due-err" className="mt-1 block text-[12px] font-normal text-red-700">{problems.due}</span>}
         </label>
         <label className="block text-[12px] font-semibold text-ink-700">Who does it
           <select value={assignee} onChange={e => setAssignee(e.target.value)} className={`${inp} mt-1 w-full`}>
@@ -254,11 +276,23 @@ function AddTask({ team, myId, onDone, onCancel }: { team: { id: string; name: s
       <p className="text-[11px] text-ink-500">To tie a task to a customer, add it from their chat in Live Chat.</p>
       {error && <p role="alert" className="rounded-control border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">{error}</p>}
       <div className="flex justify-end gap-2">
-        <button type="button" onClick={onCancel} className="px-3 py-1.5 text-xs font-semibold text-ink-600">Cancel</button>
-        <button disabled={saving || !title.trim()} className="rounded-control bg-brand-700 px-3 py-1.5 text-xs font-bold text-white hover:bg-brand-600 disabled:opacity-50">{saving ? "Adding…" : "Add task"}</button>
+        <button type="button" onClick={onCancel} className="min-h-10 px-3 text-xs font-semibold text-ink-600">Cancel</button>
+        <button disabled={saving} className="min-h-10 rounded-control bg-brand-700 px-4 text-xs font-bold text-white hover:bg-brand-600 disabled:opacity-50">{saving ? "Adding…" : "Add task"}</button>
       </div>
     </form>
   );
+}
+
+/** What's missing or wrong in the new-task form, shown next to each field. */
+export function taskProblems(f: { title: string; due: string }, now: number = Date.now()): { title?: string; due?: string } {
+  const out: { title?: string; due?: string } = {};
+  if (!f.title.trim()) out.title = "Say what needs doing.";
+  if (f.due) {
+    const t = new Date(f.due).getTime();
+    if (Number.isNaN(t)) out.due = "Choose a date and time, or leave it empty.";
+    else if (t < now - 60_000) out.due = "That time has already passed.";
+  }
+  return out;
 }
 
 function TodaySettings({ initial, onSaved, onClose }: { initial: Settings; onSaved: (s: Settings) => void; onClose: () => void }) {
@@ -279,7 +313,7 @@ function TodaySettings({ initial, onSaved, onClose }: { initial: Settings; onSav
     <section className="space-y-4 rounded-card border border-line bg-white p-4" aria-label="Today settings">
       <div className="flex items-center justify-between">
         <p className="text-sm font-bold text-ink-900">Settings</p>
-        <button onClick={onClose} aria-label="Close settings" className="text-ink-400 hover:text-ink-900"><X className="h-4 w-4" /></button>
+        <button onClick={onClose} aria-label="Close settings" className="-m-2 grid h-10 w-10 place-items-center rounded-control text-ink-400 hover:text-ink-900"><X className="h-4 w-4" /></button>
       </div>
       <label className="block text-[12px] font-semibold text-ink-700">Reply target
         <span className="mt-1 flex items-center gap-2">
@@ -308,7 +342,7 @@ function TodaySettings({ initial, onSaved, onClose }: { initial: Settings; onSav
       <div className="space-y-2 rounded-control bg-canvas p-3">
         <label className="flex items-start gap-2 text-[13px] text-ink-800">
           <input type="checkbox" checked={s.unpaidReminder.enabled} onChange={e => setS({ ...s, unpaidReminder: { ...s.unpaidReminder, enabled: e.target.checked } })} className="mt-0.5" />
-          <span><b>Remind customers about unpaid orders</b> — one WhatsApp message with their payment link. Only inside WhatsApp&apos;s 24-hour window, never to anyone who opted out.</span>
+          <span><b>Remind customers about unpaid orders</b> — one WhatsApp message with their payment link. Only if they messaged you within the last 24 hours (a WhatsApp rule), and never to anyone who opted out.</span>
         </label>
         {s.unpaidReminder.enabled && (
           <p className="flex items-center gap-2 pl-6 text-[12px] text-ink-700">Send it
@@ -321,8 +355,8 @@ function TodaySettings({ initial, onSaved, onClose }: { initial: Settings; onSav
       </div>
       {error && <p role="alert" className="rounded-control border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">{error}</p>}
       <div className="flex justify-end gap-2">
-        <button onClick={onClose} className="px-3 py-1.5 text-xs font-semibold text-ink-600">Cancel</button>
-        <button onClick={() => void save()} disabled={saving} className="rounded-control bg-brand-700 px-3 py-1.5 text-xs font-bold text-white hover:bg-brand-600 disabled:opacity-50">{saving ? "Saving…" : "Save"}</button>
+        <button onClick={onClose} className="min-h-10 px-3 text-xs font-semibold text-ink-600">Cancel</button>
+        <button onClick={() => void save()} disabled={saving} className="min-h-10 rounded-control bg-brand-700 px-3 py-1.5 text-xs font-bold text-white hover:bg-brand-600 disabled:opacity-50">{saving ? "Saving…" : "Save"}</button>
       </div>
     </section>
   );

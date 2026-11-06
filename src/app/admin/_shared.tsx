@@ -8,6 +8,7 @@
 import { useState, useEffect } from "react";
 import { Loader2, UploadCloud, ArrowRight } from "lucide-react";
 import { Mascot, type Mood } from "@/components/Mascot";
+import { fmtNum } from "@/lib/format";
 
 export { DEFAULT_TENANT_ID } from "@/lib/tenant";
 
@@ -20,7 +21,10 @@ export type Tab = "home" | "today" | "results" | "bookings" | "livechat" | "broa
 // person and/or a filter. LiveChatTab consumes it once, then it's cleared.
 export type ChatIntent = {
   openPhone?: string;                                                              // open this person's chat once it loads
-  filter?: "all" | "needs_reply" | "escalated" | "bot_off";                        // pre-apply a status filter
+  // pre-apply a status filter. "waiting" = chats waiting for a PERSON — exactly
+  // what /api/admin/inbox/waiting counts (the "Waiting for you" number on the
+  // menu badge, the phone tab bar and Home).
+  filter?: "all" | "waiting" | "mine" | "unassigned" | "needs_person" | "ai_paused" | "needs_reply" | "escalated" | "bot_off";
   platform?: "all" | "whatsapp" | "instagram" | "messenger" | "webchat";          // pre-apply a channel filter
   view?: "chats" | "comments";
 };
@@ -99,7 +103,7 @@ export function ChannelNameBadge({ channelId }: { channelId: string }) {
   const channels = useChannelList();
   const c = channels.find(x => x.id === channelId);
   if (!c) return null;
-  return <span className="shrink-0 px-2 py-0.5 rounded-full bg-canvas border border-line text-[10px] font-bold text-ink-500" title="This chat's number/account — replies go out from it">{c.name}</span>;
+  return <span className="shrink-0 px-2 py-0.5 rounded-full bg-canvas border border-line text-[11px] font-bold text-ink-500" title="This chat's number/account — replies go out from it">{c.name}</span>;
 }
 
 // ── Shared conversation type (live chat / analytics / contacts) ──────────────
@@ -114,7 +118,7 @@ export type AnalyticsData = {
   range: { key: "7d" | "14d" | "30d" | "90d" | "all"; label: string; short: string; granularity: "day" | "week" | "month" };
   contacts: { active: number; optedOut: number; newInRange: number };
   campaigns: { total: number; automations: number };
-  conversations: { total: number; active: number; escalated: number; needsReply: number; botOn: number; whatsapp: number; instagram: number };
+  conversations: { total: number; active: number; escalated: number; needsReply: number; botOn: number; whatsapp: number; instagram: number; messenger?: number; webchat?: number };
   kb: { documents: number; ready: number };
   messaging: { sentToday: number; totals: { sent: number; delivered: number; read: number; failed: number }; repliedInRange: number; aiRepliesInRange: number };
   automation: { flows: number; flowsActive: number; sequences: number; sequencesActive: number; activeEnrollments: number };
@@ -220,9 +224,9 @@ export function EmptyState({ mood, title, body, action }: {
 export function RailCard({ title, action, onAction, children }: { title: string; action?: string; onAction?: () => void; children: React.ReactNode }) {
   return (
     <section className="bg-white rounded-card border border-line p-4 space-y-2">
-      <div className="flex items-center justify-between">
-        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.06em]">{title}</p>
-        {action && <button onClick={onAction} className="text-[11px] font-bold text-brand-700 hover:underline flex items-center gap-0.5">{action} <ArrowRight className="w-3 h-3" /></button>}
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="min-w-0 text-[12px] font-bold text-slate-500 uppercase tracking-[0.06em]">{title}</h3>
+        {action && <button type="button" onClick={onAction} className="shrink-0 whitespace-nowrap min-h-8 -my-1 px-1 text-[12px] font-bold text-brand-700 hover:underline flex items-center gap-0.5">{action} <ArrowRight className="w-3 h-3" aria-hidden /></button>}
       </div>
       {children}
     </section>
@@ -267,9 +271,9 @@ export function StatRow({ label, value, tone, onClick }: { label: string; value:
 export function RailBar({ label, pct, count, color }: { label: string; pct: number; count: number; color: string }) {
   return (
     <div>
-      <div className="flex items-center justify-between text-[11px] mb-0.5">
+      <div className="flex items-center justify-between text-[12px] mb-0.5">
         <span className="font-semibold text-ink-700">{label}</span>
-        <span className="text-slate-400">{count.toLocaleString()} · {pct}%</span>
+        <span className="text-slate-500">{fmtNum(count)} · {pct}%</span>
       </div>
       <div className="h-1.5 rounded-full bg-canvas overflow-hidden"><div className={`h-full rounded-full ${color}`} style={{ width: `${Math.min(100, pct)}%` }} /></div>
     </div>

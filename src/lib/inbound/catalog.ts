@@ -332,23 +332,23 @@ export const CATALOG: CatalogEntry[] = [
 
   // ── CRM ───────────────────────────────────────────────────────────────────
   {
-    id: "webhook", name: "Incoming webhooks (Zapier, Make, Pabbly, n8n)", category: "automation", color: "#FF4A00", logo: "/integrations/webhook.svg", availability: "available",
-    blurb: "Connect any app that can send a webhook: Zapier, Make, Pabbly Connect, n8n, your website form or your own system.",
+    id: "webhook", name: "Zapier, Make, Pabbly, n8n or your website form", category: "automation", color: "#FF4A00", logo: "/integrations/webhook.svg", availability: "available",
+    blurb: "Let Zapier, Make, Pabbly Connect, n8n, your website form or your own system send each new lead here — and greet them on WhatsApp straight away.",
     gives: ["Greet a new lead on WhatsApp seconds after they fill any form", "Send a message whenever another tool says something happened", "Every person who comes in lands in Contacts, tagged"],
     fields: [
-      { key: "eventName", label: "Event name", placeholder: "lead", hint: "What this source sends, e.g. lead, signup, enquiry. A payload with its own \"event\" field overrides it." },
+      { key: "eventName", label: "Event name", placeholder: "lead", hint: "A short name for what this source sends, e.g. lead, signup, enquiry. (If the data has its own \"event\" field, that wins.)" },
       { key: "phonePath", label: "Phone field (optional)", placeholder: "phone", hint: "Only if the phone is not in a field called phone, mobile or whatsapp. Nested: lead.mobile" },
       { key: "namePath", label: "Name field (optional)", placeholder: "name" },
       TAGS_FIELD("Webhook lead"), COUNTRY_FIELD,
     ],
     steps: [
-      "Copy the webhook URL above.",
+      "Copy the address above.",
       "In Zapier / Make / Pabbly, add a \"Webhook — POST\" step (or set your form's webhook) and paste the URL.",
       "Send JSON or form fields, including the person's phone number. Name and email are optional.",
-      "Every field you send can go into your message as {{payload.field_name}}.",
+      "Every field you send can be used in your message, e.g. {{payload.city}} for a field called city.",
     ],
     events: [
-      { key: "webhook.lead", label: "A webhook arrives (event: lead)", suggestion: "Welcome the lead and share the next step", fields: [NAME, p("source", "Any field you send, e.g. source", "Website")] },
+      { key: "webhook.lead", label: "A new lead comes in (event: lead)", suggestion: "Welcome the lead and share the next step", fields: [NAME, p("source", "Any field you send, e.g. source", "Website")] },
     ],
   },
 

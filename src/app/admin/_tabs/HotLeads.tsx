@@ -21,9 +21,9 @@ export function HotLeads({ goTo }: { goTo: GoTo }) {
   }, []);
   if (leads !== null && !leads.length) return null;   // nothing worth a call: no card
   return (
-    <section className="bg-white rounded-card border border-line p-5 space-y-3">
+    <section className="bg-white rounded-card border border-line p-4 sm:p-5 space-y-3">
       <div className="group flex items-center gap-1.5">
-        <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><Flame className="w-3.5 h-3.5 text-orange-500" /> Call these first</p>
+        <h2 className="text-[15px] font-bold text-ink-900 flex items-center gap-1.5"><Flame className="w-4 h-4 text-orange-500" aria-hidden /> Call these first</h2>
         <PageInfo>Chats from the last three days, ranked by what the customer wrote and did: asking about price, booking or buying, how recently they wrote, whether they&apos;re waiting on you. Someone who just paid, or sounds unhappy, ranks lower. The same list comes in your morning digest email.</PageInfo>
       </div>
       {leads === null ? (
@@ -32,8 +32,8 @@ export function HotLeads({ goTo }: { goTo: GoTo }) {
         <ul className="divide-y divide-line">
           {leads.map(l => (
             <li key={l.conversationId}>
-              <button onClick={() => goTo("livechat", { openPhone: l.phone })} className="no-press w-full text-left py-2.5 flex items-start gap-3 hover:bg-canvas rounded-control px-1 transition-colors">
-                <span className={`shrink-0 mt-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${l.band === "hot" ? "bg-orange-50 text-orange-700" : "bg-amber-50 text-amber-700"}`}>{l.band}</span>
+              <button type="button" onClick={() => goTo("livechat", { openPhone: l.phone })} className="no-press w-full min-h-11 text-left py-2.5 flex items-start gap-3 hover:bg-canvas rounded-control px-1 transition-colors">
+                <span className={`shrink-0 mt-0.5 px-2 py-0.5 rounded-full text-[11px] font-bold uppercase ${l.band === "hot" ? "bg-orange-50 text-orange-700" : "bg-amber-50 text-amber-700"}`}>{l.band}</span>
                 <span className="min-w-0 flex-1">
                   <span className="block text-[13px] font-bold text-ink-900 truncate">{l.name || `…${l.phone.slice(-4)}`} <span className="font-normal text-slate-500">· {CHANNEL[l.platform] ?? l.platform}</span></span>
                   <span className="block text-[12px] text-slate-500 truncate">{l.reasons.join(" · ")}</span>

@@ -17,6 +17,7 @@ import { Notice, useNotice } from "@/components/Notice";
 import { PageInfo } from "@/components/PageInfo";
 import { useConfirm } from "@/components/confirm-dialog";
 import { SegmentedControl } from "@/components/SegmentedControl";
+import { toast } from "@/components/toast";
 
 type Platform = "youtube" | "instagram" | "facebook";
 interface Reply {
@@ -129,7 +130,7 @@ export function CommentReplies({ platform, onOpenChat }: { platform: Platform; o
     if (cursor) q.set("cursor", cursor);
     const r = await fetch(`/api/admin/comment-replies?${q}`);
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) { say(j.error || `Couldn't load the replies (HTTP ${r.status}).`); setRows(prev => prev ?? []); return false; }
+    if (!r.ok) { say(j.error || "Couldn't load the replies. Check your connection and try again."); setRows(prev => prev ?? []); return false; }
     setSetup(j.setupNeeded ?? null);
     setRows((j.replies ?? []) as Reply[]);
     setNext(j.next ?? null);
@@ -155,10 +156,10 @@ export function CommentReplies({ platform, onOpenChat }: { platform: Platform; o
     const r = await fetch(`/api/admin/comment-replies/${editing.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: draft }) });
     const j = await r.json().catch(() => ({}));
     setBusy(false);
-    if (!r.ok || j.error) { sayEdit(j.error || `Couldn't update the reply (HTTP ${r.status}).`); return; }
+    if (!r.ok || j.error) { sayEdit(j.error || "Couldn't update the reply. Please try again."); return; }
     setRows(prev => (prev ?? []).map(x => (x.id === editing.id ? (j.reply as Reply) : x)));
     setEditing(null);
-    say(j.warning || `Reply updated on ${name}.`, j.warning ? "warn" : "ok");
+    if (j.warning) say(j.warning, "warn"); else toast(`Reply updated on ${name}`);
   }
 
   async function remove(r: Reply) {
@@ -170,9 +171,9 @@ export function CommentReplies({ platform, onOpenChat }: { platform: Platform; o
     if (!ok) return;
     const res = await fetch(`/api/admin/comment-replies/${r.id}`, { method: "DELETE" });
     const j = await res.json().catch(() => ({}));
-    if (!res.ok || j.error) { say(j.error || `Couldn't delete the reply (HTTP ${res.status}).`); return; }
+    if (!res.ok || j.error) { say(j.error || "Couldn't delete the reply. Please try again."); return; }
     setRows(prev => (prev ?? []).map(x => (x.id === r.id ? { ...x, status: "deleted" } : x)));
-    say(`Reply deleted from ${name}.`, "ok");
+    toast(`Reply deleted from ${name}`);
   }
 
   return (
@@ -185,7 +186,7 @@ export function CommentReplies({ platform, onOpenChat }: { platform: Platform; o
             {platform === "instagram" ? " — Instagram can't edit a comment, so the corrected reply is posted and the old one removed." : "."} Private messages (DMs) are in Live Chat.
           </PageInfo>
         </div>
-        <button onClick={() => { setRows(null); load(range, cursors[page]); }} aria-label="Refresh replies" className="p-1.5 rounded-control text-slate-500 hover:bg-canvas hover:text-ink-900"><RefreshCw className="w-3.5 h-3.5" /></button>
+        <button onClick={() => { setRows(null); load(range, cursors[page]); }} aria-label="Refresh replies" className="grid place-items-center w-9 h-9 rounded-control text-slate-500 hover:bg-canvas hover:text-ink-900"><RefreshCw className="w-3.5 h-3.5" /></button>
       </div>
 
       {!setup && <SegmentedControl options={RANGES} value={range} onChange={setRange} size="sm" ariaLabel="Show replies from" className="max-w-sm" />}
@@ -201,7 +202,9 @@ export function CommentReplies({ platform, onOpenChat }: { platform: Platform; o
       {rows === null ? (
         <div role="status" aria-label="Loading" className="space-y-2">{[0, 1, 2].map(i => <div key={i} className="h-16 rounded-control bg-canvas animate-pulse" />)}</div>
       ) : !rows.length ? (
-        !setup && <p className="text-[13px] text-slate-500">{history?.importing ? `Nothing in this range yet — earlier replies are still coming in.` : `No replies under ${name} comments in the last ${RANGES.find(r => r.value === range)?.label}.`}</p>
+        !setup && <p className="text-[13px] text-slate-500">{history?.importing
+          ? "Nothing in this range yet — earlier replies are still coming in."
+          : `No replies under ${name} comments in the last ${RANGES.find(r => r.value === range)?.label}. When the AI or one of your comment rules answers a comment, the reply shows here so you can check it${range !== "365" ? " — or pick a longer range above" : ""}.`}</p>
       ) : (
         <ul className="space-y-2.5">
           {rows.map(r => {
@@ -215,16 +218,16 @@ export function CommentReplies({ platform, onOpenChat }: { platform: Platform; o
                 </div>
                 {r.commentText && <p className="text-[13px] text-ink-700 bg-canvas rounded-control px-3 py-2 whitespace-pre-wrap break-words">{r.commentText}</p>}
                 <div className="flex items-start gap-2">
-                  <span title={SOURCE_HINT[r.source]} className="shrink-0 mt-0.5 px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700 text-[10px] font-bold">{SOURCE[r.source]}</span>
+                  <span title={SOURCE_HINT[r.source]} className="shrink-0 mt-0.5 px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700 text-[11px] font-bold">{SOURCE[r.source]}</span>
                   <p className={`text-[13px] whitespace-pre-wrap break-words min-w-0 ${gone ? "line-through text-slate-400" : "text-ink-900"}`}>{r.replyText}</p>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
                   {r.status === "edited" && <span className="text-[11px] text-slate-500">Edited{r.editedBy ? ` by ${r.editedBy}` : ""}{r.editedAt ? ` · ${ago(r.editedAt)}` : ""}</span>}
                   {gone && <span className="text-[11px] text-red-600 font-semibold">Deleted{r.editedBy ? ` by ${r.editedBy}` : ""}</span>}
                   <div className="ml-auto flex items-center gap-1.5">
-                    {link && !gone && <a href={link} target="_blank" rel="noreferrer" className="px-2 py-1 rounded-control text-[11px] font-bold text-slate-500 hover:bg-canvas hover:text-ink-900 inline-flex items-center gap-1"><ExternalLink className="w-3 h-3" /> View on {name}</a>}
-                    {!gone && <button onClick={() => openEdit(r)} className="px-2 py-1 rounded-control border border-line text-[11px] font-bold text-ink-700 hover:bg-canvas inline-flex items-center gap-1"><Pencil className="w-3 h-3" /> Edit</button>}
-                    {!gone && <button onClick={() => remove(r)} aria-label="Delete reply" className="p-1.5 rounded-control text-slate-500 hover:bg-red-50 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>}
+                    {link && !gone && <a href={link} target="_blank" rel="noreferrer" className="min-h-8 px-2 py-1 rounded-control text-[12px] font-bold text-slate-600 hover:bg-canvas hover:text-ink-900 inline-flex items-center gap-1"><ExternalLink className="w-3 h-3" /> View on {name}</a>}
+                    {!gone && <button onClick={() => openEdit(r)} className="min-h-8 px-2 py-1 rounded-control border border-line text-[12px] font-bold text-ink-700 hover:bg-canvas inline-flex items-center gap-1"><Pencil className="w-3 h-3" /> Edit</button>}
+                    {!gone && <button onClick={() => remove(r)} aria-label="Delete reply" className="grid place-items-center w-8 h-8 rounded-control text-slate-500 hover:bg-red-50 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>}
                   </div>
                 </div>
               </li>
@@ -240,8 +243,8 @@ export function CommentReplies({ platform, onOpenChat }: { platform: Platform; o
           </span>
           <div className="flex items-center gap-1.5">
             {paging && <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" />}
-            <button onClick={() => goTo(-1)} disabled={paging || page === 0} className="px-2.5 py-1 rounded-control border border-line text-[11px] font-bold text-ink-700 hover:bg-canvas disabled:opacity-40">Newer</button>
-            <button onClick={() => goTo(1)} disabled={paging || !next} className="px-2.5 py-1 rounded-control border border-line text-[11px] font-bold text-ink-700 hover:bg-canvas disabled:opacity-40">Older</button>
+            <button onClick={() => goTo(-1)} disabled={paging || page === 0} className="min-h-8 px-2.5 py-1 rounded-control border border-line text-[12px] font-bold text-ink-700 hover:bg-canvas disabled:opacity-40">Newer</button>
+            <button onClick={() => goTo(1)} disabled={paging || !next} className="min-h-8 px-2.5 py-1 rounded-control border border-line text-[12px] font-bold text-ink-700 hover:bg-canvas disabled:opacity-40">Older</button>
           </div>
         </nav>
       )}
@@ -249,8 +252,9 @@ export function CommentReplies({ platform, onOpenChat }: { platform: Platform; o
       <Drawer open={!!editing} onClose={() => !busy && setEditing(null)} title="Edit reply" width="md"
         subtitle={platform === "instagram" ? "Instagram can't edit a comment: saving posts your corrected reply and removes the old one." : `Saving changes the reply on ${name} for everyone.`}
         footer={<>
-          <button onClick={() => setEditing(null)} disabled={busy} className="px-3 py-2 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas disabled:opacity-60">Cancel</button>
-          <button onClick={save} disabled={busy || !draft.trim() || draft.trim() === editing?.replyText} className="ml-auto px-3.5 py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60 inline-flex items-center gap-1.5">
+          <button onClick={() => setEditing(null)} disabled={busy} className="min-h-9 px-3 py-2 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas disabled:opacity-60">Cancel</button>
+          {!busy && (!draft.trim() || draft.trim() === editing?.replyText) && <span className="ml-auto text-[12px] text-slate-500">{!draft.trim() ? "Type the reply first." : "Change the reply to save it."}</span>}
+          <button onClick={save} disabled={busy || !draft.trim() || draft.trim() === editing?.replyText} title={!draft.trim() ? "Type the reply first" : draft.trim() === editing?.replyText ? "Nothing has changed yet" : undefined} className="ml-auto px-3.5 py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60 inline-flex items-center gap-1.5">
             {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />} {platform === "instagram" ? "Post corrected reply" : "Update reply"}
           </button>
         </>}>
@@ -275,7 +279,7 @@ function ReplyEditor({ reply, draft, onDraft, limit, notice }: { reply: Reply; d
         <textarea value={draft} onChange={e => onDraft(e.target.value)} rows={7} maxLength={limit}
           className="mt-1 w-full border border-line rounded-control px-3 py-2 text-sm bg-white text-ink-900 leading-relaxed" />
       </label>
-      <p className="text-[11px] text-slate-400 text-right tabular-nums">{draft.length.toLocaleString()} / {limit.toLocaleString()}</p>
+      <p className="text-[11px] text-slate-500 text-right tabular-nums">{draft.length.toLocaleString()} / {limit.toLocaleString()}</p>
       {notice}
     </div>
   );

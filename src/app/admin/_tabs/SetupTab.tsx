@@ -32,8 +32,8 @@ function SetupTab({ goTo }: { goTo: (t: Tab) => void }) {
   const load = useCallback(() => {
     setBusy(true); setLoadErr(null);
     fetch("/api/admin/setup/status").then(r => r.json())
-      .then(d => { if (d.steps) { setSteps(d.steps); setPlan(d.plan ?? null); } else setLoadErr(d.error || "Could not load setup status."); })
-      .catch(() => setLoadErr("Connection error."))
+      .then(d => { if (d.steps) { setSteps(d.steps); setPlan(d.plan ?? null); } else setLoadErr(d.error || "Couldn't load your setup steps. Press Re-check to try again."); })
+      .catch(() => setLoadErr("Couldn't reach the server. Check your connection and press Re-check."))
       .finally(() => setBusy(false));
   }, []);
   useEffect(() => { load(); }, [load]);
@@ -42,9 +42,9 @@ function SetupTab({ goTo }: { goTo: (t: Tab) => void }) {
     setTesting(target);
     try {
       const d = await fetch("/api/admin/setup/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target }) }).then(r => r.json());
-      setTestResult(prev => ({ ...prev, [target]: { ok: !!d.ok, detail: d.detail || (d.ok ? "Working." : "Check failed.") } }));
+      setTestResult(prev => ({ ...prev, [target]: { ok: !!d.ok, detail: d.detail || (d.ok ? "Working." : "That didn't work — see the steps above.") } }));
       load();
-    } catch { setTestResult(prev => ({ ...prev, [target]: { ok: false, detail: "Connection error." } })); }
+    } catch { setTestResult(prev => ({ ...prev, [target]: { ok: false, detail: "Couldn't reach the server. Please try again." } })); }
     finally { setTesting(null); }
   }
 
@@ -59,11 +59,11 @@ function SetupTab({ goTo }: { goTo: (t: Tab) => void }) {
 
   return (
     <div className="max-w-3xl space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><ListChecks className="w-5 h-5" /> Setup &amp; status</h2><p className="text-sm text-slate-500">Connect your channels and AI, then confirm each one is live. Every step is checked in real time.</p>
+          <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><ListChecks className="w-5 h-5" /> Setup Guide</h2><p className="text-sm text-slate-500">Everything you need to go live, in order: connect your WhatsApp and other channels, add your AI, then test each one. We check every step for you as you go.</p>
         </div>
-        <button onClick={load} disabled={busy} className="shrink-0 px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas flex items-center gap-1.5 disabled:opacity-60">
+        <button onClick={load} disabled={busy} className="shrink-0 min-h-9 px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas flex items-center gap-1.5 disabled:opacity-60">
           {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />} Re-check
         </button>
       </div>
@@ -117,23 +117,23 @@ function SetupTab({ goTo }: { goTo: (t: Tab) => void }) {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="text-sm font-bold text-ink-900">{s.title}</p>
-                  {s.optional && <span className="text-[10px] font-bold text-slate-400 uppercase">optional</span>}
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${m.pill}`}>{m.label}</span>
+                  {s.optional && <span className="text-[11px] font-bold text-slate-500 uppercase">optional</span>}
+                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${m.pill}`}>{m.label}</span>
                 </div>
                 <p className="text-[13px] text-ink-600 mt-0.5">{s.detail}</p>
                 {s.hint && <p className="text-[12px] text-slate-500 mt-1">{s.hint}</p>}
                 {tr && <p className={`flex items-start gap-1.5 text-[12px] mt-1 font-medium ${tr.ok ? "text-emerald-700" : "text-red-600"}`}>{tr.ok ? <CircleCheck className="w-3.5 h-3.5 shrink-0 mt-0.5" /> : <X className="w-3.5 h-3.5 shrink-0 mt-0.5" />} <span>{tr.detail}</span></p>}
               </div>
             </div>
-            <div className="flex items-center gap-2 pl-8">
-              {s.fixTab && <button onClick={() => goTo(s.fixTab as Tab)} className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold">{s.status === "ok" ? "Manage" : "Set up"}</button>}
+            <div className="flex flex-wrap items-center gap-2 pl-8">
+              {s.fixTab && <button onClick={() => goTo(s.fixTab as Tab)} className="min-h-9 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold">{s.status === "ok" ? "Manage" : "Set up"}</button>}
               {canTest && (
-                <button onClick={() => test(s.key)} disabled={testing === s.key} className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas flex items-center gap-1.5 disabled:opacity-60">
+                <button onClick={() => test(s.key)} disabled={testing === s.key} className="min-h-9 px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas flex items-center gap-1.5 disabled:opacity-60">
                   {testing === s.key ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />} Test now
                 </button>
               )}
               {s.status !== "ok" && GUIDE_SLUG[s.key] && (
-                <a href={`${SITE_URL}/guides/${GUIDE_SLUG[s.key]}`} target="_blank" rel="noreferrer" className="text-[11px] font-bold text-brand-700 hover:underline">
+                <a href={`${SITE_URL}/guides/${GUIDE_SLUG[s.key]}`} target="_blank" rel="noreferrer" className="inline-flex min-h-9 items-center text-[12px] font-bold text-brand-700 hover:underline">
                   Need help connecting this?
                 </a>
               )}

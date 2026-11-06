@@ -31,17 +31,17 @@ export function LeadPill({ lead, compact = false }: { lead?: LeadSnapshot | null
   const label = lead.status === "OptOut" ? "Opted out" : lead.status;
   return (
     <span className="inline-flex items-center gap-1" title={title}>
-      <span className={`inline-flex items-center gap-1 rounded-full border font-bold ${compact ? "text-[9px] px-1.5 py-0.5" : "text-[11px] px-2 py-0.5"} ${TONE[lead.status]}`}>
-        {compact ? label.toUpperCase() : label}
+      <span className={`inline-flex items-center gap-1 rounded-full border font-bold ${compact ? "text-[12px] px-2 py-0.5 whitespace-nowrap" : "text-[12px] px-2 py-0.5"} ${TONE[lead.status]}`}>
+        {label}
         {lead.score != null && lead.status !== "OptOut" && <span className="tabular-nums opacity-80">{lead.score}</span>}
       </span>
       {lead.readyToPay && (
-        <span className={`inline-flex items-center gap-1 rounded-full bg-emerald-700 text-white font-bold ${compact ? "text-[9px] px-1.5 py-0.5" : "text-[11px] px-2 py-0.5"}`}>
-          <CreditCard className={compact ? "w-2.5 h-2.5" : "w-3 h-3"} aria-hidden /> {compact ? "PAY" : "Ready to pay"}
+        <span className={`inline-flex items-center gap-1 rounded-full bg-emerald-700 text-white font-bold ${compact ? "text-[12px] px-2 py-0.5 whitespace-nowrap" : "text-[12px] px-2 py-0.5"}`}>
+          <CreditCard className="w-3 h-3" aria-hidden /> {compact ? "Pay" : "Ready to pay"}
         </span>
       )}
       {!compact && lead.action === "HUMAN_TAKEOVER" && (
-        <span className="inline-flex items-center gap-1 rounded-full bg-red-50 text-red-700 border border-red-200 text-[11px] font-bold px-2 py-0.5"><UserRound className="w-3 h-3" aria-hidden /> Needs a person</span>
+        <span className="inline-flex items-center gap-1 rounded-full bg-red-50 text-red-700 border border-red-200 text-[12px] font-bold px-2 py-0.5"><UserRound className="w-3 h-3" aria-hidden /> Needs a person</span>
       )}
     </span>
   );

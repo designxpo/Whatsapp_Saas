@@ -210,7 +210,7 @@ export function SocialPostPicker({
                   <p className="line-clamp-2 min-h-8 break-words text-[11px] leading-4 text-ink-700">
                     {post.caption || "Post without a caption"}
                   </p>
-                  <p className="mt-1 text-[10px] text-ink-400">
+                  <p className="mt-1 text-[11px] text-ink-400">
                     {post.timestamp &&
                     Number.isFinite(Date.parse(post.timestamp))
                       ? new Date(post.timestamp).toLocaleDateString()
@@ -223,7 +223,7 @@ export function SocialPostPicker({
                   href={post.permalink}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="block border-t border-line px-2 py-1.5 text-[10px] font-semibold text-brand-700"
+                  className="block border-t border-line px-2 py-1.5 text-[11px] font-semibold text-brand-700"
                 >
                   View post ↗
                 </a>

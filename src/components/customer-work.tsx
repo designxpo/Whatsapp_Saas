@@ -38,7 +38,8 @@ export function CustomerWork({ phone, conversationId }: { phone: string; convers
       const r = await fetch(`/api/admin/customer-work?phone=${encodeURIComponent(phone)}&conversationId=${encodeURIComponent(conversationId)}`, { cache: "no-store" });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
-      setD(j); setErr(null); setWho(w => w || j.myId || "");
+      // Tolerate a partial answer: one odd payload must not take the whole chat screen down.
+      setD({ ...j, tasks: Array.isArray(j.tasks) ? j.tasks : [], team: Array.isArray(j.team) ? j.team : [] }); setErr(null); setWho(w => w || j.myId || "");
     } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
   }, [phone, conversationId]);
   useEffect(() => { setD(null); setAdding(false); setTitle(""); setWhen(""); void load(); }, [load]);

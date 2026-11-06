@@ -22,6 +22,8 @@ import {
 import { SocialPostPicker } from "../_components/SocialPostPicker";
 import { inp } from "../_shared";
 import { Drawer } from "@/components/overlay";
+import { toast } from "@/components/toast";
+import { useConfirm } from "@/components/confirm-dialog";
 
 type Report = {
   campaignId: string;
@@ -56,7 +58,7 @@ type Data = {
   bounded: boolean;
 };
 const button =
-  "rounded-control border border-line bg-white px-3 py-2 text-xs font-semibold text-ink-700 disabled:opacity-50";
+  "min-h-9 rounded-control border border-line bg-white px-3 py-2 text-xs font-semibold text-ink-700 disabled:opacity-50";
 const card = "rounded-card border border-line bg-white p-4 space-y-3";
 const money = (cents: number, currency: string) =>
   new Intl.NumberFormat(undefined, { style: "currency", currency }).format(
@@ -81,6 +83,7 @@ const blank = (channel = ""): Partial<SocialCampaign> => ({
 
 export default function SocialGrowthTab() {
   const { industry } = useVocab();
+  const ask = useConfirm();
   const [data, setData] = useState<Data | null>(null),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
@@ -131,12 +134,14 @@ export default function SocialGrowthTab() {
         body: JSON.stringify(body),
       });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error || "Could not save");
+      if (!r.ok) throw new Error(d.error || "Couldn't save. Please try again.");
       await load();
-      setNotice("Saved");
+      toast(body.action === "remove_outcome" ? "Record removed" : "Saved");
       return d;
     } catch (e) {
-      setNotice(e instanceof Error ? e.message : "Could not save");
+      const text = e instanceof Error ? e.message : "Couldn't save. Please try again.";
+      setNotice(text);
+      toast({ text, tone: "error" });
       return null;
     } finally {
       setBusy(false);
@@ -173,8 +178,8 @@ export default function SocialGrowthTab() {
             Social Growth & Creator Studio
           </h2>
           <p className="mt-1 text-sm text-ink-500">
-            Turn audience questions into offers, fulfilled promises and measured
-            outcomes.
+            Turn the questions people ask under your posts into offers, keep
+            track of what you promised them, and see which posts bring sales.
           </p>
         </div>
         <button className={button} onClick={() => void load()}>
@@ -985,9 +990,10 @@ export default function SocialGrowthTab() {
                         type="button"
                         className="underline"
                         disabled={busy}
-                        onClick={() =>
-                          void act({ action: "remove_outcome", id: o.id })
-                        }
+                        onClick={async () => {
+                          if (!(await ask({ title: "Remove this record?", tone: "danger", confirmLabel: "Remove", message: "It stops counting towards this campaign's results." }))) return;
+                          void act({ action: "remove_outcome", id: o.id });
+                        }}
                       >
                         Remove manual record
                       </button>
@@ -1041,9 +1047,9 @@ export default function SocialGrowthTab() {
                 />
               </div>
               <p className="text-xs text-ink-500">
-                Saved as manually reported. Payment-confirmed purchases arrive
-                automatically from connected checkout webhooks. Reusing the same
-                reference does not count twice.
+                Saved as reported by you. Purchases paid through a connected
+                payment tool (like Razorpay) are recorded on their own. Using the
+                same reference again doesn&apos;t count it twice.
               </p>
               <button className={button} disabled={busy}>
                 Record outcome

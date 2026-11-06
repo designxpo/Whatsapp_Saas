@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Check, Copy, ExternalLink, Loader2, RefreshCw, Search, Send, SlidersHorizontal, Sparkles, Star, Trash2 } from "lucide-react";
 import { inp } from "../_shared";
 import { useConfirm } from "@/components/confirm-dialog";
+import { toast } from "@/components/toast";
 import { ReviewCase, isOverdue, type CaseStatus, type Teammate } from "./ReviewCase";
 
 export type ReplyStatus = "none" | "draft" | "posted";
@@ -26,6 +27,28 @@ export interface LocationInfo {
   sync: null | { ok: boolean; error: string | null; kind: string | null; at: string; lastSuccessAt: string | null; failures: number; importingHistory: boolean; averageRating: number | null; totalReviewCount: number | null; mapsUri: string | null; reviewUri: string | null };
 }
 export interface InboxMeta { settings: { autoMinStars: number } & Record<string, unknown>; locations: LocationInfo[]; emailAlertsAvailable: boolean; settingsSaved?: boolean }
+
+type InboxData = { reviews: InboxReview[]; total: number; pageSize: number; counts: Record<View, number>; setupPending: boolean; focus: InboxReview | null; locations: LocationInfo[]; team?: Teammate[]; me?: { id: string | null; canManage: boolean } };
+
+/** The inbox response with every field the screen reads filled in, or null when it isn't a review list at all. */
+export function normalizeInbox(d: Record<string, unknown>): InboxData | null {
+  if (!Array.isArray(d.reviews)) return null;
+  const reviews = d.reviews as InboxReview[];
+  const num = (v: unknown, fallback: number) => (typeof v === "number" && Number.isFinite(v) ? v : fallback);
+  const rawCounts = (d.counts && typeof d.counts === "object" ? d.counts : {}) as Partial<Record<View, unknown>>;
+  const counts = Object.fromEntries(VIEWS.map(v => [v.key, num(rawCounts[v.key], 0)])) as Record<View, number>;
+  return {
+    reviews,
+    total: num(d.total, reviews.length),
+    pageSize: Math.max(1, num(d.pageSize, 20)),
+    counts,
+    setupPending: d.setupPending === true,
+    focus: d.focus && typeof d.focus === "object" ? d.focus as InboxReview : null,
+    locations: Array.isArray(d.locations) ? d.locations as LocationInfo[] : [],
+    team: Array.isArray(d.team) ? d.team as Teammate[] : [],
+    me: d.me && typeof d.me === "object" ? d.me as { id: string | null; canManage: boolean } : undefined,
+  };
+}
 
 type View = "all" | "approval" | "unanswered" | "complaints" | "cases" | "overdue" | "replied" | "failed";
 const VIEWS: { key: View; label: string; empty: string }[] = [
@@ -63,7 +86,7 @@ export function ReviewInbox({ reloadKey, focusId, isAdmin, onMeta, onClearFocus 
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [data, setData] = useState<{ reviews: InboxReview[]; total: number; pageSize: number; counts: Record<View, number>; setupPending: boolean; focus: InboxReview | null; locations: LocationInfo[]; team?: Teammate[]; me?: { id: string | null; canManage: boolean } } | null>(null);
+  const [data, setData] = useState<InboxData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -89,10 +112,14 @@ export function ReviewInbox({ reloadKey, focusId, isAdmin, onMeta, onClearFocus 
     setLoading(true); setError(null);
     try {
       const r = await fetch(`/api/admin/reviews?${qs}`);
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok) { setError(d.error || "Reviews couldn't be loaded."); return; }
-      setData(d);
-      onMetaRef.current({ settings: d.settings, locations: d.locations ?? [], emailAlertsAvailable: !!d.emailAlertsAvailable, settingsSaved: !!d.settingsSaved });
+      const raw: unknown = await r.json().catch(() => null);
+      const d = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+      const inbox = r.ok && !d.error ? normalizeInbox(d) : null;
+      // A failed request, an {error} body or a body without a review list all
+      // land here — the screen shows the error with Try again, never crashes.
+      if (!inbox) { setError(typeof d.error === "string" && d.error ? d.error : "Reviews couldn't be loaded."); return; }
+      setData(inbox);
+      onMetaRef.current({ settings: (d.settings && typeof d.settings === "object" ? d.settings : undefined) as InboxMeta["settings"], locations: inbox.locations, emailAlertsAvailable: !!d.emailAlertsAvailable, settingsSaved: !!d.settingsSaved });
     } catch {
       setError("Couldn't reach Talko — check your connection and try again.");
     } finally { setLoading(false); }
@@ -108,10 +135,10 @@ export function ReviewInbox({ reloadKey, focusId, isAdmin, onMeta, onClearFocus 
     try {
       const res = await fetch("/api/admin/reviews/reply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: r.id, action, text }) });
       const d = await res.json().catch(() => ({}));
-      if (!res.ok) { setNotice({ id: r.id, ok: false, text: d.error || "That didn't work." }); await load(); return; }
+      if (!res.ok) { setNotice({ id: r.id, ok: false, text: d.error || "That didn't work. Please try again." }); await load(); return; }
       setDrafts(dr => { const n = { ...dr }; delete n[r.id]; return n; });
       setEditing(ed => ({ ...ed, [r.id]: false }));
-      setNotice({ id: r.id, ok: true, text: action === "post" ? (r.source === "google" ? "Posted on Google." : "Marked as posted.") : action === "unpost" ? (r.source === "google" ? "Removed from Google. The text is kept as a draft." : "Moved back to draft.") : action === "generate" ? "New AI draft ready — check it before posting." : "Draft saved." });
+      toast(action === "post" ? (r.source === "google" ? "Reply posted on Google" : "Marked as posted") : action === "unpost" ? (r.source === "google" ? "Removed from Google — the text is kept as a draft" : "Moved back to draft") : action === "generate" ? "New AI draft ready — check it before posting" : "Draft saved");
       await load();
     } finally { setBusy(null); }
   }
@@ -138,13 +165,15 @@ export function ReviewInbox({ reloadKey, focusId, isAdmin, onMeta, onClearFocus 
       title: "Delete this review from Talko?", tone: "danger", confirmLabel: "Delete review",
       message: r.source === "google" ? "It's removed from Talko only — the review and any reply stay on Google." : "The pasted review and its draft are removed from Talko.",
     }))) return;
-    await fetch("/api/admin/reviews", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: r.id }) }).catch(() => {});
+    const res = await fetch("/api/admin/reviews", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: r.id }) }).catch(() => null);
+    if (res?.ok) toast("Review deleted from Talko"); else toast({ text: "Couldn't delete the review. Please try again.", tone: "error" });
     if (r.id === focusId) onClearFocus();
     load();
   }
 
   function copy(r: InboxReview, text: string) {
     navigator.clipboard?.writeText(text);
+    toast("Reply copied — paste it under the review");
     setCopied(r.id); setTimeout(() => setCopied(c => (c === r.id ? null : c)), 1500);
   }
 
@@ -170,7 +199,7 @@ export function ReviewInbox({ reloadKey, focusId, isAdmin, onMeta, onClearFocus 
               <span className="text-sm font-semibold text-ink-900">{r.author || "Anonymous"}</span>
               <span className="text-[11px] text-ink-500 tabular-nums">· {shortDate(r.reviewCreatedAt ?? r.createdAt)}</span>
             </div>
-            <div className="flex items-center gap-1.5 flex-wrap text-[10px] font-bold">
+            <div className="flex items-center gap-1.5 flex-wrap text-[11px] font-bold">
               {google
                 ? <span className="px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700">Google · {locName(r)}</span>
                 : <span className="px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600" title="Pasted into Talko by hand. Talko can't publish anything for it on Google.">Pasted by hand — not linked to Google</span>}
@@ -185,8 +214,8 @@ export function ReviewInbox({ reloadKey, focusId, isAdmin, onMeta, onClearFocus 
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            {maps && <a href={maps} target="_blank" rel="noopener noreferrer" className="p-1.5 text-ink-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg" title={`Open ${locName(r)} on Google Maps`} aria-label={`Open ${locName(r)} on Google Maps`}><ExternalLink className="w-4 h-4" /></a>}
-            {isAdmin && <button onClick={() => del(r)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Delete from Talko" aria-label="Delete review from Talko"><Trash2 className="w-4 h-4" /></button>}
+            {maps && <a href={maps} target="_blank" rel="noopener noreferrer" className="grid h-9 w-9 place-items-center text-ink-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg" title={`Open ${locName(r)} on Google Maps`} aria-label={`Open ${locName(r)} on Google Maps`}><ExternalLink className="w-4 h-4" /></a>}
+            {isAdmin && <button onClick={() => del(r)} className="grid h-9 w-9 place-items-center text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Delete from Talko" aria-label="Delete review from Talko"><Trash2 className="w-4 h-4" /></button>}
           </div>
         </header>
 
@@ -263,7 +292,7 @@ export function ReviewInbox({ reloadKey, focusId, isAdmin, onMeta, onClearFocus 
         {VIEWS.map(v => (
           <button key={v.key} role="tab" aria-selected={view === v.key} onClick={() => setView(v.key)}
             className={`shrink-0 border-b-2 px-0.5 pb-3 pt-1 text-xs font-semibold transition-colors ${view === v.key ? "border-brand-700 text-brand-700" : "border-transparent text-ink-500 hover:text-ink-900"} ${v.key === "failed" && (data?.counts.failed ?? 0) > 0 && view !== v.key ? "text-red-700" : ""}`}>
-            {v.label}<span className={`ml-1.5 text-[10px] tabular-nums ${view === v.key ? "text-brand-700" : "text-ink-400"}`}>{data ? data.counts[v.key] : ""}</span>
+            {v.label}<span className={`ml-1.5 text-[11px] tabular-nums ${view === v.key ? "text-brand-700" : "text-ink-500"}`}>{data ? data.counts[v.key] : ""}</span>
           </button>
         ))}
       </div>
@@ -288,7 +317,7 @@ export function ReviewInbox({ reloadKey, focusId, isAdmin, onMeta, onClearFocus 
           <button onClick={load} disabled={loading} title="Refresh reviews" className="rounded-control border border-line bg-white p-2 text-ink-500 hover:bg-canvas disabled:opacity-60" aria-label="Refresh the list">
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           </button>
-          {filtered && <button onClick={() => { setFilters(NO_FILTERS); setSearch(""); }} className="px-2 py-1.5 text-xs font-semibold text-ink-500 hover:text-ink-900">Clear filters</button>}
+          {filtered && <button onClick={() => { setFilters(NO_FILTERS); setSearch(""); }} className="min-h-9 px-2 py-1.5 text-xs font-semibold text-ink-500 hover:text-ink-900">Clear filters</button>}
         </div>
         <div id="review-inbox-filters" hidden={!showFilters}>
           <div className="grid grid-cols-2 gap-3 rounded-xl border border-line bg-white p-4 sm:grid-cols-3 lg:grid-cols-6">
@@ -334,13 +363,13 @@ export function ReviewInbox({ reloadKey, focusId, isAdmin, onMeta, onClearFocus 
       {error && (
         <div className="rounded-card border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-800 flex items-center gap-3" role="alert">
           <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden /> <span className="flex-1">{error}</span>
-          <button onClick={load} className="font-bold underline">Try again</button>
+          <button onClick={load} className="min-h-8 font-bold underline">Try again</button>
         </div>
       )}
 
       {focus && (
         <div className="space-y-1.5">
-          <div className="flex items-center justify-between text-[11px] font-bold text-brand-700"><span>Opened from an alert</span><button onClick={onClearFocus} className="text-ink-500 hover:text-ink-900">Dismiss</button></div>
+          <div className="flex items-center justify-between text-[11px] font-bold text-brand-700"><span>Opened from an alert</span><button onClick={onClearFocus} className="min-h-8 px-1 text-ink-500 hover:text-ink-900">Dismiss</button></div>
           {card(focus, true)}
         </div>
       )}
@@ -350,16 +379,16 @@ export function ReviewInbox({ reloadKey, focusId, isAdmin, onMeta, onClearFocus 
           {[0, 1, 2].map(i => <div key={i} className="h-28 rounded-card border border-line bg-white animate-pulse" />)}
         </div>
       ) : data && !data.reviews.length && !error ? (
-        <p className="text-sm text-ink-500 py-10 text-center">{filtered ? "No reviews match these filters." : VIEWS.find(v => v.key === view)!.empty}</p>
+        <p className="text-sm text-ink-500 py-10 text-center max-w-md mx-auto">{filtered ? "No reviews match these filters. Try Clear filters." : view === "all" && !data.total ? "No reviews yet. Connect your Google Business Profile under Manage above and they arrive on their own — or press Paste a review to add one from anywhere." : VIEWS.find(v => v.key === view)!.empty}</p>
       ) : (
         <div className={`space-y-3 ${loading ? "opacity-60" : ""}`}>{data?.reviews.map(r => card(r, r.id === focusId))}</div>
       )}
 
       {data && data.total > data.pageSize && (
         <nav className="flex items-center justify-between text-xs" aria-label="Pages">
-          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1 || loading} className="px-3 py-1.5 rounded-control border border-line font-bold text-ink-700 hover:bg-canvas disabled:opacity-50">Previous</button>
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1 || loading} className="min-h-9 px-3 py-1.5 rounded-control border border-line font-bold text-ink-700 hover:bg-canvas disabled:opacity-50">Previous</button>
           <span className="text-ink-500 tabular-nums">Page {page} of {totalPages} · {data.total} reviews</span>
-          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages || loading} className="px-3 py-1.5 rounded-control border border-line font-bold text-ink-700 hover:bg-canvas disabled:opacity-50">Next</button>
+          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages || loading} className="min-h-9 px-3 py-1.5 rounded-control border border-line font-bold text-ink-700 hover:bg-canvas disabled:opacity-50">Next</button>
         </nav>
       )}
     </section>

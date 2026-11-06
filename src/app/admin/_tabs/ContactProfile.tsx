@@ -168,10 +168,10 @@ function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; on
               {brief && (
                 <div className="space-y-1.5">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${PRIO_STYLE[brief.priority]}`}>
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold ${PRIO_STYLE[brief.priority]}`}>
                       {(() => { const I = CAT_ICON[brief.category]; return <I className="w-3 h-3" />; })()} {brief.categoryLabel.toUpperCase()}
                     </span>
-                    <span className="text-[10px] font-semibold text-slate-400">{brief.priority} priority</span>
+                    <span className="text-[11px] font-semibold text-slate-400">{brief.priority} priority</span>
                   </div>
                   <p className="text-xs text-ink-900">{brief.summary}</p>
                   {brief.highlights.length > 0 && (
@@ -186,7 +186,7 @@ function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; on
                       {brief.talkingPoints.map((t, i) => <li key={i}>{t}</li>)}
                     </ul>
                   )}
-                  <p className="text-[10px] text-slate-400 pt-0.5">AI-generated from this conversation — verify before acting.</p>
+                  <p className="text-[11px] text-slate-400 pt-0.5">AI-generated from this conversation — verify before acting.</p>
                 </div>
               )}
             </div>
@@ -224,7 +224,7 @@ function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; on
               ].map(s => (
                 <div key={s.label} className="bg-canvas rounded-control p-2.5 text-center">
                   <p className="text-base font-extrabold text-ink-900">{s.value}</p>
-                  <p className="text-[10px] text-slate-500 font-semibold">{s.label}</p>
+                  <p className="text-[11px] text-slate-500 font-semibold">{s.label}</p>
                 </div>
               ))}
             </div>
@@ -240,14 +240,14 @@ function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; on
                       <div className="min-w-0">
                         <p className="text-xs font-semibold text-ink-900">
                           {chanLabel(j.platform)}
-                          {i === 0 && <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700 text-[9px] font-bold align-middle">FIRST {vocab.contact.one.toUpperCase()}</span>}
+                          {i === 0 && <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700 text-[11px] font-bold align-middle">First {vocab.contact.one.toLowerCase()}</span>}
                         </p>
-                        <p className="text-[10px] text-slate-400">
+                        <p className="text-[11px] text-slate-400">
                           since {new Date(j.startedAt).toLocaleDateString()}
                           {j.lastInboundAt ? ` · last heard ${new Date(j.lastInboundAt).toLocaleDateString()}` : ""}
                         </p>
                       </div>
-                      {j.status === "escalated" && <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-600 text-[10px] font-bold shrink-0">ESCALATED</span>}
+                      {j.status === "escalated" && <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-600 text-[11px] font-bold shrink-0">Needs a person</span>}
                     </div>
                   ))}
                 </div>
@@ -309,7 +309,7 @@ function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; on
                 <>
                   <p className="text-[11px] text-slate-500 inline-flex items-center gap-1 flex-wrap">
                     {p.conversation.status === "escalated"
-                      ? <><span className="inline-block w-2 h-2 rounded-full bg-red-500" /> Escalated to a human</>
+                      ? <><span className="inline-block w-2 h-2 rounded-full bg-red-500" /> Needs a person</>
                       : p.conversation.botEnabled
                         ? <><Bot className="w-3.5 h-3.5" /> AI is replying</>
                         : <><User className="w-3.5 h-3.5" /> Human handling (bot off)</>}
@@ -318,7 +318,7 @@ function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; on
                   <div className="border border-line rounded-control divide-y divide-line max-h-44 overflow-y-auto">
                     {p.messages.map((m, i) => (
                       <div key={i} className="px-3 py-1.5">
-                        <p className="text-[10px] font-bold text-slate-400">
+                        <p className="text-[11px] font-bold text-slate-400">
                           {m.role === "user" ? c.name || vocab.lead.one : m.source === "agent" ? "Team" : "AI"} · {new Date(m.createdAt).toLocaleString()}
                           {journeyChannels > 1 && m.platform ? <span className="ml-1.5 px-1.5 rounded-full bg-canvas text-slate-500 font-semibold">{chanLabel(m.platform)}</span> : null}
                         </p>
@@ -340,9 +340,9 @@ function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; on
                     <div key={i} className="px-3 py-1.5 flex items-center justify-between gap-2">
                       <div className="min-w-0">
                         <p className="text-xs font-semibold text-ink-900 truncate">{x.name}</p>
-                        <p className="text-[10px] text-slate-400">{new Date(x.sentAt).toLocaleString()}</p>
+                        <p className="text-[11px] text-slate-400">{new Date(x.sentAt).toLocaleString()}</p>
                       </div>
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${logStatus(x.status)}`}>{x.status.toUpperCase()}</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold shrink-0 ${logStatus(x.status)}`}>{x.status.toUpperCase()}</span>
                     </div>
                   ))}
                 </div>
@@ -357,7 +357,7 @@ function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; on
                   {p?.clicks.map((l, i) => (
                     <div key={i} className="px-3 py-1.5">
                       <p className="text-xs text-brand-700 truncate">{l.url}</p>
-                      <p className="text-[10px] text-slate-400">{l.clicks}× {l.at ? `· first on ${new Date(l.at).toLocaleString()}` : ""}</p>
+                      <p className="text-[11px] text-slate-400">{l.clicks}× {l.at ? `· first on ${new Date(l.at).toLocaleString()}` : ""}</p>
                     </div>
                   ))}
                 </div>

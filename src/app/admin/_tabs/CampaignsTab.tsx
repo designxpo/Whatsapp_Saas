@@ -2,11 +2,28 @@
 
 // Campaign history + detail dashboard (funnel, clicks, replies) — extracted from
 // admin/page.tsx, lazy-loaded. Logic unchanged.
-import { PageInfo } from "@/components/PageInfo";
 import { useState, useEffect, useCallback } from "react";
 import { AlertTriangle, ArrowLeft, BarChart3, Check, ChevronRight, CircleCheck, Loader2, MessageSquare, MousePointerClick, Reply } from "lucide-react";
 import { type Tab } from "../_shared";
 import { EmptyState } from "../_shared";
+import { toast } from "@/components/toast";
+import { SERIES_COLORS, ShowAsTable, TimeChart, tableRows, type ChartPoint, type ChartSeries } from "@/components/charts";
+import { fmtDay, fmtNum } from "@/lib/format";
+
+const timeFmt = new Intl.DateTimeFormat("en-IN", { hour: "numeric", minute: "2-digit", hour12: true });
+/** "6 Nov 2026, 4:05 pm" — Indian order, whatever the browser's locale. */
+function fmtDateTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return `${fmtDay(iso, new Date(0))}, ${timeFmt.format(d).toLowerCase()}`;
+}
+const DAY_SERIES: ChartSeries[] = [
+  { key: "clicked", label: "Clicked", color: SERIES_COLORS.primary, mark: "area" },
+  { key: "read", label: "Read", color: SERIES_COLORS.secondary, mark: "dashed" },
+  { key: "delivered", label: "Delivered", mark: "none" },
+  { key: "sent", label: "Sent", mark: "none" },
+];
 
 // ── Campaign history + detail dashboard (funnel, clicks, replies) ─────────────
 type Funnel = { total: number; sent: number; delivered: number; read: number; failed: number; skipped: number };
@@ -16,57 +33,29 @@ type CampaignStats = {
   info: { name: string; templateName: string; sentOn: string; status: string; totalRecipients: number; ctaUrl: string | null; clickTracking: boolean };
 };
 
-function Donut({ pct, label }: { pct: number; label: string }) {
-  const r = 42, c = 2 * Math.PI * r;
+// Share of recipients who clicked — a labelled bar rather than a ring (lengths
+// read more accurately than angles).
+function ClickShare({ pct }: { pct: number }) {
+  const v = Math.min(100, Math.max(0, pct));
   return (
-    <div className="relative w-32 h-32">
-      <svg viewBox="0 0 110 110" className="w-32 h-32 -rotate-90">
-        <circle cx="55" cy="55" r={r} fill="none" stroke="#e2e8f0" strokeWidth="14" />
-        <circle cx="55" cy="55" r={r} fill="none" stroke="#0553ad" strokeWidth="14" strokeLinecap="round"
-          strokeDasharray={`${(Math.min(100, Math.max(0, pct)) / 100) * c} ${c}`} />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-lg font-extrabold text-brand-dark">{Math.round(pct)}%</span>
-        <span className="text-[10px] text-slate-400 font-semibold">{label}</span>
+    <div className="w-full">
+      <p className="text-3xl font-extrabold text-brand-dark tabular-nums">{Math.round(v)}%</p>
+      <p className="text-[12px] font-semibold text-ink-600">of recipients clicked</p>
+      <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-canvas" aria-hidden>
+        <div className="h-full rounded-full" style={{ width: `${v > 0 ? Math.max(2, v) : 0}%`, background: SERIES_COLORS.primary }} />
       </div>
     </div>
   );
 }
 
-// Per-day area chart (pure SVG — clicked area + read line).
 function PerDayChart({ days }: { days: DayPoint[] }) {
-  if (days.length === 0) return <p className="text-sm text-slate-400 py-10 text-center">No daily activity logged yet.</p>;
-  const W = 600, H = 190, PX = 36, PB = 26, PT = 12;
-  const maxY = Math.max(1, ...days.map(d => Math.max(d.clicked, d.read, d.delivered)));
-  const x = (i: number) => PX + (days.length === 1 ? (W - PX - 8) / 2 : (i * (W - PX - 8)) / (days.length - 1));
-  const y = (v: number) => PT + (H - PB - PT) * (1 - v / maxY);
-  const path = (key: keyof DayPoint) => days.map((d, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(d[key] as number).toFixed(1)}`).join(" ");
-  const area = `${path("clicked")} L${x(days.length - 1).toFixed(1)},${H - PB} L${x(0).toFixed(1)},${H - PB} Z`;
-  const gridY = [0.25, 0.5, 0.75, 1];
-  const labelEvery = Math.max(1, Math.ceil(days.length / 8));
+  if (days.length === 0) return <p className="text-sm text-ink-500 py-10 text-center">No daily activity yet — it fills in as messages are delivered and read.</p>;
+  const points: ChartPoint[] = days.map(d => ({ key: d.date, label: fmtDay(d.date), values: { clicked: d.clicked, read: d.read, delivered: d.delivered, sent: d.sent } }));
   return (
-    <div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
-        {gridY.map(g => (
-          <g key={g}>
-            <line x1={PX} x2={W - 8} y1={y(maxY * g)} y2={y(maxY * g)} stroke="#e2e8f0" strokeDasharray="3 3" />
-            <text x={PX - 5} y={y(maxY * g) + 3} textAnchor="end" fontSize="9" fill="#94a3b8">{Math.round(maxY * g)}</text>
-          </g>
-        ))}
-        <path d={area} fill="#0553ad" opacity="0.25" />
-        <path d={path("clicked")} fill="none" stroke="#0553ad" strokeWidth="2" />
-        <path d={path("read")} fill="none" stroke="#0783fd" strokeWidth="1.5" strokeDasharray="4 3" />
-        {days.map((d, i) => i % labelEvery === 0 ? (
-          <text key={d.date} x={x(i)} y={H - 8} textAnchor="middle" fontSize="9" fill="#94a3b8">
-            {new Date(d.date).toLocaleDateString(undefined, { day: "numeric", month: "short" })}
-          </text>
-        ) : null)}
-      </svg>
-      <div className="flex justify-center gap-5 text-[11px] text-slate-500 mt-1">
-        <span className="flex items-center gap-1.5"><span className="w-3 h-1.5 rounded-full bg-brand-700 inline-block" /> clicked</span>
-        <span className="flex items-center gap-1.5"><span className="w-3 h-1.5 rounded-full bg-brand-500 inline-block" /> read</span>
-      </div>
-    </div>
+    <>
+      <TimeChart points={points} series={DAY_SERIES} label="Clicks and reads per day" height={190} />
+      <ShowAsTable caption="Activity per day" columns={["Day", ...DAY_SERIES.map(s => s.label)]} rows={tableRows(points, DAY_SERIES)} />
+    </>
   );
 }
 
@@ -99,9 +88,11 @@ function CampaignsTab({ goTo }: { goTo: (t: Tab) => void }) {
     try {
       const d = await fetch(`/api/admin/campaigns/${campaignId}/funnel?segment=${segment}`).then(r => r.json());
       const recipients: { phone: string; fullName: string }[] = d.recipients ?? [];
-      if (!recipients.length) { alert(`No recipients in "${label}".`); return; }
+      if (!recipients.length) { toast({ text: `Nobody is in “${label}” right now.`, tone: "info" }); return; }
       sessionStorage.setItem("wa_retarget", JSON.stringify({ note: `Retarget: ${label} (${recipients.length} recipients)`, recipients }));
       goTo("broadcast");
+    } catch {
+      toast({ text: "Couldn't load that group — check your connection and try again.", tone: "error" });
     } finally { setRetargeting(false); }
   }
 
@@ -130,7 +121,7 @@ function CampaignsTab({ goTo }: { goTo: (t: Tab) => void }) {
     return (
       <div className="max-w-4xl space-y-5">
         <div className="flex items-center gap-3">
-          <button onClick={() => setDetailId(null)} className="p-2 rounded-lg hover:bg-slate-100"><ArrowLeft className="w-5 h-5 text-slate-500" /></button>
+          <button type="button" onClick={() => setDetailId(null)} aria-label="Back to all campaigns" className="grid place-items-center w-9 h-9 rounded-lg hover:bg-slate-100"><ArrowLeft className="w-5 h-5 text-slate-500" aria-hidden /></button>
           <h2 className="text-xl font-extrabold text-brand-dark uppercase tracking-wide">{stats?.info.name ?? "Campaign"}</h2>
         </div>
 
@@ -139,7 +130,7 @@ function CampaignsTab({ goTo }: { goTo: (t: Tab) => void }) {
             <div className="bg-white rounded-card border border-line px-2 py-3 flex flex-wrap">
               {tiles.map(t => (
                 <div key={t.label} className={`px-4 py-1.5 text-center border-b-2 ${t.hot ? "border-brand-700 bg-brand-50 rounded-t-lg" : "border-transparent"}`}>
-                  <p className="text-sm font-extrabold text-brand-dark">{t.pct}% <span className="font-normal text-slate-400 text-xs">({t.n.toLocaleString()})</span></p>
+                  <p className="text-sm font-extrabold text-brand-dark">{t.pct}% <span className="font-normal text-slate-400 text-xs">({fmtNum(t.n)})</span></p>
                   <p className={`text-[11px] font-semibold flex items-center justify-center gap-1 ${t.hot ? "text-brand-700" : "text-slate-400"}`}>{t.icon}{t.label}</p>
                 </div>
               ))}
@@ -147,32 +138,33 @@ function CampaignsTab({ goTo }: { goTo: (t: Tab) => void }) {
 
             <div className="grid md:grid-cols-[1fr_200px] gap-5">
               <div className="bg-white rounded-card border border-line p-5 grid grid-cols-2 gap-x-6 gap-y-4">
-                <div><p className="text-[10px] font-bold text-slate-400 uppercase">Campaign name</p><p className="text-sm font-semibold text-brand-dark font-mono">{stats.info.templateName}</p></div>
-                <div><p className="text-[10px] font-bold text-slate-400 uppercase">Sent on</p><p className="text-sm font-semibold text-brand-dark">{new Date(stats.info.sentOn).toLocaleString()}</p></div>
-                <div><p className="text-[10px] font-bold text-slate-400 uppercase">CTA (URL)</p><p className="text-sm font-semibold text-brand-dark truncate">{stats.info.ctaUrl ?? "—"}</p></div>
-                <div><p className="text-[10px] font-bold text-slate-400 uppercase">Recipients</p><p className="text-sm font-semibold text-brand-dark">{stats.info.totalRecipients.toLocaleString()} · {stats.info.status}</p></div>
-                {!stats.info.clickTracking && <p className="col-span-2 text-[11px] text-slate-400">Click data appears for templates submitted with click tracking enabled.</p>}
+                <div><p className="text-[12px] font-semibold text-ink-500">Template</p><p className="text-sm font-semibold text-brand-dark font-mono">{stats.info.templateName}</p></div>
+                <div><p className="text-[12px] font-semibold text-ink-500">Sent on</p><p className="text-sm font-semibold text-brand-dark">{fmtDateTime(stats.info.sentOn)}</p></div>
+                <div><p className="text-[12px] font-semibold text-ink-500">Button link</p><p className="text-sm font-semibold text-brand-dark truncate">{stats.info.ctaUrl ?? "—"}</p></div>
+                <div><p className="text-[12px] font-semibold text-ink-500">Recipients</p><p className="text-sm font-semibold text-brand-dark">{fmtNum(stats.info.totalRecipients)} · {stats.info.status}</p></div>
+                {!stats.info.clickTracking && <p className="col-span-2 text-[12px] text-ink-500">Click data appears for templates submitted with click tracking enabled.</p>}
               </div>
-              <div className="bg-white rounded-card border border-line p-4 flex items-center justify-center">
-                <Donut pct={total ? (stats.clicked / total) * 100 : 0} label="clicked" />
+              <div className="bg-white rounded-card border border-line p-4 flex items-center">
+                <ClickShare pct={total ? (stats.clicked / total) * 100 : 0} />
               </div>
             </div>
 
             <div className="bg-white rounded-card border border-line p-5">
-              <p className="text-sm font-extrabold text-brand-dark mb-3">Audience (per day)</p>
+              <h3 className="text-sm font-extrabold text-brand-dark mb-3">Day by day</h3>
               <PerDayChart days={stats.perDay} />
             </div>
 
             <div className="bg-white rounded-card border border-line p-5 space-y-2">
-              <p className="text-sm font-extrabold text-brand-dark">Smart retargeting</p>
+              <h3 className="text-sm font-extrabold text-brand-dark">Send a follow-up to a group</h3>
+              <p className="text-[12px] text-ink-500">Opens Broadcast with these people already added.</p>
               {SEGMENTS.map(s => (
-                <div key={s.segment} className="flex items-center gap-3 text-xs">
-                  <span className="w-40 shrink-0 text-slate-500 font-medium">{s.label}</span>
-                  <span className="w-12 font-bold text-slate-600">{s.n}</span>
+                <div key={s.segment} className="flex flex-wrap items-center gap-3 text-[13px]">
+                  <span className="w-40 shrink-0 text-ink-600 font-medium">{s.label}</span>
+                  <span className="w-12 font-bold text-ink-700 tabular-nums">{fmtNum(s.n)}</span>
                   {s.n > 0 && (
                     <button disabled={retargeting} onClick={() => retarget(detailId, s.segment, s.label.toLowerCase())}
-                      className="px-2 py-0.5 rounded-full border border-brand-dark text-brand-dark font-bold hover:bg-brand-600 hover:text-white">
-                      Retarget →
+                      className="min-h-8 px-3 rounded-full border border-brand-dark text-[12px] text-brand-dark font-bold hover:bg-brand-600 hover:text-white disabled:opacity-50">
+                      Send a follow-up →
                     </button>
                   )}
                 </div>
@@ -188,21 +180,22 @@ function CampaignsTab({ goTo }: { goTo: (t: Tab) => void }) {
   return (
     <div className="max-w-3xl space-y-4">
       <div>
-        <h2 className="text-xl font-extrabold text-brand-dark">Campaign history</h2><p className="text-sm text-slate-500">Click a campaign for its full dashboard — delivery funnel, clicks, replies, and behavioral retargeting.</p>
+        <h2 className="text-xl font-extrabold text-brand-dark">Campaign history</h2><p className="text-sm text-ink-600">Open a broadcast to see who received, read, clicked and replied — and send a follow-up to the people who didn&apos;t.</p>
       </div>
       <div className="space-y-2">
         {campaigns.map(c => (
           <button key={c.id} onClick={() => openDetail(c.id)} className="w-full bg-white rounded-card border border-line p-4 flex items-center justify-between text-left hover:border-brand-dark/40">
-            <div><p className="font-mono text-sm font-semibold text-brand-dark">{c.templateName}</p><p className="text-[11px] text-slate-400">{new Date(c.createdAt).toLocaleString()}</p></div>
+            <div><p className="font-mono text-sm font-semibold text-brand-dark">{c.templateName}</p><p className="text-[12px] text-ink-500">{fmtDateTime(c.createdAt)}</p></div>
             <div className="text-right text-xs text-slate-600 flex items-center gap-3">
-              <div><span className="px-2 py-0.5 rounded-full bg-slate-100 font-semibold">{c.status}</span><p className="mt-1">{c.sentCount}/{c.totalRecipients} sent{c.failedCount ? ` · ${c.failedCount} failed` : ""}</p></div>
-              <ChevronRight className="w-4 h-4 text-slate-300" />
+              <div><span className="px-2 py-0.5 rounded-full bg-slate-100 font-semibold">{c.status}</span><p className="mt-1 tabular-nums">{fmtNum(c.sentCount)} of {fmtNum(c.totalRecipients)} sent{c.failedCount ? ` · ${fmtNum(c.failedCount)} failed` : ""}</p></div>
+              <ChevronRight className="w-4 h-4 text-slate-300" aria-hidden />
             </div>
           </button>
         ))}
         {campaigns.length === 0 && (
-          <EmptyState mood="sleeping" title="No campaigns yet"
-            body="Broadcasts you send appear here with their delivery, read and reply counts." />
+          <EmptyState mood="sleeping" title="No broadcasts sent yet"
+            body="Broadcasts you send appear here with their delivery, read and reply counts."
+            action={<button type="button" onClick={() => goTo("broadcast")} className="min-h-9 px-4 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-[13px] font-semibold">Send your first broadcast</button>} />
         )}
       </div>
     </div>

@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Copy, Loader2, Trash2, Check, X } from "lucide-react";
 import { type Tab, inp, ImgFallback } from "../_shared";
 import { useConfirm } from "@/components/confirm-dialog";
+import { toast } from "@/components/toast";
 import { Drawer } from "@/components/overlay";
 import InboundIntegrations, { type ExtraTool, type AccountLink } from "@/components/inbound-integrations";
 import { useVocab } from "@/lib/vocab-client";
@@ -29,7 +30,7 @@ const INTEGRATION_EVENTS: { key: string; label: string }[] = [
   { key: "order.refunded", label: "Order refunded" },
 ];
 const FORMAT_LABELS: Record<string, string> = { generic: "Standard (Zapier / Make / n8n)", slack: "Slack message", teams: "Microsoft Teams message" };
-const KIND_LABELS: Record<string, string> = { webhook: "Outgoing webhook (Zapier / Make / n8n)", slack: "Slack", teams: "Microsoft Teams", hubspot: "HubSpot", pipedrive: "Pipedrive", freshsales: "Freshsales", leadsquared: "LeadSquared", razorpay: "Razorpay", stripe: "Stripe", shopify: "Shopify", woocommerce: "WooCommerce", calcom: "Cal.com", mezmitra: "Mezvaan (restaurant)", google_sheets: "Google Sheets", google_calendar: "Google Calendar" };
+const KIND_LABELS: Record<string, string> = { webhook: "Zapier, Make or n8n", slack: "Slack", teams: "Microsoft Teams", hubspot: "HubSpot", pipedrive: "Pipedrive", freshsales: "Freshsales", leadsquared: "LeadSquared", razorpay: "Razorpay", stripe: "Stripe", shopify: "Shopify", woocommerce: "WooCommerce", calcom: "Cal.com", mezmitra: "Mezvaan (restaurant)", google_sheets: "Google Sheets", google_calendar: "Google Calendar" };
 const CRM_KINDS = ["hubspot", "pipedrive", "freshsales", "leadsquared"];
 const PAYMENT_KINDS = ["razorpay", "stripe"];
 const STORE_KINDS = ["shopify", "woocommerce"];
@@ -80,7 +81,7 @@ const CATALOG: { kind: string; logo: string | null; blurb: string }[] = [
   { kind: "mezmitra", logo: "/integrations/mezmitra.svg", blurb: "Restaurants: live menu and table booking in every chat, WhatsApp after bills, bookings and orders." },
   { kind: "slack", logo: "/integrations/slack.svg", blurb: "Post events to a Slack channel." },
   { kind: "teams", logo: "/integrations/teams.svg", blurb: "Post events to a Microsoft Teams channel." },
-  { kind: "webhook", logo: "/integrations/webhook.svg", blurb: "Send signed events to Zapier, Make, n8n or any webhook." },
+  { kind: "webhook", logo: "/integrations/webhook.svg", blurb: "Tell Zapier, Make, n8n or your own system when something happens — a new lead, an order, a hand-off." },
 ];
 
 // A connector's brand mark — its catalog logo URL, falling back to a lettered tile
@@ -171,7 +172,12 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
   }
 
   async function toggleActive(i: Integration) {
-    await fetch(`/api/admin/integrations/${i.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ active: !i.active }) });
+    const r = await fetch(`/api/admin/integrations/${i.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ active: !i.active }) }).catch(() => null);
+    if (!r?.ok) { toast({ text: "Couldn't change it. Please try again.", tone: "error" }); load(); return; }
+    // Pausing is undone by resuming — the same switch, the other way.
+    toast(i.active
+      ? { text: `${i.name} paused`, action: { label: "Undo", onClick: () => void toggleActive({ ...i, active: false }) } }
+      : `${i.name} resumed`);
     load();
   }
 
@@ -181,7 +187,8 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
       message: "Events stop being sent to it immediately. Anything on the far side that depends on them goes quiet.",
       facts: [{ label: "Integration", value: i.name }],
     }))) return;
-    await fetch(`/api/admin/integrations/${i.id}`, { method: "DELETE" });
+    const r = await fetch(`/api/admin/integrations/${i.id}`, { method: "DELETE" }).catch(() => null);
+    if (r?.ok) toast(`${i.name} removed`); else toast({ text: "Couldn't remove it. Please try again.", tone: "error" });
     load();
   }
 
@@ -191,10 +198,23 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
     setMsg(null); setNewSecret(null); setAdding(true);
   }
 
+  // Why "Add integration" is off, in words — the first thing still missing.
+  const addMissing: string | null =
+    isEventKind && !isRestaurant && !form.events.length ? "Pick at least one event to send."
+    : isRestaurant ? (!form.token.trim() ? "Paste your Mezvaan key first." : null)
+    : form.kind === "google_sheets" ? (!googleEmail ? "Google access isn't set up for this portal yet." : !form.spreadsheetUrl.trim() ? "Paste your sheet's link first." : null)
+    : form.kind === "google_calendar" ? (!googleEmail ? "Google access isn't set up for this portal yet." : !form.calendarId.trim() ? "Enter your calendar's id first." : null)
+    : isSchedule ? (!form.token.trim() ? "Paste your API key first." : !form.eventTypeId.trim() ? "Enter the event type first." : null)
+    : isStore ? (!form.token.trim() ? "Paste your access token first." : form.kind === "shopify" ? (!form.shopDomain.trim() ? "Enter your shop domain first." : null) : (!form.storeUrl.trim() ? "Enter your store address first." : !form.consumerKey.trim() ? "Paste your consumer key first." : null))
+    : form.kind === "leadsquared" ? (!form.token.trim() || !form.lsqAccessKey.trim() ? "Paste your LeadSquared keys first." : !form.lsqHost.trim() ? "Enter your LeadSquared API host first." : !form.lsqActivityCode.trim() ? "Enter the activity code first." : null)
+    : form.kind === "freshsales" ? (!form.token.trim() ? "Paste your API key first." : !form.fsDomain.trim() ? "Enter your Freshsales domain first." : null)
+    : isCrm || isPayment ? (form.kind === "razorpay" && !form.keyId.trim() ? "Enter your Razorpay Key ID first." : !form.token.trim() ? "Paste your secret key first." : null)
+    : !form.url.trim() ? "Paste the link first." : null;
+
   const statusBadge = (s: Integration["status"]) => {
     const map = { connected: "bg-emerald-100 text-emerald-700", error: "bg-red-100 text-red-600", unverified: "bg-slate-100 text-slate-500" };
     const label = { connected: "Connected", error: "Error", unverified: "Not tested" };
-    return <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${map[s]}`}>{label[s]}</span>;
+    return <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${map[s]}`}>{label[s]}</span>;
   };
 
   // What the single catalog needs from this tab: the tools only the portal-side
@@ -229,12 +249,16 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
 
       {newSecret && (
         <div className="bg-amber-50 border border-amber-200 rounded-card p-4 space-y-1.5">
-          <p className="text-xs font-bold text-amber-800">Signing secret — copy it now, it won’t be shown again.</p>
-          <p className="text-[11px] text-amber-700">Use it to verify the <span className="font-mono">X-Alabs-Signature</span> header (HMAC-SHA256 of the body). Slack/Teams don’t need it.</p>
+          <p className="text-xs font-bold text-amber-800">Secret code — copy it now, it won’t be shown again.</p>
+          <p className="text-[12px] text-amber-800">Give it to whoever set up the receiving side, so they can check messages really come from {who}. Slack and Teams don’t need it.</p>
           <div className="flex items-center gap-2">
             <code className="flex-1 text-xs bg-white border border-amber-200 rounded px-2 py-1.5 break-all">{newSecret}</code>
-            <button onClick={() => { navigator.clipboard?.writeText(newSecret); }} className="px-2 py-1.5 rounded-control border border-amber-300 text-xs font-bold text-amber-800 hover:bg-amber-100 shrink-0"><Copy className="w-3.5 h-3.5" /></button>
+            <button onClick={() => { navigator.clipboard?.writeText(newSecret); toast("Secret copied"); }} aria-label="Copy secret" className="grid place-items-center w-9 h-9 rounded-control border border-amber-300 text-amber-800 hover:bg-amber-100 shrink-0"><Copy className="w-3.5 h-3.5" /></button>
           </div>
+          <details className="text-[11px] text-amber-800">
+            <summary className="cursor-pointer font-semibold">For developers</summary>
+            <p className="mt-1">Each request carries an <span className="font-mono">X-Alabs-Signature</span> header: the HMAC-SHA256 of the raw body, keyed with this secret.</p>
+          </details>
         </div>
       )}
 
@@ -244,39 +268,39 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
         <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.06em]">Connected ({items.length})</p>
         {items.map(i => (
           <section key={i.id} className="bg-white rounded-card border border-line p-4 space-y-2">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <h3 className="text-sm font-bold text-ink-900 truncate">{i.name}</h3>
                   {statusBadge(i.status)}
-                  {!i.active && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-400">Paused</span>}
+                  {!i.active && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">Paused</span>}
                 </div>
                 <p className="text-[11px] text-slate-500 truncate">{RESTAURANT_KINDS.includes(i.kind) ? `Mezvaan · ${String(i.config.mezmitraTenant ?? "restaurant")} · live menu + table booking` : SCHEDULE_KINDS.includes(i.kind) ? `${KIND_LABELS[i.kind]}${i.config.calendarName ? ` · ${i.config.calendarName}` : ""} · books meetings` : i.kind === "google_sheets" ? `Google Sheets${i.config.sheetTitle ? ` · ${i.config.sheetTitle}` : ""} · “${i.config.leadsTab || "Portal log"}” tab` : STORE_KINDS.includes(i.kind) ? `${KIND_LABELS[i.kind]} · imports products` : PAYMENT_KINDS.includes(i.kind) ? `${KIND_LABELS[i.kind]} · payment links` : i.kind === "leadsquared" ? `LeadSquared · syncs every chat to the lead timeline` : CRM_KINDS.includes(i.kind) ? `${KIND_LABELS[i.kind]} · syncs contacts` : `${FORMAT_LABELS[i.config.format ?? "generic"]} · ${i.config.url}`}</p>
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
-                {STORE_KINDS.includes(i.kind) && <button onClick={() => sync(i.id)} disabled={syncing === i.id} className="px-2.5 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{syncing === i.id ? "Importing…" : "Sync now"}</button>}
-                <button onClick={() => test(i.id)} disabled={testing === i.id} className="px-2.5 py-1.5 rounded-control border border-line text-xs font-bold text-ink-800 hover:bg-canvas disabled:opacity-60">{testing === i.id ? "Testing…" : "Test"}</button>
-                <button onClick={() => toggleActive(i)} className="px-2.5 py-1.5 rounded-control border border-line text-xs font-bold text-ink-800 hover:bg-canvas">{i.active ? "Pause" : "Resume"}</button>
-                <button onClick={() => remove(i)} className="p-1.5 text-red-500 hover:text-red-600 rounded-control"><Trash2 className="w-4 h-4" /></button>
+                {STORE_KINDS.includes(i.kind) && <button onClick={() => sync(i.id)} disabled={syncing === i.id} className="min-h-9 px-2.5 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{syncing === i.id ? "Importing…" : "Sync now"}</button>}
+                <button onClick={() => test(i.id)} disabled={testing === i.id} className="min-h-9 px-2.5 py-1.5 rounded-control border border-line text-xs font-bold text-ink-800 hover:bg-canvas disabled:opacity-60">{testing === i.id ? "Testing…" : "Test"}</button>
+                <button onClick={() => toggleActive(i)} className="min-h-9 px-2.5 py-1.5 rounded-control border border-line text-xs font-bold text-ink-800 hover:bg-canvas">{i.active ? "Pause" : "Resume"}</button>
+                <button onClick={() => remove(i)} aria-label={`Remove ${i.name}`} title="Remove" className="grid place-items-center w-9 h-9 text-red-500 hover:text-red-600 hover:bg-red-50 rounded-control"><Trash2 className="w-4 h-4" /></button>
               </div>
             </div>
             <div className="flex flex-wrap gap-1">
               {RESTAURANT_KINDS.includes(i.kind)
                 ? <>
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700">The AI answers menu and table questions live</span>
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700">“Book table” flow step</span>
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700">Opt-outs sent back to Mezvaan</span>
+                    <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700">The AI answers menu and table questions live</span>
+                    <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700">“Book table” flow step</span>
+                    <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700">Opt-outs sent back to Mezvaan</span>
                   </>
                 : SCHEDULE_KINDS.includes(i.kind)
-                ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700">Books meetings from a flow’s “Book meeting” node</span>
+                ? <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700">Books meetings from a flow’s “Book meeting” node</span>
                 : STORE_KINDS.includes(i.kind)
-                ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700">Imports your product catalog</span>
+                ? <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700">Imports your product catalog</span>
                 : PAYMENT_KINDS.includes(i.kind)
-                ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700">Sends a payment link on checkout</span>
-                : i.events.map(e => <span key={e} className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700">{integrationEvents.find(x => x.key === e)?.label ?? e}</span>)}
+                ? <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700">Sends a payment link on checkout</span>
+                : i.events.map(e => <span key={e} className="text-[11px] font-bold px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700">{integrationEvents.find(x => x.key === e)?.label ?? e}</span>)}
             </div>
             {i.status === "error" && i.statusDetail && <p className="text-[11px] text-red-600">{i.statusDetail}</p>}
-            {i.lastEventAt && <p className="text-[10px] text-slate-400">Last event sent {new Date(i.lastEventAt).toLocaleString()}</p>}
+            {i.lastEventAt && <p className="text-[11px] text-slate-500">Last sent {new Date(i.lastEventAt).toLocaleString()}</p>}
             {PAYMENT_KINDS.includes(i.kind) && <PaymentWebhookCard integration={i} onSaved={load} />}
             {RESTAURANT_KINDS.includes(i.kind) && <MezmitraCard integration={i} onSaved={load} goTo={goTo} />}
           </section>
@@ -306,18 +330,9 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
         subtitle={CATALOG.find(c => c.kind === form.kind)?.blurb}
         footer={
           <div className="flex items-center gap-2">
-            <button onClick={create} disabled={busy || (isEventKind && !isRestaurant && !form.events.length) || (
-              isRestaurant ? !form.token.trim()
-              : form.kind === "google_sheets" ? (!googleEmail || !form.spreadsheetUrl.trim())
-              : form.kind === "google_calendar" ? (!googleEmail || !form.calendarId.trim())
-              : isSchedule ? (!form.token.trim() || !form.eventTypeId.trim())
-              : isStore ? (!form.token.trim() || (form.kind === "shopify" ? !form.shopDomain.trim() : !form.storeUrl.trim() || !form.consumerKey.trim()))
-              : form.kind === "leadsquared" ? (!form.token.trim() || !form.lsqAccessKey.trim() || !form.lsqHost.trim() || !form.lsqActivityCode.trim())
-              : form.kind === "freshsales" ? (!form.token.trim() || !form.fsDomain.trim())
-              : isCrm || isPayment ? (!form.token.trim() || (form.kind === "razorpay" && !form.keyId.trim()))
-              : !form.url.trim()
-            )} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Add integration"}</button>
-            <button onClick={() => { setAdding(false); setMsg(null); }} className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-800 hover:bg-canvas">Cancel</button>
+            <button onClick={create} disabled={busy || !!addMissing} title={addMissing ?? undefined} aria-describedby={addMissing ? "integration-missing" : undefined} className="min-h-10 px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Add integration"}</button>
+            <button onClick={() => { setAdding(false); setMsg(null); }} className="min-h-10 px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-800 hover:bg-canvas">Cancel</button>
+            {addMissing && !busy && <span id="integration-missing" className="text-[12px] text-slate-500">{addMissing}</span>}
           </div>
         }>
         <div className="space-y-3">
@@ -361,8 +376,14 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
               <p className="text-[11px] text-slate-500">
                 {form.kind === "slack" ? "Slack → Apps → Incoming Webhooks → add one for a channel, then paste its URL. We post a ready-to-read message."
                   : form.kind === "teams" ? "Teams → channel → Connectors → Incoming Webhook → create one, then paste its URL. We post a ready-to-read message."
-                  : "We POST a signed JSON event to this URL — works with Zapier, Make, n8n, Pabbly and any tool that accepts a webhook."}
+                  : <>Paste the address your Zapier, Make, n8n or Pabbly step gave you. Each time something you pick below happens, {who} tells it right away.</>}
               </p>
+              {form.kind !== "slack" && form.kind !== "teams" && (
+                <details className="text-[11px] text-slate-500">
+                  <summary className="cursor-pointer font-semibold">For developers</summary>
+                  <p className="mt-1">We POST a JSON event to this URL, signed with an <span className="font-mono">X-Alabs-Signature</span> header (HMAC-SHA256 of the body using the secret shown after you add it). Any tool that accepts a webhook works.</p>
+                </details>
+              )}
             </>
           )}
           {isEventKind && !isRestaurant && <div>
@@ -439,6 +460,8 @@ function GoogleSetup({ kind, email, form, set }: { kind: "google_sheets" | "goog
 // restaurants). Events turn into WhatsApp messages through API rules, each with
 // an approved template — nothing is sent until the owner sets one up.
 function MezmitraCard({ integration: i, onSaved, goTo }: { integration: Integration; onSaved: () => void; goTo: (t: Tab) => void }) {
+  const brand = useBrand();
+  const who = brand.partnerId ? brand.name : "Talko";
   const [outlets, setOutlets] = useState<{ id: string; name: string; city: string | null; bookingOn: boolean }[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -450,7 +473,8 @@ function MezmitraCard({ integration: i, onSaved, goTo }: { integration: Integrat
   const current = i.config.defaultOutletId ?? "";
   async function pick(id: string) {
     setSaving(true);
-    await fetch(`/api/admin/integrations/${i.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ defaultOutletId: id || null }) }).catch(() => undefined);
+    const r = await fetch(`/api/admin/integrations/${i.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ defaultOutletId: id || null }) }).catch(() => null);
+    if (r?.ok) toast("Default outlet saved"); else toast({ text: "Couldn't save the outlet. Please try again.", tone: "error" });
     setSaving(false); onSaved();
   }
   return (
@@ -460,21 +484,24 @@ function MezmitraCard({ integration: i, onSaved, goTo }: { integration: Integrat
         : outlets.length > 1 && (
           <label className="flex items-center gap-2 text-xs text-ink-700">
             Default outlet
-            <select className={inp} value={current} disabled={saving} onChange={e => pick(e.target.value)}>
+            <select className={inp} aria-label="Default outlet" value={current} disabled={saving} onChange={e => pick(e.target.value)}>
               <option value="">Ask the guest</option>
               {outlets.map(o => <option key={o.id} value={o.id}>{o.name}{o.city ? `, ${o.city}` : ""}{o.bookingOn ? "" : " (booking off)"}</option>)}
             </select>
           </label>
         )}
       {outlets?.length === 1 && !outlets[0].bookingOn && <p className="text-[11px] text-amber-700">Table booking in chat is off — turn it on in Mezvaan (Settings → Talko AI).</p>}
-      <p className="text-[11px] font-bold text-slate-500">Events Mezvaan sends — each can start an API rule with an approved template:</p>
-      <ul className="space-y-1">
-        {MEZMITRA_EVENTS.map(e => (
-          <li key={e.key} className="text-[11px] text-slate-600"><code className="font-mono text-ink-800">{e.key}</code> — {e.when}. <span className="text-slate-400">Fields: {e.fields}</span></li>
-        ))}
-      </ul>
-      <p className="text-[11px] text-slate-500">Review requests are marketing messages: add the condition <code className="font-mono">marketing_opt_in equals true</code> and a frequency cap (e.g. 2160 hours).</p>
-      <button onClick={() => goTo("broadcast")} className="text-[11px] font-bold text-brand-700 hover:underline">Set up API rules →</button>
+      <p className="text-[12px] text-slate-600">Mezvaan tells {who} when something happens at your restaurant — a table booked, a bill paid. Nothing is sent to guests until you choose a WhatsApp message for it under <b>Broadcast → API broadcasting</b>.</p>
+      <details className="text-[11px] text-slate-600">
+        <summary className="cursor-pointer font-semibold text-slate-500">Events Mezvaan sends ({MEZMITRA_EVENTS.length}) — for setting up the messages</summary>
+        <ul className="space-y-1 mt-1.5">
+          {MEZMITRA_EVENTS.map(e => (
+            <li key={e.key}><code className="font-mono text-ink-800">{e.key}</code> — {e.when}. <span className="text-slate-500">Details you can use in the message: {e.fields}</span></li>
+          ))}
+        </ul>
+        <p className="mt-1.5 text-slate-500">Review requests count as marketing: only send them to guests who agreed (condition <code className="font-mono">marketing_opt_in equals true</code>) and at most once every few months (e.g. 2160 hours).</p>
+      </details>
+      <button onClick={() => goTo("broadcast")} className="min-h-8 text-[12px] font-bold text-brand-700 hover:underline">Choose the messages in Broadcast →</button>
     </div>
   );
 }
@@ -503,7 +530,7 @@ function PaymentWebhookCard({ integration: i, onSaved }: { integration: Integrat
         body: JSON.stringify({ webhookSecret: secret.trim() }),
       }).then(r => r.json());
       if (d.error) setMsg({ ok: false, text: d.error });
-      else { setMsg({ ok: true, text: "Saved — orders now confirm automatically on payment." }); setSecret(""); onSaved(); }
+      else { setMsg(null); toast("Saved — orders now confirm on their own when paid"); setSecret(""); onSaved(); }
     } catch { setMsg({ ok: false, text: "Connection error." }); }
     finally { setBusy(false); }
   }
@@ -511,26 +538,27 @@ function PaymentWebhookCard({ integration: i, onSaved }: { integration: Integrat
   return (
     <div className="mt-1 pt-3 border-t border-line/70 space-y-2">
       <div className="flex items-center gap-2">
-        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.06em]">Payment webhook (auto-confirm orders)</p>
+        <p className="text-[11px] font-bold text-slate-500 uppercase tracking-[0.06em]">Confirm orders automatically when paid</p>
         {i.hasWebhookSecret
-          ? <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">Secret set</span>
-          : <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Not set — orders stay pending</span>}
+          ? <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">Set up</span>
+          : <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">Not set up — orders stay pending</span>}
       </div>
+      <p className="text-[12px] text-slate-600">So {isStripe ? "Stripe" : "Razorpay"} can tell us the moment a customer pays, add the address below in your {isStripe ? "Stripe" : "Razorpay"} account once:</p>
       <p className="text-[11px] text-slate-500">
         {isStripe
           ? <>In Stripe → <b>Developers → Webhooks → Add endpoint</b>, paste the URL below, select the event <span className="font-mono">checkout.session.completed</span>, then copy the endpoint&apos;s <b>Signing secret</b> (<span className="font-mono">whsec_…</span>) and paste it here.</>
           : <>In Razorpay → <b>Settings → Webhooks → Add New Webhook</b>, paste the URL below, tick the event <span className="font-mono">payment_link.paid</span>, set a <b>Secret</b> of your choosing, then paste that same secret here.</>}
       </p>
       <div className="space-y-1">
-        <p className="text-[10px] font-bold text-ink-400 uppercase tracking-wide">Endpoint URL</p>
+        <p className="text-[11px] font-bold text-ink-500 uppercase tracking-wide">Address to paste</p>
         <div className="flex items-center gap-2">
           <code className="flex-1 min-w-0 text-[11px] font-mono bg-canvas border border-line rounded px-2 py-1.5 truncate" title={url}>{url}</code>
-          <button onClick={copy} className="px-2 py-1.5 rounded-control border border-line text-[10px] font-bold text-ink-600 hover:bg-canvas shrink-0">{copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}</button>
+          <button onClick={copy} aria-label="Copy address" className="grid place-items-center w-9 h-9 rounded-control border border-line text-ink-600 hover:bg-canvas shrink-0">{copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}</button>
         </div>
       </div>
       <div className="flex items-center gap-2">
-        <input className={`${inp} flex-1`} type="password" placeholder={isStripe ? "Signing secret (whsec_…)" : "Webhook secret"} value={secret} onChange={e => setSecret(e.target.value)} />
-        <button onClick={save} disabled={busy || !secret.trim()} className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60 shrink-0">{busy ? "Saving…" : i.hasWebhookSecret ? "Rotate" : "Save"}</button>
+        <input className={`${inp} flex-1 min-w-0`} type="password" aria-label={isStripe ? "Signing secret" : "Secret"} placeholder={isStripe ? "Signing secret (whsec_…)" : "The secret you set in Razorpay"} value={secret} onChange={e => setSecret(e.target.value)} />
+        <button onClick={save} disabled={busy || !secret.trim()} title={!secret.trim() ? "Paste the secret first" : undefined} className="min-h-9 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60 shrink-0">{busy ? "Saving…" : i.hasWebhookSecret ? "Rotate" : "Save"}</button>
       </div>
       {msg && <p className={`text-[11px] font-medium ${msg.ok ? "text-emerald-700" : "text-red-600"}`}>{msg.ok ? <Check className="inline w-3.5 h-3.5 mr-1 align-[-2px]" /> : <X className="inline w-3.5 h-3.5 mr-1 align-[-2px]" />}{msg.text}</p>}
     </div>
@@ -561,8 +589,10 @@ function LsqInboundCard() {
     setBusy(true);
     try {
       const d = await fetch("/api/admin/lsq-webhook", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rotate: true }) }).then(r => r.json());
-      if (d.url) setCfg(d);
-    } finally { setBusy(false); }
+      if (d.url) { setCfg(d); toast("New secret ready — paste it into LeadSquared now"); }
+      else toast({ text: "Couldn't make a new secret. Please try again.", tone: "error" });
+    } catch { toast({ text: "Couldn't reach the server. Please try again.", tone: "error" }); }
+    finally { setBusy(false); }
   }
 
   if (!cfg) return null;
@@ -574,16 +604,16 @@ function LsqInboundCard() {
       </div>
       {[{ k: "url", label: "POST URL", v: cfg.url }, { k: "secret", label: `Secret (header ${cfg.header} or ?secret=)`, v: cfg.secret }, { k: "body", label: "Webhook body (mail-merge JSON — change event per automation)", v: samplePayload }].map(row => (
         <div key={row.k} className="space-y-1">
-          <p className="text-[10px] font-bold text-ink-400 uppercase tracking-wide">{row.label}</p>
+          <p className="text-[11px] font-bold text-ink-500 uppercase tracking-wide">{row.label}</p>
           <div className="flex items-center gap-2">
             <code className="flex-1 min-w-0 text-[11px] font-mono bg-canvas border border-line rounded px-2 py-1.5 truncate" title={row.v}>{row.v}</code>
-            <button onClick={() => copy(row.v, row.k)} className="px-2 py-1.5 rounded-control border border-line text-[10px] font-bold text-ink-600 hover:bg-canvas shrink-0">{copied === row.k ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}</button>
+            <button onClick={() => copy(row.v, row.k)} aria-label={`Copy ${row.label}`} className="grid place-items-center w-9 h-9 rounded-control border border-line text-ink-600 hover:bg-canvas shrink-0">{copied === row.k ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}</button>
           </div>
         </div>
       ))}
       <div className="flex items-center justify-between gap-2">
         <p className="text-[11px] text-ink-400">Set <code className="font-mono">event</code> to <code className="font-mono">lead_created</code> / <code className="font-mono">owner_changed</code> / <code className="font-mono">stage_changed</code> per automation. Owner emails must match your team members&apos; login emails.</p>
-        <button onClick={rotate} disabled={busy} className="px-2.5 py-1 rounded-control border border-line text-[10px] font-bold text-ink-500 hover:bg-canvas shrink-0 disabled:opacity-60">{busy ? "…" : "Rotate secret"}</button>
+        <button onClick={rotate} disabled={busy} className="min-h-8 px-2.5 py-1 rounded-control border border-line text-[12px] font-bold text-ink-600 hover:bg-canvas shrink-0 disabled:opacity-60">{busy ? "…" : "Rotate secret"}</button>
       </div>
     </section>
   );

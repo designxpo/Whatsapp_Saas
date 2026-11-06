@@ -5,26 +5,48 @@ export function tourStorageKey(tenantId: string, email: string): string {
   return `talko.onboarding.v1:${encodeURIComponent(tenantId)}:${encodeURIComponent(email.trim().toLowerCase())}`;
 }
 
+/**
+ * Whether a tour target is really on screen. A closed phone menu still has
+ * layout boxes (it is only moved off-canvas and hidden), so a box alone is not
+ * enough: the element must be visible and inside the viewport horizontally.
+ */
+export function isOnScreen(element: HTMLElement): boolean {
+  if (!element.getClientRects().length) return false;
+  const style = typeof getComputedStyle === "function" ? getComputedStyle(element) : null;
+  if (style && (style.visibility === "hidden" || style.display === "none")) return false;
+  const rect = element.getBoundingClientRect?.();
+  if (rect && (rect.width || rect.height) && (rect.right <= 0 || rect.left >= window.innerWidth)) return false;
+  return true;
+}
+
+/** The first on-screen element for each key: the sidebar on a computer, the bottom bar on a phone. */
+function firstShown(selector: string): HTMLElement | null {
+  for (const el of Array.from(document.querySelectorAll<HTMLElement>(selector))) if (isOnScreen(el)) return el;
+  return null;
+}
+
 /** Build from the rendered navigation so role, plan and workspace vocabulary stay accurate. */
 export function workspaceTourSteps(): DriveStep[] {
   const steps: DriveStep[] = [{ popover: {
     title: "Welcome to Talko AI",
     description: "Let's find your conversations, customer records and setup tools. This tour only explains the controls; it won't send messages or change your settings.",
   } }];
-  for (const key of ["home", "livechat", "contacts", "analytics", "assistant", "broadcast", "setup", "settings"]) {
-    const element = document.querySelector<HTMLElement>(`[data-tour-nav="${key}"]`);
-    if (!element || !element.getClientRects().length) continue;
+  // "more" is the phone's bottom-bar button that opens the full menu.
+  for (const key of ["home", "livechat", "today", "contacts", "analytics", "assistant", "broadcast", "setup", "settings", "more"]) {
+    const element = firstShown(`[data-tour-nav="${key}"]`);
+    if (!element) continue;
+    const side = element.dataset.tourSide === "top" ? "top" : "right";
     steps.push({ element, popover: {
       // Driver renders HTML; copy labels into escaped text rather than injecting custom vocabulary.
-      title: escapeText(element.textContent?.trim() || "Your workspace"),
+      title: escapeText(element.dataset.tourTitle || element.textContent?.trim() || "Your workspace"),
       description: escapeText(element.dataset.help || "Open this screen to see its available tools."),
-      side: "right", align: "center",
+      side, align: "center",
     } });
   }
-  const replay = document.querySelector<HTMLElement>('[data-tour="replay"]');
+  const replay = firstShown('[data-tour="replay"]');
   steps.push({ ...(replay ? { element: replay } : {}), popover: {
     title: "Help whenever you need it",
-    description: "Click Take a tour at the top to restart this walkthrough. During normal use, hover over a control for four seconds to see what it does and how to use it. Keyboard focus works too.",
+    description: "Choose Take a tour to restart this walkthrough. On a computer, rest the pointer on a control for a moment to see what it does. Keyboard focus works too.",
     side: "bottom",
   } });
   return steps;
@@ -36,7 +58,12 @@ function escapeText(text: string): string {
   return node.innerHTML;
 }
 
-export function installProductTour({ storageKey, impersonating = false }: { storageKey: string; impersonating?: boolean }) {
+/**
+ * `autoStart` decides whether the first visit opens the tour by itself (the
+ * shell says no on phones and tablets, where the menu is folded away); a
+ * replay from "Take a tour" always works.
+ */
+export function installProductTour({ storageKey, impersonating = false, autoStart = () => true }: { storageKey: string; impersonating?: boolean; autoStart?: () => boolean }) {
   let disposed = false;
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   let stopTyping = () => {};
@@ -85,7 +112,7 @@ export function installProductTour({ storageKey, impersonating = false }: { stor
     void fetch("/api/admin/walkthrough", { method: "POST" }).catch(() => {});
   };
   const frame = requestAnimationFrame(() => {
-    if (impersonating) return;
+    if (impersonating || !autoStart()) return;
     try {
       if (localStorage.getItem(storageKey) === "shown") return;
       const probe = `${storageKey}:probe`;

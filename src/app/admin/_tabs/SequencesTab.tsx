@@ -1,4 +1,5 @@
 "use client";
+import { toast } from "@/components/toast";
 import { Notice, useNotice } from "@/components/Notice";
 import { PageInfo } from "@/components/PageInfo";
 import { previewParts, type TemplateComponent } from "@/lib/templatepreview";
@@ -11,7 +12,7 @@ import { KNOWN_SCORES } from "@/lib/drip-types";
 import { audienceFingerprint, describeAudience as describeSeqAudience } from "@/lib/seqaudience";
 import { LANES, AIDA_STAGES, AIDA_LABELS, type Lane, type AidaStage } from "@/lib/drip-types";
 import { ConfirmProvider, useConfirm } from "@/components/confirm-dialog";
-import { inp, ChannelSelect, useChannelList, ImageUpload, rowButtonProps } from "../_shared";
+import { inp, ChannelSelect, useChannelList, ImageUpload, rowButtonProps, EmptyState } from "../_shared";
 import { useVocab } from "@/lib/vocab-client";
 import { Drawer } from "@/components/overlay";
 
@@ -295,7 +296,7 @@ function fmtDelay(min: number): string {
 function SeqField({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="text-[10px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-1.5">{label}</p>
+      <p className="text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-1.5">{label}</p>
       {children}
       {hint && <p className="text-[11px] text-ink-400 mt-1 leading-snug">{hint}</p>}
     </div>
@@ -349,7 +350,7 @@ function SequencePreview({ platform, steps, channelId }: { platform: "whatsapp" 
   const bubble = ig ? "bg-slate-100 text-slate-800 rounded-2xl rounded-bl-md" : "bg-white text-slate-800 rounded-lg rounded-tl-sm";
   return (
     <div className="xl:w-72 shrink-0">
-      <p className="text-[10px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-1.5">Preview · {ig ? "Instagram" : "WhatsApp"}</p>
+      <p className="text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-1.5">Preview · {ig ? "Instagram" : "WhatsApp"}</p>
       <div className={`rounded-control p-3 space-y-3 ${ig ? "bg-white border border-line" : "bg-[#e5ddd5]"}`}>
         {steps.map((st, i) => {
           const a = st.action;
@@ -360,7 +361,7 @@ function SequencePreview({ platform, steps, channelId }: { platform: "whatsapp" 
           const parts = tpl ? previewParts(tpl, a.params ?? []) : null;
           return (
             <div key={i} className="space-y-1.5">
-              <p className="text-center"><span className="text-[10px] text-slate-500 bg-black/[0.06] rounded-full px-2 py-0.5">⏱ {fmtDelay(st.delayMinutes)}</span></p>
+              <p className="text-center"><span className="text-[11px] text-slate-500 bg-black/[0.06] rounded-full px-2 py-0.5">⏱ {fmtDelay(st.delayMinutes)}</span></p>
               <div className="flex">
                 <div className={`max-w-[85%] px-3 py-2 text-[13px] shadow-sm ${bubble}`}>
                   {a.type === "text" && <p className="whitespace-pre-wrap break-words">{a.text?.trim() || "Empty message…"}</p>}
@@ -382,7 +383,7 @@ function SequencePreview({ platform, steps, channelId }: { platform: "whatsapp" 
                     <p className="whitespace-pre-wrap break-words">{parts.body}</p>
                     {parts.footer && <p className="text-[11px] text-slate-400 mt-1 break-words">{parts.footer}</p>}
                     {parts.buttons.length > 0 && <>
-                      <p className="text-[9px] text-slate-400 text-right mt-0.5">10:30</p>
+                      <p aria-hidden="true" className="text-[9px] text-slate-400 text-right mt-0.5">10:30</p>
                       <div className="-mx-3 -mb-2 border-t border-slate-200 divide-y divide-slate-200">
                         {parts.buttons.map((b, bi) => (
                           <p key={bi} className="text-center text-[12px] font-medium text-[#00a5f4] py-1.5 px-2 break-words">{b}</p>
@@ -396,7 +397,7 @@ function SequencePreview({ platform, steps, channelId }: { platform: "whatsapp" 
                       : <div className="w-40 h-24 bg-slate-200 rounded-md flex items-center justify-center text-slate-400">{a.mediaKind === "video" ? <Video className="w-6 h-6" /> : a.mediaKind === "document" ? <FileText className="w-6 h-6" /> : <ImageIcon className="w-6 h-6" />}</div>}
                     {a.caption?.trim() && <p className="break-words mt-1">{a.caption}</p>}
                   </>}
-                  {!parts?.buttons.length && <p className="text-[9px] text-slate-400 text-right mt-0.5">10:30</p>}
+                  {!parts?.buttons.length && <p aria-hidden="true" className="text-[9px] text-slate-400 text-right mt-0.5">10:30</p>}
                 </div>
               </div>
             </div>
@@ -429,7 +430,7 @@ function LeadWelcomePanel() {
     setBusy(true); setMsg(null);
     try {
       const d = await fetch("/api/admin/lead-welcome", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cfg) }).then(r => r.json());
-      if (d.error) setMsg(d.error); else { setCfg(d.config); setMsg("Saved", "ok"); }
+      if (d.error) setMsg(d.error); else { setCfg(d.config); setMsg(null); toast("Saved"); }
     } finally { setBusy(false); }
   }
   if (!cfg) return null;
@@ -438,7 +439,7 @@ function LeadWelcomePanel() {
     <div className="bg-white rounded-card border border-line p-4 space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><Zap className="w-4 h-4 text-brand-700" /> Landing-page form → WhatsApp flow</p><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>When a form {lead1} arrives from LeadSquared, send an approved <b>template</b> and start your <b>question flow</b> the moment they reply.</>}>Cold web {leadN} can&apos;t be messaged free-form — the template opens the 24h window, then the flow runs.</PageInfo>
+          <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><Zap className="w-4 h-4 text-brand-700" /> Landing-page form → WhatsApp flow</p><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>When a form {lead1} arrives from LeadSquared, send an approved <b>template</b> and start your <b>question flow</b> the moment they reply.</>}>WhatsApp only lets you message a new web {lead1} with an approved template. Once they reply, you have 24 hours to chat freely, and the flow runs.</PageInfo>
         </div>
         <label className="flex items-center gap-1.5 text-xs font-semibold text-ink-700 cursor-pointer shrink-0"><input type="checkbox" className="accent-brand-700" checked={cfg.enabled} onChange={e => set({ enabled: e.target.checked })} /> On</label>
       </div>
@@ -453,7 +454,7 @@ function LeadWelcomePanel() {
           <option value="created">Fire on: new {lead1} created</option>
           <option value="stage">Fire on: {lead1} enters a stage</option>
         </select>
-        {cfg.trigger !== "created" && <input className={`${inp} !py-1.5 text-xs`} placeholder="LSQ stage name (exact)" value={cfg.trigger} onChange={e => set({ trigger: e.target.value })} />}
+        {cfg.trigger !== "created" && <input className={`${inp} !py-1.5 text-xs`} aria-label="LeadSquared stage name" placeholder="LeadSquared stage name (exact)" value={cfg.trigger} onChange={e => set({ trigger: e.target.value })} />}
         <input className={`${inp} !py-1.5 text-xs`} placeholder="Only if Source contains… (optional)" value={cfg.sourceContains} onChange={e => set({ sourceContains: e.target.value })} />
       </div>
       <div className="flex items-center gap-3 flex-wrap">
@@ -462,7 +463,11 @@ function LeadWelcomePanel() {
         <button onClick={save} disabled={busy} className="px-3 py-1 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "…" : "Save"}</button>
         <Notice notice={note} />
       </div>
-      <p className="text-[11px] text-ink-400">Set the LeadSquared automation for your signup form to POST to the LSQ→portal webhook (see docs/lsq-webhooks.md). Each {lead1} is welcomed once per 30 days; opted-out numbers are skipped.</p>
+      <p className="text-[12px] text-ink-500">Each {lead1} is welcomed at most once every 30 days, and people who opted out are skipped.</p>
+      <details className="text-[11px] text-ink-500">
+        <summary className="cursor-pointer font-semibold">For developers</summary>
+        <p className="mt-1">In LeadSquared, set your signup form&apos;s automation to send to the address shown under Integrations → LeadSquared (incoming updates).</p>
+      </details>
     </div>
   );
 }
@@ -533,7 +538,7 @@ function StagePollPanel({ seqs }: { seqs: SeqRow[] }) {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch),
       }).then(r => r.json());
       if (d.error) setMsg(d.error);
-      else { setCfg(d.poll ?? null); setMsg(note ?? "Saved", "ok"); }
+      else { setCfg(d.poll ?? null); setMsg(null); toast(note ?? "Saved"); }
     } catch { setMsg("Connection error."); }
     finally { setBusy(false); }
   }
@@ -548,8 +553,8 @@ function StagePollPanel({ seqs }: { seqs: SeqRow[] }) {
   // sequence, and how many leads one pass can touch.
   async function goLive() {
     const ok = await ask({
-      title: `Start enrolling ${leadN} for real?`,
-      message: `${vocab.lead.many} reaching this stage will be enrolled into the ${seq1} and will start receiving WhatsApp messages. This also turns on owner sync, which moves live conversations onto the owning ${vocab.teamMember.one.toLowerCase()}'s number — visible to your team.`,
+      title: `Start sending to ${leadN} for real?`,
+      message: `${vocab.lead.many} reaching this stage will be started on the ${seq1} and will start receiving WhatsApp messages. This also turns on owner sync, which moves live conversations onto the owning ${vocab.teamMember.one.toLowerCase()}'s number — visible to your team.`,
       facts: [
         { label: "Stage watched", value: cfg!.stage || "(none set)" },
         { label: "Per pass, at most", value: String(cfg!.maxPerRun) },
@@ -558,7 +563,7 @@ function StagePollPanel({ seqs }: { seqs: SeqRow[] }) {
       confirmLabel: "Go live",
       tone: "caution",
     });
-    if (ok) await save({ mode: "apply", enabled: true }, "Live — enrolling for real.");
+    if (ok) await save({ mode: "apply", enabled: true }, "Live — now starting for real.");
   }
 
   return (
@@ -566,14 +571,14 @@ function StagePollPanel({ seqs }: { seqs: SeqRow[] }) {
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="min-w-0">
           <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5">
-            <RefreshCw className="w-4 h-4 text-brand-700" /> Stage poll
+            <RefreshCw className="w-4 h-4 text-brand-700" /> Check LeadSquared for new hand-offs
           </p>
           <p className="text-[11px] text-ink-400">
-            Asks LeadSquared every minute which {leadN} reached the hand-off stage, because LeadSquared has no API for creating an Automation. Runs the same decisions as the webhook, so both together are harmless.
+            Every minute, asks LeadSquared which {leadN} have reached your hand-off stage and starts them on the {seq1}. It&apos;s safe to use alongside LeadSquared&apos;s own automation — nobody is started twice.
           </p>
         </div>
-        <span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold ${live ? "bg-brand-700 text-white" : cfg.enabled ? "bg-amber-100 text-amber-900" : "bg-canvas text-ink-400 border border-line"}`}>
-          {live ? "LIVE" : cfg.enabled ? "WATCHING ONLY" : "OFF"}
+        <span className={`shrink-0 px-2 py-0.5 rounded-full text-[11px] font-bold ${live ? "bg-brand-700 text-white" : cfg.enabled ? "bg-amber-100 text-amber-900" : "bg-canvas text-ink-400 border border-line"}`}>
+          {live ? "Live" : cfg.enabled ? "Watching only" : "Off"}
         </span>
       </div>
 
@@ -582,9 +587,9 @@ function StagePollPanel({ seqs }: { seqs: SeqRow[] }) {
         <input
           className={`${inp} !py-1.5 text-xs w-44`} placeholder="e.g. Qualified"
           defaultValue={cfg.stage}
-          onBlur={e => { if (e.target.value.trim() !== cfg.stage) void save({ stage: e.target.value.trim() }, "Stage changed — the next pass re-seeds and enrols nobody."); }}
+          onBlur={e => { if (e.target.value.trim() !== cfg.stage) void save({ stage: e.target.value.trim() }, "Stage changed — the next check starts fresh and adds nobody yet."); }}
         />
-        <label className="text-[11px] text-ink-400 ml-2">Max per pass</label>
+        <label className="text-[11px] text-ink-500 ml-2">Most per check</label>
         <input
           type="number" min={1} max={500} className={`${inp} !py-1.5 text-xs w-20`} defaultValue={cfg.maxPerRun}
           onBlur={e => { const n = Number(e.target.value); if (n > 0 && n !== cfg.maxPerRun) void save({ maxPerRun: n }); }}
@@ -601,11 +606,11 @@ function StagePollPanel({ seqs }: { seqs: SeqRow[] }) {
         </button>
         {cfg.mode === "apply" ? (
           <button
-            onClick={() => void save({ mode: "observe" }, "Back to watching only — nothing will enrol.")}
+            onClick={() => void save({ mode: "observe" }, "Back to watching only — nobody will be started on it.")}
             disabled={busy}
             className="px-3 py-1 rounded-control border border-amber-300 bg-amber-50 text-xs font-bold text-amber-900 hover:bg-amber-100 disabled:opacity-60"
           >
-            Stop enrolling
+            Stop starting people
           </button>
         ) : (
           <button
@@ -618,11 +623,12 @@ function StagePollPanel({ seqs }: { seqs: SeqRow[] }) {
           </button>
         )}
         <button
-          onClick={() => void save({ runNow: true }, "Ran one pass.")}
+          onClick={() => void save({ runNow: true }, "Checked LeadSquared once.")}
           disabled={busy || !cfg.enabled}
-          className="px-3 py-1 rounded-control border border-line text-xs font-semibold text-ink-900 hover:bg-canvas disabled:opacity-60"
+          title={!cfg.enabled ? "Turn it on first" : undefined}
+          className="min-h-8 px-3 py-1 rounded-control border border-line text-xs font-semibold text-ink-900 hover:bg-canvas disabled:opacity-60"
         >
-          Run a pass now
+          Check now
         </button>
         <Notice notice={note} />
       </div>
@@ -630,7 +636,7 @@ function StagePollPanel({ seqs }: { seqs: SeqRow[] }) {
       <div className="text-[11px] text-ink-400 flex flex-wrap gap-x-4 gap-y-0.5">
         <span>Last run: <b className="text-ink-900">{when(cfg.lastRunAt)}</b></span>
         <span>Candidates: <b className="text-ink-900">{cfg.lastCandidates ?? 0}</b></span>
-        <span>Enrolled last pass: <b className="text-ink-900">{cfg.lastApplied ?? 0}</b></span>
+        <span>Started last check: <b className="text-ink-900">{cfg.lastApplied ?? 0}</b></span>
         {cfg.watermark && <span>Caught up to: <b className="text-ink-900">{when(cfg.watermark)}</b></span>}
       </div>
       {cfg.lastError && (
@@ -661,7 +667,7 @@ function StagePollPanel({ seqs }: { seqs: SeqRow[] }) {
       </div>
 
       <p className="text-[11px] text-ink-400">
-        Switching the stage re-seeds: the {leadN} already on it are treated as already seen, so the backlog is never messaged. Only {leadN} who move onto it afterwards are enrolled.
+        Changing the stage starts fresh: {leadN} already at that stage are skipped, so nobody from the backlog is messaged. Only {leadN} who reach it afterwards are started.
       </p>
     </div>
   );
@@ -681,7 +687,7 @@ function StageDripsPanel({ seqs }: { seqs: SeqRow[] }) {
     try {
       const d = await fetch("/api/admin/stage-drips", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ drips: drips.filter(x => x.stage.trim() && x.sequenceId) }) }).then(r => r.json());
       if (d.error) setMsg(d.error);
-      else { setDrips(d.drips ?? []); setMsg("Saved", "ok"); }
+      else { setDrips(d.drips ?? []); setMsg(null); toast("Saved"); }
     } finally { setBusy(false); }
   }
 
@@ -691,7 +697,7 @@ function StageDripsPanel({ seqs }: { seqs: SeqRow[] }) {
   return (
     <div className="bg-white rounded-card border border-line p-4 space-y-3">
       <div>
-        <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><Database className="w-4 h-4 text-brand-700" /> Auto-drip by LeadSquared stage</p><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>When a {lead1}&apos;s LSQ stage changes (via the LSQ→portal webhook), start that stage&apos;s {seq1}.</>}>When a {lead1}&apos;s LSQ stage changes (via the LSQ→portal webhook), start that stage&apos;s {seq1} — and stop the other stage-managed ones (the {lead1} moved on). Stage names must match LSQ&apos;s ProspectStage exactly (case-insensitive). Opted-out {leadN} are never enrolled.</PageInfo>
+        <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><Database className="w-4 h-4 text-brand-700" /> Start a {seq1} by LeadSquared stage</p><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>When a {lead1}&apos;s stage changes in LeadSquared, start the {seq1} you picked for that stage.</>}>The {seq1}s set for their other stages stop, because the {lead1} has moved on. Stage names must match LeadSquared&apos;s stage names exactly (capital letters don&apos;t matter). People who opted out are never started.</PageInfo>
       </div>
       {drips.map((d, i) => (
         <div key={i} className="flex items-center gap-2 flex-wrap">
@@ -708,11 +714,11 @@ function StageDripsPanel({ seqs }: { seqs: SeqRow[] }) {
       ))}
       <div className="flex items-center gap-2 flex-wrap">
         <button onClick={() => setDrips(a => [...(a ?? []), { stage: "", sequenceId: "" }])} className="text-xs font-semibold text-brand-700 flex items-center gap-1 hover:underline"><Plus className="w-3.5 h-3.5" /> Add stage rule</button>
-        <button onClick={save} disabled={busy || clash} className="px-3 py-1 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "…" : "Save rules"}</button>
-        {clash && <span className="text-[11px] text-red-700">Duplicate stage.</span>}
+        <button onClick={save} disabled={busy || clash} title={clash ? "Two rules are set for the same one — remove one first" : undefined} className="min-h-8 px-3 py-1 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "…" : "Save rules"}</button>
+        {clash && <span className="text-[11px] text-red-700">Two rules use the same stage — remove one to save.</span>}
         <Notice notice={note} />
       </div>
-      <p className="text-[11px] text-ink-400">Cold {leadN} are usually outside Meta&apos;s 24h window — make each mapped {seq1}&apos;s <b>step 1 an approved template</b> or it will be skipped.</p>
+      <p className="text-[11px] text-ink-400">{leadN.charAt(0).toUpperCase() + leadN.slice(1)} who haven&apos;t messaged you in the last 24 hours can only get an approved template — make each {seq1}&apos;s <b>step 1 an approved template</b> or it will be skipped.</p>
     </div>
   );
 }
@@ -730,7 +736,7 @@ function FunnelCoverage({ seqs }: { seqs: SeqRow[] }) {
   return (
     <div className="bg-white rounded-card border border-line p-4 space-y-2.5">
       <div>
-        <p className="text-sm font-bold text-ink-900">Funnel coverage</p><p className="text-xs text-slate-500 mt-0.5">Each team runs its own full funnel. An empty cell is a stage with nothing sending.</p>
+        <p className="text-sm font-bold text-ink-900">Which stages have follow-ups</p><p className="text-xs text-slate-500 mt-0.5">From first hearing about you to buying again: each team should have something sending at each stage. An empty box means nothing is sent at that stage.</p>
       </div>
       <div className="overflow-x-auto">
         <table className="text-[11px] w-full min-w-[520px]">
@@ -786,7 +792,7 @@ function ScoreDripsPanel({ seqs }: { seqs: SeqRow[] }) {
     try {
       const d = await fetch("/api/admin/lead-score-drips", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ drips: drips.filter(x => x.score.trim() && x.sequenceId) }) }).then(r => r.json());
       if (d.error) setMsg(d.error);
-      else { setDrips(d.drips ?? []); setMsg("Saved", "ok"); }
+      else { setDrips(d.drips ?? []); setMsg(null); toast("Saved"); }
     } finally { setBusy(false); }
   }
 
@@ -796,7 +802,7 @@ function ScoreDripsPanel({ seqs }: { seqs: SeqRow[] }) {
   return (
     <div className="bg-white rounded-card border border-line p-4 space-y-3">
       <div>
-        <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><Database className="w-4 h-4 text-brand-700" /> Auto-drip by lead score</p><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>When someone on your team grades one of your {leadN} in LeadSquared (the <b>Lead Score</b> field), start that grade&apos;s {seq1}.</>}>When someone on your team grades one of your {leadN} in LeadSquared (the <b>Lead Score</b> field), start that grade&apos;s {seq1} — and stop the other score-managed ones. Needs a LeadSquared automation posting to the portal webhook on a Lead Score change. Opted-out {leadN} are never enrolled.</PageInfo>
+        <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><Database className="w-4 h-4 text-brand-700" /> Start a {seq1} by lead score</p><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>When someone on your team grades one of your {leadN} in LeadSquared (the <b>Lead Score</b> field), start that grade&apos;s {seq1}.</>}>When someone on your team grades one of your {leadN} in LeadSquared (the <b>Lead Score</b> field), start that grade&apos;s {seq1} — and stop the ones set for other grades. Needs a LeadSquared automation that tells us when the Lead Score changes (set up under Integrations → LeadSquared). People who opted out are never started.</PageInfo>
       </div>
       <datalist id="lsq-scores">{KNOWN_SCORES.map(v => <option key={v} value={v} />)}</datalist>
       {drips.map((d, i) => (
@@ -814,11 +820,11 @@ function ScoreDripsPanel({ seqs }: { seqs: SeqRow[] }) {
       ))}
       <div className="flex items-center gap-2 flex-wrap">
         <button onClick={() => setDrips(a => [...(a ?? []), { score: "", sequenceId: "" }])} className="text-xs font-semibold text-brand-700 flex items-center gap-1 hover:underline"><Plus className="w-3.5 h-3.5" /> Add score rule</button>
-        <button onClick={save} disabled={busy || clash} className="px-3 py-1 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "…" : "Save rules"}</button>
-        {clash && <span className="text-[11px] text-red-700">Duplicate score.</span>}
+        <button onClick={save} disabled={busy || clash} title={clash ? "Two rules are set for the same one — remove one first" : undefined} className="min-h-8 px-3 py-1 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "…" : "Save rules"}</button>
+        {clash && <span className="text-[11px] text-red-700">Two rules use the same score — remove one to save.</span>}
         <Notice notice={note} />
       </div>
-      <p className="text-[11px] text-ink-400">Grading {leadN} by hand is almost never inside Meta&apos;s 24h window — make each mapped {seq1}&apos;s <b>step 1 an approved template</b> or it will be skipped.</p>
+      <p className="text-[11px] text-ink-400">{leadN.charAt(0).toUpperCase() + leadN.slice(1)} you grade by hand usually haven&apos;t messaged you in the last 24 hours — make each {seq1}&apos;s <b>step 1 an approved template</b> or it will be skipped.</p>
     </div>
   );
 }
@@ -845,10 +851,10 @@ function LsqDripPanel({ seqs }: { seqs: SeqRow[] }) {
 
   async function run(action: "preview" | "enroll") {
     if (action === "enroll") {
-      if (!seqId) { setMsg({ ok: false, text: `Select ${seq1} to enroll into.` }); return; }
+      if (!seqId) { setMsg({ ok: false, text: `Pick the ${seq1} to start them on.` }); return; }
       if (!(await ask({
-        title: `Enrol these ${leadN} into the drip?`, tone: "caution", confirmLabel: `Enrol ${leadN}`, typeToConfirm: "ENROL",
-        message: `Everyone enrolled starts receiving this ${seq1}'s messages on its schedule. Enrolments cannot be un-sent once a message has gone.`,
+        title: `Start these ${leadN} on the ${seq1}?`, tone: "caution", confirmLabel: `Start ${leadN}`, typeToConfirm: "START",
+        message: `Everyone you start receives this ${seq1}'s messages on its schedule. A message can't be taken back once it has gone.`,
         facts: [{ label: vocab.lead.many, value: preview?.count != null ? `${preview.count.toLocaleString()} matching` : `all matching ${leadN}` }],
       }))) return;
     }
@@ -856,17 +862,17 @@ function LsqDripPanel({ seqs }: { seqs: SeqRow[] }) {
     try {
       const res = await fetch("/api/admin/leadsquared/enroll", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, conditions: valid, sequenceId: seqId || undefined }) });
       const d = await res.json();
-      if (!res.ok) { setMsg({ ok: false, text: d.error || "Failed" }); return; }
+      if (!res.ok) { setMsg({ ok: false, text: d.error || "That didn't work. Please try again." }); return; }
       if (action === "preview") setPreview(d);
-      else setMsg({ ok: true, text: `Enrolled ${d.enrolled} ${d.enrolled === 1 ? lead1 : leadN}${d.skippedOptout ? `, skipped ${d.skippedOptout} opted-out` : ""}${d.truncated ? " (capped at 5000 — refine to reach the rest)" : ""}.` });
-    } catch { setMsg({ ok: false, text: "Connection error" }); }
+      else { setMsg(null); toast(`Started ${d.enrolled} ${d.enrolled === 1 ? lead1 : leadN}${d.skippedOptout ? `, skipped ${d.skippedOptout} who opted out` : ""}${d.truncated ? " (only the first 5,000 — narrow the conditions to reach the rest)" : ""}`); }
+    } catch { setMsg({ ok: false, text: "Couldn't reach the server. Please try again." }); }
     finally { setBusy(""); }
   }
 
   return (
     <div className="bg-white rounded-card border border-line p-4 space-y-3">
       <div>
-        <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><Database className="w-4 h-4 text-brand-700" /> Run a drip from LeadSquared</p><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>Pull {leadN} matching these conditions and enroll them into one of your {vocab.sequence.many.toLowerCase()}.</>}>Needs ≥1 <b>equals</b> condition (the anchor); the rest refine the list.</PageInfo>
+        <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><Database className="w-4 h-4 text-brand-700" /> Start a {seq1} for LeadSquared leads</p><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>Find {leadN} in LeadSquared that match these conditions and start them on one of your {vocab.sequence.many.toLowerCase()}.</>}>Needs at least one <b>equals</b> condition; the others narrow the list.</PageInfo>
       </div>
       <div className="space-y-1.5">
         {conds.map((c, i) => (
@@ -880,22 +886,22 @@ function LsqDripPanel({ seqs }: { seqs: SeqRow[] }) {
         <datalist id="lsq-fields">{LSQ_FIELDS.map(f => <option key={f} value={f} />)}</datalist>
         {conds.length < 6 && <button onClick={() => setConds(cs => [...cs, { field: "", op: "eq", value: "" }])} className="text-xs font-semibold text-brand-700 flex items-center gap-1 hover:underline"><Plus className="w-3.5 h-3.5" /> Add condition</button>}
       </div>
-      {!hasAnchor && valid.length > 0 && <p className="text-[11px] text-amber-700">Add at least one <b>equals</b> condition — it anchors the LeadSquared search.</p>}
+      {!hasAnchor && valid.length > 0 && <p className="text-[11px] text-amber-700">Add at least one <b>equals</b> condition — LeadSquared needs it to search.</p>}
       <div className="flex items-center gap-2">
         <select className={`${inp} flex-1`} value={seqId} onChange={e => setSeqId(e.target.value)}>
-          <option value="">Enroll into {seq1}…</option>
+          <option value="">Start them on {seq1}…</option>
           {seqs.filter(s => s.active).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
-        <button onClick={() => run("preview")} disabled={!hasAnchor || busy !== ""} className="px-3 py-2 rounded-control border border-brand-700 text-brand-700 text-xs font-bold hover:bg-brand-50 disabled:opacity-50 shrink-0">
+        <button onClick={() => run("preview")} disabled={!hasAnchor || busy !== ""} title={!hasAnchor ? "Add an equals condition first" : undefined} className="min-h-9 px-3 py-2 rounded-control border border-brand-700 text-brand-700 text-xs font-bold hover:bg-brand-50 disabled:opacity-50 shrink-0">
           {busy === "preview" ? <Loader2 className="w-4 h-4 animate-spin" /> : "Preview count"}
         </button>
-        <button onClick={() => run("enroll")} disabled={!hasAnchor || !seqId || busy !== ""} className="px-3 py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-50 shrink-0">
-          {busy === "enroll" ? <Loader2 className="w-4 h-4 animate-spin" /> : "Enroll"}
+        <button onClick={() => run("enroll")} disabled={!hasAnchor || !seqId || busy !== ""} title={!hasAnchor ? "Add an equals condition first" : !seqId ? `Pick the ${seq1} to start them on first` : undefined} className="min-h-9 px-3 py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-50 shrink-0">
+          {busy === "enroll" ? <Loader2 className="w-4 h-4 animate-spin" /> : "Start"}
         </button>
       </div>
-      {preview && <p className="text-[11px] text-ink-600"><b className="text-brand-700">{preview.count}</b> {leadN} match{preview.truncated ? " (capped at 5000)" : ""} · scanned {preview.scanned}{preview.sample.length ? ` · e.g. ${preview.sample.join(", ")}` : ""}</p>}
+      {preview && <p className="text-[11px] text-ink-600"><b className="text-brand-700">{preview.count}</b> {leadN} match{preview.truncated ? " (only the first 5,000 counted)" : ""} · checked {preview.scanned}{preview.sample.length ? ` · e.g. ${preview.sample.join(", ")}` : ""}</p>}
       {msg && <p className={`text-[11px] font-semibold ${msg.ok ? "text-brand-700" : "text-red-600"}`}>{msg.text}</p>}
-      <p className="text-[10px] text-ink-400">Cold {leadN} (no recent chat) only receive a message if the {seq1}&apos;s first step is an approved <b>template</b> — the 24h window is closed until they reply. Opt-outs are skipped automatically.</p>
+      <p className="text-[11px] text-ink-400">{leadN.charAt(0).toUpperCase() + leadN.slice(1)} who haven&apos;t messaged you in the last 24 hours only get a message if the {seq1}&apos;s first step is an approved <b>template</b>. People who opted out are skipped automatically.</p>
     </div>
   );
 }
@@ -912,6 +918,10 @@ type DripOverviewPayload = {
   failedRate: number;
 };
 
+const ZERO_OVERVIEW: DripOverviewPayload = {
+  totalEnrolled: 0, active: 0, completed: 0, stopped: 0, failed: 0,
+  completionRate: 0, stoppedRate: 0, failedRate: 0,
+};
 type DripAnalyticsPayload = {
   overview: DripOverviewPayload;
   /** The same numbers before the status filter — what the status pills count. */
@@ -992,7 +1002,7 @@ function DripSparkline({
 
   return (
     <div className="space-y-1">
-      <div className="flex items-end gap-px h-10" role="img" aria-label="Enrolments over the selected window">
+      <div className="flex items-end gap-px h-10" role="img" aria-label="People started over the selected period">
         {trend.map(t => (
           <div
             key={t.date}
@@ -1006,7 +1016,7 @@ function DripSparkline({
           </div>
         ))}
       </div>
-      <div className="flex justify-between text-[10px] text-ink-400 tnum">
+      <div className="flex justify-between text-[11px] text-ink-400 tnum">
         <span>{fmt(trend[0].date)}</span>
         <span>peak {max.toLocaleString()}</span>
         <span>{fmt(trend[trend.length - 1].date)}</span>
@@ -1056,8 +1066,13 @@ function SeqAnalyticsPanel({
         }
         return r.json();
       })
-      .then(d => setData(d))
-      .catch(e => setErr(e.message || "Failed to load analytics"))
+      .then(d => {
+        // A body without the lists this panel draws (e.g. {} or {error}) is a
+        // failed load, not a crash: fill what's optional, reject what isn't.
+        if (!d || typeof d !== "object" || !Array.isArray(d.bySequence)) throw new Error(d?.error || "Couldn't load the results. Please try again.");
+        setData({ ...d, overview: d.overview ?? ZERO_OVERVIEW, statusCounts: d.statusCounts ?? d.overview ?? ZERO_OVERVIEW, dailyTrend: Array.isArray(d.dailyTrend) ? d.dailyTrend : [], sequences: Array.isArray(d.sequences) ? d.sequences : [] });
+      })
+      .catch(e => setErr(e.message && !/^HTTP \d/.test(e.message) ? e.message : "Couldn't load the results. Please try again."))
       .finally(() => setLoading(false));
   }, [selectedSeq, range, platform, status]);
 
@@ -1144,7 +1159,7 @@ function SeqAnalyticsPanel({
                 }`}
               >
                 <span>{tab.label}</span>
-                <span className={`px-1.5 rounded-full text-[10px] font-bold ${isSel ? "bg-white/20 text-white" : "bg-slate-100 text-ink-600"}`}>
+                <span className={`px-1.5 rounded-full text-[11px] font-bold ${isSel ? "bg-white/20 text-white" : "bg-slate-100 text-ink-600"}`}>
                   {tab.count}
                 </span>
               </button>
@@ -1172,7 +1187,7 @@ function SeqAnalyticsPanel({
         <div className="p-3 bg-amber-50 border border-amber-200 rounded-control text-xs text-amber-800 flex items-center gap-2">
           <AlertTriangle className="w-4 h-4 shrink-0" />
           <span>
-            Showing the most recent {data.scanned.toLocaleString()} enrolments — there are more than that in
+            Showing the most recent {data.scanned.toLocaleString("en-IN")} people started — there are more than that in
             this window. Narrow the date range or pick a single {seq1} for exact figures.
           </span>
         </div>
@@ -1183,8 +1198,8 @@ function SeqAnalyticsPanel({
       <div className="grid gap-3 lg:grid-cols-12">
         <div className="lg:col-span-5 bg-canvas border border-line rounded-control p-4 flex flex-col justify-between gap-3">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-ink-500">
-              Enrolled · {RANGE_LABELS[range] ?? "all time"}
+            <p className="text-[11px] font-bold uppercase tracking-wider text-ink-500">
+              Started · {RANGE_LABELS[range] ?? "all time"}
             </p>
             <p className="text-[2.5rem] leading-none font-black text-ink-900 mt-1.5 tnum">
               {overview.totalEnrolled.toLocaleString()}
@@ -1192,7 +1207,7 @@ function SeqAnalyticsPanel({
             <p className="text-[11px] text-ink-400 mt-1.5">
               {status === "all"
                 ? `across ${data?.bySequence.length ?? 0} ${(data?.bySequence.length ?? 0) === 1 ? seq1 : seqN}`
-                : `${status} only — of ${statusCounts.totalEnrolled.toLocaleString()} enrolled`}
+                : `${status} only — of ${statusCounts.totalEnrolled.toLocaleString("en-IN")} started`}
             </p>
           </div>
           {data && <DripSparkline trend={data.dailyTrend} granularity={data.granularity} />}
@@ -1212,12 +1227,12 @@ function SeqAnalyticsPanel({
             <div key={c.key} className="bg-canvas border border-line rounded-lg p-3 flex flex-col justify-between">
               <div className="flex items-center gap-1.5">
                 <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${c.dot}`} />
-                <span className="text-[10px] font-bold uppercase tracking-wider text-ink-500">{c.label}</span>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-ink-500">{c.label}</span>
               </div>
               {/* Ink, not the status hue. Five saturated numbers competed for
                   the same attention and none of them won it. */}
               <p className="text-xl font-black text-ink-900 mt-2 tnum">{c.value.toLocaleString()}</p>
-              <p className="text-[10px] text-ink-400 mt-0.5 tnum">{c.note}</p>
+              <p className="text-[11px] text-ink-400 mt-0.5 tnum">{c.note}</p>
             </div>
           ))}
         </div>
@@ -1233,14 +1248,14 @@ function SeqAnalyticsPanel({
               <div>
                 <div className="flex items-center gap-2">
                   <h4 className="text-sm font-bold text-ink-900">{currentSeq.name}</h4>
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${currentSeq.platform === "instagram" ? "bg-pink-50 text-pink-600" : "bg-emerald-50 text-emerald-700"}`}>
+                  <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${currentSeq.platform === "instagram" ? "bg-pink-50 text-pink-600" : "bg-emerald-50 text-emerald-700"}`}>
                     {currentSeq.platform === "instagram" ? "Instagram" : "WhatsApp"}
                   </span>
-                  {!currentSeq.active && <span className="text-[10px] font-bold text-red-700">OFF</span>}
+                  {!currentSeq.active && <span className="text-[11px] font-bold text-red-700">Off</span>}
                 </div>
                 <p className="text-[11px] text-ink-400">
                   Trigger: <span className="font-semibold text-ink-600">{triggerLabel(currentSeq.triggerKind)}</span>
-                  {currentSeq.triggerValue ? ` “${currentSeq.triggerValue}”` : ""} · {currentSeq.totalSteps} step{currentSeq.totalSteps === 1 ? "" : "s"} · {currentSeq.totalEnrolled} enrolled
+                  {currentSeq.triggerValue ? ` “${currentSeq.triggerValue}”` : ""} · {currentSeq.totalSteps} step{currentSeq.totalSteps === 1 ? "" : "s"} · {currentSeq.totalEnrolled} started
                 </p>
               </div>
             </div>
@@ -1286,7 +1301,7 @@ function SeqAnalyticsPanel({
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="w-6 h-6 rounded-full bg-brand-50 text-brand-700 font-bold flex items-center justify-center text-xs shrink-0">#{st.stepNumber}</span>
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 uppercase">{st.type}</span>
+                          <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700 uppercase">{st.type}</span>
                           <span className="font-semibold text-ink-900 truncate max-w-xs" title={st.label}>
                             {st.templateName ? `template "${st.templateName}"` : st.label}
                           </span>
@@ -1321,7 +1336,7 @@ function SeqAnalyticsPanel({
                             title={`${st.reachedCount} of ${currentSeq.totalEnrolled} reached this step (${st.retentionRate}%)`}
                           />
                         </div>
-                        <div className="flex justify-between text-[10px] text-ink-400">
+                        <div className="flex justify-between text-[11px] text-ink-400">
                           <span>{st.reachedCount} delivered</span>
                           {!isFirst && dropFromPrev > 0 && (
                             <span className="text-amber-700 font-medium">▼ {dropFromPrev}% drop-off from step #{st.stepNumber - 1}</span>
@@ -1344,7 +1359,7 @@ function SeqAnalyticsPanel({
                 {currentSeq.errors.map((er, idx) => (
                   <div key={idx} className="py-1.5 flex items-center justify-between gap-2">
                     <span className="text-red-800 truncate font-mono text-[11px]" title={er.error}>{er.error}</span>
-                    <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-bold text-[10px] shrink-0">
+                    <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-bold text-[11px] shrink-0">
                       {er.count} contact{er.count === 1 ? "" : "s"}
                     </span>
                   </div>
@@ -1366,10 +1381,10 @@ function SeqAnalyticsPanel({
             </p>
           ) : (
             <div className="border border-line rounded-control overflow-hidden">
-              <div className="grid grid-cols-12 gap-2 px-3 py-2 bg-canvas text-[10px] font-bold text-ink-400 uppercase">
+              <div className="grid grid-cols-12 gap-2 px-3 py-2 bg-canvas text-[11px] font-bold text-ink-400 uppercase">
                 <div className="col-span-4 sm:col-span-3">{vocab.sequence.one}</div>
                 <div className="col-span-2 hidden sm:block">Trigger / steps</div>
-                <div className="col-span-2 text-right">Enrolled</div>
+                <div className="col-span-2 text-right">Started</div>
                 <div className="col-span-2 text-right">Active</div>
                 <div className="col-span-2 text-right">Stopped</div>
                 <div className="col-span-2 sm:col-span-1 text-right">Done</div>
@@ -1385,9 +1400,9 @@ function SeqAnalyticsPanel({
                     <div className="col-span-4 sm:col-span-3 min-w-0">
                       <div className="flex items-center gap-1.5 truncate">
                         <span className="font-bold text-ink-900 group-hover:text-brand-700 transition-colors truncate">{seq.name}</span>
-                        {!seq.active && <span className="text-[9px] font-bold text-red-700">OFF</span>}
+                        {!seq.active && <span className="text-[11px] font-bold text-red-700">Off</span>}
                       </div>
-                      <div className="flex items-center gap-1 text-[10px] text-ink-400 mt-0.5">
+                      <div className="flex items-center gap-1 text-[11px] text-ink-400 mt-0.5">
                         <span className={seq.platform === "instagram" ? "text-pink-600 font-semibold" : "text-emerald-700 font-semibold"}>
                           {seq.platform === "instagram" ? "IG" : "WA"}
                         </span>
@@ -1433,6 +1448,7 @@ function fmtWhen(s: string | null): string {
   const rel = m < 1 ? "now" : m < 60 ? `${m}m` : h < 48 ? `${h}h` : `${days}d`;
   return diff >= 0 ? `in ${rel}` : `${rel} ago`;
 }
+const ENR_LABEL: Record<string, string> = { active: "Running", completed: "Finished", stopped: "Stopped", failed: "Failed" };
 const ENR_BADGE: Record<string, string> = { active: "bg-blue-50 text-blue-600", completed: "bg-emerald-50 text-emerald-700", stopped: "bg-slate-100 text-slate-500", failed: "bg-red-50 text-red-600" };
 function SeqMonitorPanel({ seqs, filterFromAnalytics }: { seqs: SeqRow[]; filterFromAnalytics?: { seqId?: string; status?: string } | null }) {
   const { vocab, seq1, seqN, ct1, ctN } = useWords();
@@ -1497,9 +1513,10 @@ function SeqMonitorPanel({ seqs, filterFromAnalytics }: { seqs: SeqRow[]; filter
     try {
       const res = await fetch("/api/admin/sequences/test-enroll", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sequenceId: seqId, phone }) });
       const d = await res.json();
-      setMsg(res.ok ? { ok: true, text: d.note || "Enrolled." } : { ok: false, text: d.error || "Failed" });
+      if (res.ok) { setMsg(d.note ? { ok: true, text: d.note } : null); toast(`Started on ${phone.trim()}`); }
+      else setMsg({ ok: false, text: d.error || "That didn't work. Please try again." });
       setOffset(0); loadEnr(perPage, 0);
-    } catch { setMsg({ ok: false, text: "Connection error" }); }
+    } catch { setMsg({ ok: false, text: "Couldn't reach the server. Please try again." }); }
     finally { setBusy(""); }
   }
   async function runNow() {
@@ -1507,16 +1524,17 @@ function SeqMonitorPanel({ seqs, filterFromAnalytics }: { seqs: SeqRow[]; filter
     try {
       const res = await fetch("/api/admin/sequences/run", { method: "POST" });
       const d = await res.json();
-      setMsg(res.ok ? { ok: true, text: `Processed ${d.processed} due step(s) now.` } : { ok: false, text: d.error || "Failed" });
+      if (res.ok) { setMsg(null); toast(`Sent ${d.processed} waiting step${d.processed === 1 ? "" : "s"}`); }
+      else setMsg({ ok: false, text: d.error || "That didn't work. Please try again." });
       loadEnr();
-    } catch { setMsg({ ok: false, text: "Connection error" }); }
+    } catch { setMsg({ ok: false, text: "Couldn't reach the server. Please try again." }); }
     finally { setBusy(""); }
   }
 
   return (
     <div className="bg-white rounded-card border border-line p-4 space-y-3">
       <div>
-        <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><FlaskConical className="w-4 h-4 text-brand-700" /> Test &amp; monitor</p><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>Enroll your own number to test a drip, force due steps to send now (instead of waiting up to 5 min for the…</>}>Enroll your own number to test a drip, force due steps to send now (instead of waiting up to 5 min for the scheduler), and watch every enrollment below.</PageInfo>
+        <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><FlaskConical className="w-4 h-4 text-brand-700" /> Test &amp; monitor</p><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>Try a {seq1} on your own number, send waiting steps right now instead of within 5 minutes, and see everyone it&apos;s running for below.</>}>Steps normally go out within about 5 minutes of being due. <b>Run due steps now</b> sends them immediately.</PageInfo>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <select className={`${inp} flex-1 min-w-[10rem]`} value={seqId} onChange={e => { setSeqId(e.target.value); setPhone(""); setMsg(null); }}>
@@ -1531,12 +1549,12 @@ function SeqMonitorPanel({ seqs, filterFromAnalytics }: { seqs: SeqRow[]; filter
           </select>
         )}
         <input className={`${inp} w-44`} placeholder={platform === "instagram" ? "IG id — pick a contact ↑" : "WhatsApp number"} value={phone} onChange={e => setPhone(e.target.value)} />
-        <button onClick={testEnroll} disabled={busy !== "" || !seqId} className="px-3 py-2 rounded-control border border-brand-700 text-brand-700 text-xs font-bold hover:bg-brand-50 disabled:opacity-50 shrink-0 flex items-center gap-1.5">{busy === "test" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-3.5 h-3.5" />} Enroll &amp; send</button>
-        <button onClick={runNow} disabled={busy !== ""} className="px-3 py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-50 shrink-0 flex items-center gap-1.5">{busy === "run" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-3.5 h-3.5" />} Run due steps now</button>
-        <button onClick={() => loadEnr()} className="p-2 rounded-control border border-line text-ink-500 hover:bg-canvas shrink-0" title="Refresh"><RefreshCw className="w-3.5 h-3.5" /></button>
+        <button onClick={testEnroll} disabled={busy !== "" || !seqId} title={!seqId ? `Pick a ${seq1} to test first` : undefined} className="min-h-9 px-3 py-2 rounded-control border border-brand-700 text-brand-700 text-xs font-bold hover:bg-brand-50 disabled:opacity-50 shrink-0 flex items-center gap-1.5">{busy === "test" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-3.5 h-3.5" />} Start &amp; send</button>
+        <button onClick={runNow} disabled={busy !== ""} className="min-h-9 px-3 py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-50 shrink-0 flex items-center gap-1.5">{busy === "run" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-3.5 h-3.5" />} Run due steps now</button>
+        <button onClick={() => loadEnr()} aria-label="Refresh the list" className="grid place-items-center w-9 h-9 rounded-control border border-line text-ink-500 hover:bg-canvas shrink-0" title="Refresh"><RefreshCw className="w-3.5 h-3.5" /></button>
       </div>
       {msg && <p className={`text-[11px] font-semibold ${msg.ok ? "text-brand-700" : "text-red-600"}`}>{msg.text}</p>}
-      <p className="text-[10px] text-ink-400">The test sends on the <b>{seq1}&apos;s platform</b> — to test Instagram, pick an <b>Instagram</b> {seq1}. Instagram can only message someone who <b>DMed your IG first</b> (so pick them from the list — you can&apos;t message a @handle). <b>✅</b> = messaged in the last 24h, so a plain <b>text</b> step will deliver; otherwise use an approved <b>template</b> step.</p>
+      <p className="text-[11px] text-ink-400">The test sends on the <b>{seq1}&apos;s platform</b> — to test Instagram, pick an <b>Instagram</b> {seq1}. Instagram can only message someone who <b>DMed your IG first</b> (so pick them from the list — you can&apos;t message a @handle). <b>✅</b> = messaged you in the last 24 hours, so a plain <b>text</b> step will deliver; otherwise use an approved <b>template</b> step.</p>
 
       {/* Monitor filters */}
       <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-line text-xs">
@@ -1577,15 +1595,15 @@ function SeqMonitorPanel({ seqs, filterFromAnalytics }: { seqs: SeqRow[]; filter
 
       {/* Enrollment monitor */}
       <div id="seq-enrollment-monitor" className="border border-line rounded-control overflow-hidden">
-        <div className="grid grid-cols-12 gap-2 px-3 py-1.5 bg-canvas text-[10px] font-bold text-ink-400 uppercase">
+        <div className="grid grid-cols-12 gap-2 px-3 py-1.5 bg-canvas text-[11px] font-bold text-ink-400 uppercase">
           <div className="col-span-3">{vocab.sequence.one}</div><div className="col-span-3">{vocab.contact.one}</div><div className="col-span-2">Step</div><div className="col-span-2">Status</div><div className="col-span-2">Next / error</div>
         </div>
         {enr.length === 0 && (
           <p className="px-3 py-3 text-xs text-ink-400">
             {hasFilters
-              ? "No enrollments match the current filter."
+              ? "Nobody matches the current filter."
               : total === 0
-                ? "No enrollments yet. Enroll a number above, or wire a trigger (keyword / growth tool) and have someone message you."
+                ? "Nobody has started yet. Start it on a number above, or set what starts it (a keyword or growth tool) and have someone message you."
                 : "No results on this page."}
           </p>
         )}
@@ -1594,7 +1612,7 @@ function SeqMonitorPanel({ seqs, filterFromAnalytics }: { seqs: SeqRow[]; filter
             <div className="col-span-3 truncate font-medium text-ink-800">{e.sequenceName}</div>
             <div className="col-span-3 truncate font-mono text-ink-600">{e.phone}<span className="text-ink-300"> · {e.platform === "instagram" ? "IG" : "WA"}</span></div>
             <div className="col-span-2 text-ink-600">#{(e.currentStep ?? 0) + 1}</div>
-            <div className="col-span-2"><span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${ENR_BADGE[e.status] ?? "bg-slate-100 text-slate-500"}`}>{e.status}</span></div>
+            <div className="col-span-2"><span className={`px-1.5 py-0.5 rounded-full text-[11px] font-bold ${ENR_BADGE[e.status] ?? "bg-slate-100 text-slate-500"}`}>{ENR_LABEL[e.status] ?? e.status}</span></div>
             <div className="col-span-2 truncate text-[11px]">{e.lastError ? <span className="text-red-600" title={e.lastError}>⚠ {e.lastError}</span> : <span className="text-ink-400">{e.status === "active" ? fmtWhen(e.nextRunAt) : fmtWhen(e.updatedAt)}</span>}</div>
           </div>
         ))}
@@ -1605,9 +1623,9 @@ function SeqMonitorPanel({ seqs, filterFromAnalytics }: { seqs: SeqRow[]; filter
               <select className="border border-line rounded-lg px-2 py-1 text-xs" value={perPage} onChange={e => { setPerPage(Number(e.target.value)); setOffset(0); }}>
                 {[25, 50, 100].map(n => <option key={n} value={n}>{n} per page</option>)}
               </select>
-              <button onClick={() => setOffset(o => Math.max(0, o - perPage))} disabled={page <= 1} className="p-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-30" title="Previous page"><ChevronLeft className="w-4 h-4" /></button>
+              <button onClick={() => setOffset(o => Math.max(0, o - perPage))} disabled={page <= 1} aria-label="Previous page" className="grid place-items-center w-9 h-9 rounded-lg hover:bg-slate-100 disabled:opacity-30" title="Previous page"><ChevronLeft className="w-4 h-4" /></button>
               <span className="font-semibold">{page}/{lastPage}</span>
-              <button onClick={() => setOffset(o => o + perPage)} disabled={page >= lastPage} className="p-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-30" title="Next page"><ChevronRight className="w-4 h-4" /></button>
+              <button onClick={() => setOffset(o => o + perPage)} disabled={page >= lastPage} aria-label="Next page" className="grid place-items-center w-9 h-9 rounded-lg hover:bg-slate-100 disabled:opacity-30" title="Next page"><ChevronRight className="w-4 h-4" /></button>
             </div>
           </div>
         )}
@@ -1640,7 +1658,7 @@ export default function SequencesTab() {
     try {
       const res = await fetch("/api/admin/sequences", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, triggerValue: form.triggerValue || null }) });
       const d = await res.json();
-      if (!res.ok) setMsg(d.error || "Save failed"); else { setForm(null); load(); }
+      if (!res.ok) setMsg(d.error || "Save failed"); else { toast(`${form.name?.trim() || vocab.sequence.one} saved`); setForm(null); load(); }
     } finally { setBusy(false); }
   }
   async function remove(id: string) {
@@ -1648,7 +1666,8 @@ export default function SequencesTab() {
       title: `Delete this ${seq1}?`, tone: "danger", confirmLabel: `Delete ${seq1}`,
       message: "Anyone part-way through it stops receiving the rest of its messages.",
     }))) return;
-    await fetch("/api/admin/sequences", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+    const r = await fetch("/api/admin/sequences", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }).catch(() => null);
+    if (r?.ok) toast(`${vocab.sequence.one} deleted`); else toast({ text: "Couldn't delete it. Please try again.", tone: "error" });
     closeIfDeleted(setForm, id);
     load();
   }
@@ -1659,32 +1678,38 @@ export default function SequencesTab() {
     <div className="max-w-5xl space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Workflow className="w-5 h-5" /> {vocab.sequence.many}</h2><PageInfo className="text-sm text-slate-500" lead={<>Timed multi-step follow-ups. Triggered by keywords, opt-ins, story replies, abandoned carts, and more</>}>Timed multi-step follow-ups. Triggered by keywords, opt-ins, story replies, abandoned carts, and more — they run automatically and respect the 24-hour window.</PageInfo>
+          <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Workflow className="w-5 h-5" /> {vocab.sequence.many}</h2><PageInfo className="text-sm text-slate-500" lead={<>Follow-up messages that go out on their own over hours or days — for example a reminder the next morning and an offer three days later. Each one starts when a customer does something: sends a keyword, opts in, replies to a story or leaves a cart</>}>Timed multi-step follow-ups. Triggered by keywords, opt-ins, story replies, abandoned carts, and more — they run automatically and respect the 24-hour window.</PageInfo>
         </div>
-        <button onClick={() => { setForm({ ...EMPTY_SEQ }); setMsg(null); }} className="shrink-0 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New {seq1}</button>
+        <button onClick={() => { setForm({ ...EMPTY_SEQ }); setMsg(null); }} className="shrink-0 min-h-9 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New {seq1}</button>
       </div>
 
       {/* How a sequence actually fires — the part that's easy to miss. */}
       <div className="bg-brand-50/60 border border-brand-700/15 rounded-card p-4 text-[12px] text-ink-700 space-y-1.5">
         <p className="font-bold text-ink-900 flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5 text-brand-700" /> How your {seqN} run</p>
-        <p><b>1. A trigger enrols someone.</b> Each {seq1} does nothing on its own — it needs an entry point: a <b>keyword</b> they send, a <b>growth tool</b> opt-in, an Instagram <b>story reply</b>, a cart/order event, or the <b>Test</b> box below. Set the trigger on the {seq1}, then make sure that path exists.</p>
-        <p><b>2. The schedule sends the steps.</b> A background job runs <b>every ~5 minutes</b> and delivers each step once its wait is up. <b>Step 1&apos;s wait</b> counts from enrolment (0 = send immediately); every later step&apos;s wait counts from the previous step.</p>
-        <p><b>3. The 24-hour rule applies.</b> Plain <b>text/media</b> steps only deliver if the {ct1} messaged you in the last 24h. To reach people outside that window, make the step an approved <b>template</b>.</p>
-        <p className="text-ink-400">Not sure it&apos;s working? Use <b>Test &amp; monitor</b> below — enroll your own number and click <b>Run due steps now</b>.</p>
+        <p><b>1. Something starts it for a person.</b> Each {seq1} does nothing on its own — it needs something to start it: a <b>keyword</b> they send, a <b>growth tool</b> opt-in, an Instagram <b>story reply</b>, a cart/order event, or the <b>Test</b> box below. Choose what starts it on the {seq1}, then make sure that path exists.</p>
+        <p><b>2. The steps go out on their own.</b> Talko checks <b>about every 5 minutes</b> and sends each step once its wait is up. <b>Step 1&apos;s wait</b> counts from when it started for that person (0 = send immediately); every later step&apos;s wait counts from the previous step.</p>
+        <p><b>3. The 24-hour rule applies.</b> Plain <b>text/media</b> steps only deliver if the {ct1} messaged you within the last 24 hours. To reach people outside that window, make the step an approved <b>template</b>.</p>
+        <p className="text-ink-500">Not sure it&apos;s working? Use <b>Test &amp; monitor</b> below — start it on your own number and click <b>Run due steps now</b>.</p>
       </div>
 
       {seqs.map(s => (
         <div key={s.id} className="bg-white rounded-card border border-line p-4 flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-700 flex items-center justify-center shrink-0"><Workflow className="w-4 h-4" /></div>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-ink-900 truncate">{s.name} {!s.active && <span className="text-[10px] font-bold text-red-700">· OFF</span>}</p>
+            <p className="text-sm font-semibold text-ink-900 truncate">{s.name} {!s.active && <span className="text-[11px] font-bold text-red-700">· Off</span>}</p>
             <p className="text-[11px] text-ink-400">{s.team ? <span className="font-semibold text-ink-600">{s.team === "sales" ? "Sales" : "Marketing"}{s.aidaStage ? ` · ${AIDA_LABELS[s.aidaStage].label}` : ""} · </span> : <span className="text-amber-700 font-semibold">Unassigned · </span>}{s.platform} · starts when: {triggerLabel(s.triggerKind)}{s.triggerValue ? ` “${s.triggerValue}”` : ""} · {s.steps.length} step{s.steps.length === 1 ? "" : "s"}</p>
           </div>
-          <button onClick={() => editRow(s)} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
-          <button onClick={() => remove(s.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
+          <button onClick={() => editRow(s)} className="min-h-8 px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
+          <button onClick={() => remove(s.id)} aria-label={`Delete ${s.name}`} className="grid place-items-center w-9 h-9 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
         </div>
       ))}
-      {!seqs.length && !form && <p className="text-xs text-ink-400">No {seqN} yet.</p>}
+      {!seqs.length && !form && (
+        <div className="bg-white rounded-card border border-line">
+          <EmptyState mood="sleeping" title={`No ${seqN} yet`}
+            body={`A ${seq1} sends follow-up messages on its own — say a thank-you right away, a reminder the next day and an offer three days later. Start with one for new enquiries.`}
+            action={<button onClick={() => { setForm({ ...EMPTY_SEQ }); setMsg(null); }} className="min-h-10 px-4 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-sm font-bold inline-flex items-center gap-1.5"><Plus className="w-4 h-4" /> New {seq1}</button>} />
+        </div>
+      )}
 
       <Drawer open={!!form} onClose={() => setForm(null)} width="xl" title={form?.id ? "Edit sequence" : "New sequence"}>
         {form && (<div className="flex flex-col xl:flex-row gap-5">
@@ -1715,7 +1740,7 @@ export default function SequencesTab() {
                 {LANES.map(l => <option key={l} value={l}>{l === "marketing" ? `Marketing — ${leadN} nobody owns yet` : `Sales — ${leadN} someone owns`}</option>)}
               </select>
             </SeqField>
-            <SeqField label="What job it does" hint={form.aidaStage ? AIDA_LABELS[form.aidaStage].job : "Used to show which part of the funnel has no journey yet. It does not change how anything sends."}>
+            <SeqField label="What job it does" hint={form.aidaStage ? AIDA_LABELS[form.aidaStage].job : "Only used to show which stages have no follow-ups yet. It doesn't change how anything is sent."}>
               <select className={`${inp} w-full`} value={form.aidaStage ?? ""}
                 onChange={e => setForm({ ...form, aidaStage: (e.target.value || null) as AidaStage | null })}>
                 <option value="">Not set</option>
@@ -1724,7 +1749,7 @@ export default function SequencesTab() {
             </SeqField>
           </div>
 
-          <SeqField label="What starts it" hint="Nothing is sent until something enrols someone.">
+          <SeqField label="What starts it" hint="Nothing is sent until something starts it for a person.">
             <div className="space-y-1.5">
               {SEQ_TRIGGERS.filter(t => t.platforms.includes(form.platform)).map(t => {
                 const on = form.triggerKind === t.value;
@@ -1748,7 +1773,7 @@ export default function SequencesTab() {
                   <input type="radio" name="seq-trigger" className="accent-amber-500 mt-0.5" checked readOnly />
                   <span className="min-w-0">
                     <span className="block text-[13px] font-semibold text-ink-900">{SEQ_TRIGGERS_DEAD[form.triggerKind]}</span>
-                    <span className="block text-[11px] text-ink-700">This one was never connected to anything — nobody is being enrolled by it. Pick one above instead.</span>
+                    <span className="block text-[11px] text-ink-700">This one was never connected to anything — nobody is being started on it. Pick one above instead.</span>
                   </span>
                 </label>
               )}
@@ -1774,7 +1799,7 @@ export default function SequencesTab() {
             <SeqField label="Live?" hint="Switching this off also stops everyone part-way through.">
               <label className="flex items-center gap-2 text-sm text-ink-700 cursor-pointer py-2">
                 <input type="checkbox" className="accent-brand-700" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} />
-                {form.active ? "On — it can enrol people" : "Off — nothing will be sent"}
+                {form.active ? "On — it can start for people" : "Off — nothing will be sent"}
               </label>
             </SeqField>
           </div>
@@ -1792,7 +1817,7 @@ export default function SequencesTab() {
             <div key={i} className="border border-line rounded-control p-2.5 space-y-2">
               <div className="flex items-center gap-2 text-xs text-ink-500 flex-wrap">
                 <span className="font-bold">#{i + 1}</span>
-                <span>{i === 0 ? "after enrolling, wait" : "then wait"}</span>
+                <span>{i === 0 ? "after it starts, wait" : "then wait"}</span>
                 <DelayPicker minutes={st.delayMinutes} onChange={m => setStep(i, { delayMinutes: m })} />
                 <span>and send</span>
                 <select className={`${inp} !py-1`} value={st.action.type} onChange={e => setStepAction(i, { type: e.target.value as StepDraft["action"]["type"] })}>
@@ -1801,7 +1826,7 @@ export default function SequencesTab() {
                 <div className="flex-1" />
                 {form.steps.length > 1 && <button onClick={() => setForm({ ...form, steps: form.steps.filter((_, j) => j !== i) })} className="p-1 text-ink-400 hover:text-red-600"><X className="w-3.5 h-3.5" /></button>}
               </div>
-              {st.action.type === "text" && <textarea className={`${inp} w-full`} rows={2} placeholder="Message text (sends inside the 24h window)" value={st.action.text ?? ""} onChange={e => setStepAction(i, { text: e.target.value })} />}
+              {st.action.type === "text" && <textarea className={`${inp} w-full`} rows={2} placeholder="Message text (only reaches people who messaged you in the last 24 hours)" value={st.action.text ?? ""} onChange={e => setStepAction(i, { text: e.target.value })} />}
               {st.action.type === "template" && <SeqTemplatePicker channelId={form.channelId} action={st.action} onChange={patch => setStepAction(i, patch)} />}
               {/* Set by seeding; there is no editor for it yet. Shown
                   so nobody wonders why a step reached fewer people than the
@@ -1882,9 +1907,9 @@ function CatalogTab() {
     try {
       const res = await fetch("/api/admin/checkout-flow", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Checkout" }) });
       const d = await res.json().catch(() => ({}));
-      if (!res.ok) setMsg(d.error || `Could not create checkout flow (HTTP ${res.status})`);
+      if (!res.ok) setMsg(d.error || "Couldn't create the checkout form. Please try again.");
       else if (d.published) setCheckoutId(d.id);
-      else setMsg(`Created the flow but Meta couldn't publish it: ${(d.validationErrors?.length ? d.validationErrors.join("; ") : d.publishError) || "the Flow JSON didn't pass validation"}`);
+      else setMsg(`Created the flow but Meta couldn't publish it: ${(d.validationErrors?.length ? d.validationErrors.join("; ") : d.publishError) || "WhatsApp rejected the form"}`);
     } catch {
       setMsg("Could not reach the server to create the checkout flow.");
     } finally { setCheckoutBusy(false); }
@@ -1900,12 +1925,13 @@ function CatalogTab() {
       const res = await fetch("/api/admin/products", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: form.id, name: form.name, description: form.description, priceCents: Math.round(Number(form.price) * 100), currency: form.currency, imageUrl: form.imageUrl || null, retailerId: form.retailerId || null, metaProductId: form.metaProductId || null, catalogId: form.catalogId || null, available: form.available, buttonText: form.buttonText || null, buttonUrl: form.buttonUrl || null }) });
       const d = await res.json();
-      if (!res.ok) setMsg(d.error || "Save failed"); else { setForm(null); load(); }
+      if (!res.ok) setMsg(d.error || "Couldn't save. Please try again."); else { toast(`${form.name.trim()} saved`); setForm(null); load(); }
     } finally { setBusy(false); }
   }
   async function remove(id: string) {
     if (!(await ask({ title: "Delete this product?", tone: "danger", confirmLabel: "Delete product" }))) return;
-    await fetch("/api/admin/products", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+    const r = await fetch("/api/admin/products", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }).catch(() => null);
+    if (r?.ok) toast("Product deleted"); else toast({ text: "Couldn't delete it. Please try again.", tone: "error" });
     closeIfDeleted(setForm, id);
     load();
   }
@@ -1928,14 +1954,14 @@ function CatalogTab() {
         <div key={p.id} className="bg-white rounded-card border border-line p-3 flex items-center gap-3">
           <ImgFallback url={p.imageUrl ?? ""} imgClass="w-12 h-12 rounded-lg object-cover shrink-0" boxClass="w-12 h-12 rounded-lg bg-canvas flex items-center justify-center shrink-0" icon={<ShoppingBag className="w-5 h-5 text-ink-300" />} />
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-ink-900 truncate">{p.name} {!p.available && <span className="text-[10px] font-bold text-red-700">· hidden</span>}</p>
+            <p className="text-sm font-semibold text-ink-900 truncate">{p.name} {!p.available && <span className="text-[11px] font-bold text-red-700">· hidden</span>}</p>
             <p className="text-[11px] text-ink-400">{p.currency} {(p.priceCents / 100).toFixed(2)}{p.retailerId ? ` · SKU ${p.retailerId}` : ""}</p>
           </div>
           <button onClick={() => setForm({ id: p.id, name: p.name, description: p.description ?? "", price: String(p.priceCents / 100), currency: p.currency, imageUrl: p.imageUrl ?? "", retailerId: p.retailerId ?? "", metaProductId: p.metaProductId ?? "", catalogId: p.catalogId ?? "", available: p.available, buttonText: p.buttonText ?? "", buttonUrl: p.buttonUrl ?? "" })} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
           <button onClick={() => remove(p.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
         </div>
       ))}
-      {!products.length && !form && <p className="text-xs text-ink-400">No products yet.</p>}
+      {!products.length && !form && <p className="text-xs text-ink-500">No products yet. Press <b>Add product</b> to add what you sell, with its price and photo.</p>}
 
       <Drawer open={!!form} onClose={() => setForm(null)} width="xl" title={form?.id ? "Edit product" : "Add product"}>
         {form && (<div className="flex flex-col xl:flex-row gap-5">
@@ -1968,7 +1994,7 @@ function CatalogTab() {
           {msg && <p className="text-xs text-red-700">{msg}</p>}
           </div>
           <div className="xl:w-64 shrink-0">
-            <p className="text-[10px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-1.5">Preview in chat</p>
+            <p className="text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-1.5">Preview in chat</p>
             <div className="bg-[#e5ddd5] rounded-control p-3">
               <div className="bg-white rounded-lg shadow-sm overflow-hidden">
                 <ImgFallback url={form.imageUrl} imgClass="w-full h-32 object-cover" boxClass="h-32 bg-slate-100 flex items-center justify-center text-slate-300" icon={<ImageIcon className="w-7 h-7" />} />
@@ -1980,7 +2006,7 @@ function CatalogTab() {
                 <div className="border-t border-slate-100 py-1.5 text-center text-[12px] font-semibold text-sky-700">{form.buttonText.trim() || "View"}</div>
               </div>
             </div>
-            <p className="mt-1.5 text-[10px] text-ink-400 leading-snug">
+            <p className="mt-1.5 text-[11px] text-ink-400 leading-snug">
               {form.buttonUrl.trim()
                 ? <>Custom card: image + this button → <span className="font-mono break-all">{form.buttonUrl}</span>. Use the “Custom card” style on a flow’s Product node.</>
                 : <>Native catalog card shows WhatsApp’s own “View” button. Add a button link above to send a custom card with your label instead.</>}

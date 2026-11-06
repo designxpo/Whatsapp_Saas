@@ -27,6 +27,7 @@ import {
   Plug, Search, Check, Copy, Loader2, Plus, Trash2, ExternalLink, Pause, Play, AlertTriangle, CircleCheck, Clock,
 } from "lucide-react";
 import { useConfirm } from "@/components/confirm-dialog";
+import { toast } from "@/components/toast";
 import { Drawer } from "@/components/overlay";
 import { templatePlaceholders, paramCount, isNamedFormat } from "@/lib/template-params";
 import {
@@ -179,13 +180,13 @@ export default function InboundIntegrations({ extras = [], accountLinks = {}, on
                     <p className="text-[11px] text-slate-400">{CATEGORY_LABELS[e.category]}</p>
                   </div>
                   {conn ? (
-                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${conn.status === "paused" ? "bg-slate-100 text-slate-500" : conn.lastError ? "bg-amber-50 text-amber-700" : "bg-brand-50 text-brand-700"}`}>
+                    <span className={`text-[11px] font-bold uppercase px-2 py-0.5 rounded-full ${conn.status === "paused" ? "bg-slate-100 text-slate-500" : conn.lastError ? "bg-amber-50 text-amber-700" : "bg-brand-50 text-brand-700"}`}>
                       {conn.status === "paused" ? "Paused" : conn.lastError ? "Check" : "Connected"}
                     </span>
                   ) : e.accountOnly && accountLinks[e.id]?.connected ? (
-                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-brand-50 text-brand-700">Connected</span>
+                    <span className="text-[11px] font-bold uppercase px-2 py-0.5 rounded-full bg-brand-50 text-brand-700">Connected</span>
                   ) : e.availability === "next" ? (
-                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">Coming next</span>
+                    <span className="text-[11px] font-bold uppercase px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">Coming next</span>
                   ) : null}
                 </div>
                 {conn && <p className="text-[11px] text-slate-400 flex items-center gap-1"><Clock className="w-3 h-3" /> Last event {ago(conn.lastEventAt)}</p>}
@@ -201,7 +202,7 @@ export default function InboundIntegrations({ extras = [], accountLinks = {}, on
                   <p className="font-bold text-sm text-ink-900 leading-tight">{x.name}</p>
                   <p className="text-[11px] text-slate-400">{x.group === "payments" ? CATEGORY_LABELS.payments : EXTRA_GROUP_LABELS[x.group]}</p>
                 </div>
-                {x.connected > 0 && <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-brand-50 text-brand-700">{x.connected > 1 ? `${x.connected} connected` : "Connected"}</span>}
+                {x.connected > 0 && <span className="text-[11px] font-bold uppercase px-2 py-0.5 rounded-full bg-brand-50 text-brand-700">{x.connected > 1 ? `${x.connected} connected` : "Connected"}</span>}
               </div>
             </button>
           ))}
@@ -242,8 +243,9 @@ function IntegrationPanel({ entry, connection, accountLink, googleEmail = null, 
       for (const f of entry.fields ?? []) (f.secret ? secrets : config)[f.key] = values[f.key] ?? "";
       const r = await fetch("/api/admin/inbound", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: entry.id, config, secrets }) });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+      if (!r.ok) throw new Error(d.error || "Couldn't connect. Please check the details and try again.");
       setMsg({ ok: true, text: d.detail || "Connected." });
+      toast(`${entry.name} connected`);
       setEditing(false);
       onChanged();
     } catch (e) { setMsg({ ok: false, text: e instanceof Error ? e.message : String(e) }); }
@@ -252,8 +254,11 @@ function IntegrationPanel({ entry, connection, accountLink, googleEmail = null, 
 
   async function setPaused(paused: boolean) {
     setBusy(true);
-    await fetch("/api/admin/inbound", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: entry.id, paused }) });
+    const r = await fetch("/api/admin/inbound", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: entry.id, paused }) }).catch(() => null);
     setBusy(false); onChanged();
+    if (!r?.ok) { toast({ text: "Couldn't change it. Please try again.", tone: "error" }); return; }
+    // Pausing is undone by resuming.
+    toast(paused ? { text: `${entry.name} paused`, action: { label: "Undo", onClick: () => void setPaused(false) } } : `${entry.name} resumed`);
   }
 
   async function disconnect() {
@@ -312,7 +317,7 @@ function IntegrationPanel({ entry, connection, accountLink, googleEmail = null, 
           {connection && (entry.showsWebhookUrl !== false || connection.generated) && (
             <div className="space-y-3 border border-line rounded-card p-4">
               <p className="text-sm font-extrabold text-ink-900">Set it up in {entry.name}</p>
-              {entry.showsWebhookUrl !== false && <CopyField label="Webhook URL" value={connection.webhookUrl} />}
+              {entry.showsWebhookUrl !== false && <CopyField label="Address to paste" value={connection.webhookUrl} />}
               {connection.generated?.value && <CopyField label={entry.generated?.label ?? "Secret"} value={connection.generated.value} />}
               {entry.steps && (
                 <ol className="list-decimal pl-4 space-y-1 text-xs text-ink-700">{entry.steps.map(s => <li key={s}>{s}</li>)}</ol>
@@ -344,7 +349,7 @@ function IntegrationPanel({ entry, connection, accountLink, googleEmail = null, 
             <div className="space-y-3 border border-line rounded-card p-4">
               <p className="text-sm font-extrabold text-ink-900">{connection ? "Settings" : `Connect ${entry.name}`}</p>
               {!connection && entry.steps && (
-                <p className="text-[11px] text-slate-500">After you connect, the portal shows the webhook URL{entry.generated ? " and secret" : ""} to paste into {entry.name}, with the steps.</p>
+                <p className="text-[11px] text-slate-500">After you connect, the portal shows the address{entry.generated ? " and secret" : ""} to paste into {entry.name}, with the steps.</p>
               )}
               {(entry.fields ?? []).map(f => (
                 <label key={f.key} className="block space-y-1">
@@ -385,7 +390,7 @@ function IntegrationPanel({ entry, connection, accountLink, googleEmail = null, 
                 : connection.events.map(ev => (
                   <div key={ev.id} className="text-xs border-b border-line last:border-0 py-1.5">
                     <div className="flex items-center gap-2">
-                      <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${ev.outcome === "processed" ? "bg-brand-50 text-brand-700" : ev.outcome === "failed" ? "bg-red-50 text-red-600" : "bg-slate-100 text-slate-500"}`}>{ev.outcome}</span>
+                      <span className={`text-[11px] font-bold uppercase px-1.5 py-0.5 rounded ${ev.outcome === "processed" ? "bg-brand-50 text-brand-700" : ev.outcome === "failed" ? "bg-red-50 text-red-600" : "bg-slate-100 text-slate-500"}`}>{ev.outcome}</span>
                       <span className="font-mono text-ink-700">{entry.events?.find(x => x.key === ev.eventKey)?.label ?? ev.eventKey}</span>
                       {ev.phoneLast4 && <span className="text-slate-400">· …{ev.phoneLast4}</span>}
                       <span className="ml-auto text-slate-400">{ago(ev.createdAt)}</span>
@@ -431,12 +436,15 @@ function EventMessages({ entry, connection }: { entry: CatalogEntry; connection:
   }, []);
 
   async function toggle(r: Rule) {
-    await fetch("/api/admin/api-rules", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: r.id, active: !r.active }) });
+    const res = await fetch("/api/admin/api-rules", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: r.id, active: !r.active }) }).catch(() => null);
+    if (!res?.ok) toast({ text: "Couldn't change it. Please try again.", tone: "error" });
+    else toast(r.active ? { text: `“${r.name}” turned off`, action: { label: "Undo", onClick: () => void toggle({ ...r, active: false }) } } : `“${r.name}” turned on`);
     load();
   }
   async function remove(r: Rule) {
     if (!(await ask({ title: "Delete this message?", tone: "danger", confirmLabel: "Delete", facts: [{ label: "Message", value: r.name }, { label: "Template", value: r.templateName }] }))) return;
-    await fetch("/api/admin/api-rules", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: r.id }) });
+    const res = await fetch("/api/admin/api-rules", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: r.id }) }).catch(() => null);
+    if (res?.ok) toast("Message deleted"); else toast({ text: "Couldn't delete it. Please try again.", tone: "error" });
     load();
   }
 

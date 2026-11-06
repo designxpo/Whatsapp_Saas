@@ -11,6 +11,7 @@ import { Check, Youtube, Loader2, MessageCircle, Plus, Trash2, Video, ShieldAler
 import { inp, type GoTo, type ChannelRow } from "../_shared";
 import { fetchKbTags } from "./SettingsTab";
 import { useConfirm } from "@/components/confirm-dialog";
+import { toast } from "@/components/toast";
 import { Drawer } from "@/components/overlay";
 import { CommentReplies } from "./CommentReplies";
 import { HandoffOption } from "./HandoffOption";
@@ -22,16 +23,16 @@ function YoutubeTab({ goTo }: { goTo?: GoTo } = {}) {
   return (
     <div className="max-w-3xl space-y-5">
       <div>
-        <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Youtube className="w-5 h-5 text-red-600" /> YouTube</h2><PageInfo className="text-sm text-slate-500" lead={<>Auto-reply to comments on your videos and moderate spam — grounded in your AI persona and knowledge base.</>}>YouTube has no DMs, so this is public replies + moderation only.</PageInfo>
+        <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Youtube className="w-5 h-5 text-red-600" /> YouTube</h2><PageInfo className="text-sm text-slate-500" lead={<>Let the AI reply to comments on your videos and hide spam — using your AI agent and what you&apos;ve taught it in the AI Knowledge Base.</>}>YouTube has no private messages, so this is public replies and hiding comments only.</PageInfo>
       </div>
 
       <section className="bg-white rounded-card border border-line p-5 space-y-3">
         <p className="text-xs font-bold text-slate-400 uppercase">Before you connect</p>
         <ol className="space-y-2 text-sm text-ink-700">
           <li className="flex gap-2.5"><span className="shrink-0 w-5 h-5 rounded-full bg-brand-50 text-brand-700 text-[11px] font-bold flex items-center justify-center">1</span><span>A <b>YouTube channel</b> you manage, on a Google account with access to reply to and moderate its comments.</span></li>
-          <li className="flex gap-2.5"><span className="shrink-0 w-5 h-5 rounded-full bg-brand-50 text-brand-700 text-[11px] font-bold flex items-center justify-center">2</span><span>Click <b>Connect with Google</b> below and approve access on that Google account. That&apos;s it — {who} handles the API access and permissions for you.</span></li>
+          <li className="flex gap-2.5"><span className="shrink-0 w-5 h-5 rounded-full bg-brand-50 text-brand-700 text-[11px] font-bold flex items-center justify-center">2</span><span>Click <b>Connect with Google</b> below and approve access on that Google account. That&apos;s it — {who} handles the rest for you.</span></li>
         </ol>
-        <p className="text-[11px] text-ink-400 bg-canvas rounded-control px-3 py-2">Heads-up: YouTube has no new-comment webhook, so new comments are polled every few minutes (not instant), and the daily API quota caps total replies. We rotate reply variants and pace per hour to keep the channel safe from spam strikes.</p>
+        <p className="text-[12px] text-ink-600 bg-canvas rounded-control px-3 py-2">Good to know: YouTube doesn&apos;t tell us about new comments the moment they&apos;re posted, so {who} checks every few minutes (replies aren&apos;t instant), and YouTube limits how many replies can go out each day. We vary the wording and pace replies so your channel isn&apos;t flagged for spam.</p>
       </section>
 
       <YoutubeManager />
@@ -149,7 +150,8 @@ function YoutubeManager() {
         body: JSON.stringify({ channelId: oauthPickerId, ytChannelId: opt.id, name: opt.title }),
       });
       const d = await res.json();
-      if (!res.ok) { setMsg(d.error || "Save failed"); return; }
+      if (!res.ok) { setMsg(d.error || "Couldn't save the channel. Please try again."); return; }
+      toast(`${opt.title} connected`);
       setOauthPickerId(null); setOauthOptions([]); load();
     } finally { setOauthBusy(null); }
   }
@@ -166,8 +168,8 @@ function YoutubeManager() {
 
   async function save() {
     if (!form) return;
-    if (!form.name.trim() || !form.ytChannelId.trim()) { setMsg("Label and YouTube channel id are required."); return; }
-    if (!form.id && !form.token.trim()) { setMsg("An OAuth refresh token is required to connect."); return; }
+    if (!form.name.trim() || !form.ytChannelId.trim()) { setMsg("Give the channel a name and enter its YouTube channel id."); return; }
+    if (!form.id && !form.token.trim()) { setMsg("Paste the Google access code (refresh token) to connect — or use Connect with Google instead."); return; }
     setBusy(true); setMsg(null);
     try {
       const res = await fetch("/api/admin/channels/youtube", {
@@ -175,8 +177,8 @@ function YoutubeManager() {
         body: JSON.stringify({ ...form, agentId: form.agentId || null, kbTag: form.kbTag || null }),
       });
       const d = await res.json();
-      if (!res.ok) setMsg(d.error || "Save failed");
-      else { setForm(null); load(); }
+      if (!res.ok) setMsg(d.error || "Couldn't save the channel. Please try again.");
+      else { toast(form.id ? "Channel saved" : "YouTube channel connected"); setForm(null); load(); }
     } finally { setBusy(false); }
   }
 
@@ -188,10 +190,9 @@ function YoutubeManager() {
     try {
       const res = await fetch("/api/admin/yt-status", { method: "POST" });
       const d = await res.json();
-      if (!res.ok) setMsg(d.error || "Check failed");
-      else setMsg(d.acted > 0
-        ? `Checked — replied to ${d.acted} comment${d.acted === 1 ? "" : "s"}.`
-        : "Checked — nothing new to reply to. Only comments posted after a rule was saved are picked up.", "ok");
+      if (!res.ok) setMsg(d.error || "Couldn't check right now. Please try again.");
+      else if (d.acted > 0) toast(`Checked — replied to ${d.acted} comment${d.acted === 1 ? "" : "s"}`);
+      else toast({ text: "Checked — nothing new to reply to. Only comments posted after a rule was saved are picked up.", tone: "info", ms: 7000 });
       loadStatus();
     } finally { setChecking(false); }
   }
@@ -201,24 +202,28 @@ function YoutubeManager() {
       title: "Disconnect this YouTube channel?", tone: "danger", confirmLabel: "Disconnect",
       message: "Its comment rules are kept but stop running. You will need to reconnect with Google to start them again.",
     }))) return;
-    await fetch("/api/admin/channels", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+    const r = await fetch("/api/admin/channels", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }).catch(() => null);
+    if (r?.ok) toast("YouTube channel disconnected"); else toast({ text: "Couldn't disconnect the channel. Please try again.", tone: "error" });
     load();
   }
 
   async function saveRule() {
     if (!ruleForm) return;
     const publicReplies = ruleForm.publicReplies.map(s => s.trim()).filter(Boolean);
-    if (!publicReplies.length && ruleForm.moderate === "off") { setMsg("Add at least one public reply, or choose a moderation action"); return; }
+    if (!publicReplies.length && ruleForm.moderate === "off") { setMsg("Add at least one public reply, or choose to hide matching comments."); return; }
     setRuleBusy(true); setMsg(null);
     try {
       const res = await fetch("/api/admin/yt-comment-rules", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...ruleForm, publicReplies }) });
       const d = await res.json();
-      if (!res.ok) setMsg(d.error || "Save failed");
-      else { setRuleForm(null); loadRules(); }
+      if (!res.ok) setMsg(d.error || "Couldn't save the rule. Please try again.");
+      else { toast("Comment rule saved"); setRuleForm(null); loadRules(); }
     } finally { setRuleBusy(false); }
   }
   async function toggleRule(r: YtRule) {
-    await fetch("/api/admin/yt-comment-rules", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...r, enabled: !r.enabled }) }).catch(() => {});
+    const res = await fetch("/api/admin/yt-comment-rules", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...r, enabled: !r.enabled }) }).catch(() => null);
+    if (!res?.ok) toast({ text: "Couldn't change the rule. Please try again.", tone: "error" });
+    // Turning a rule off is undone by turning it back on (same endpoint).
+    else toast(r.enabled ? { text: "Comment rule turned off", action: { label: "Undo", onClick: () => void toggleRule({ ...r, enabled: false }) } } : "Comment rule turned on");
     loadRules();
   }
   async function delRule(id?: string) {
@@ -226,27 +231,28 @@ function YoutubeManager() {
       title: "Delete this comment rule?", tone: "danger", confirmLabel: "Delete rule",
       message: "Comments matching it stop getting a reply.",
     }))) return;
-    await fetch("/api/admin/yt-comment-rules", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }).catch(() => {});
+    const res = await fetch("/api/admin/yt-comment-rules", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }).catch(() => null);
+    if (res?.ok) toast("Comment rule deleted"); else toast({ text: "Couldn't delete the rule. Please try again.", tone: "error" });
     loadRules();
   }
 
   return (
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><Youtube className="w-3.5 h-3.5 text-red-600" /> YouTube channels</p><p className="text-xs text-slate-500 mt-0.5">Connect a YouTube channel to auto-reply to comments and moderate spam. Public replies only — YouTube has no DMs.</p>
+          <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><Youtube className="w-3.5 h-3.5 text-red-600" /> YouTube channels</p><p className="text-xs text-slate-500 mt-0.5">Connect a YouTube channel so the AI can reply to comments and hide spam. Public replies only — YouTube has no private messages.</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {!!channels.length && (
             <button onClick={checkNow} disabled={checking} title="Run the comment check right now instead of waiting for the next automatic run"
-              className="px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
+              className="min-h-9 px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
               {checking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />} {checking ? "Checking…" : "Check now"}
             </button>
           )}
-          <a href="/api/admin/onboarding/youtube/start" className="px-3 py-1.5 rounded-control bg-red-600 hover:bg-red-500 text-white text-xs font-bold flex items-center gap-1.5">
+          <a href="/api/admin/onboarding/youtube/start" className="min-h-9 px-3 py-1.5 rounded-control bg-red-600 hover:bg-red-500 text-white text-xs font-bold flex items-center gap-1.5">
             <Youtube className="w-3.5 h-3.5" /> Connect with Google
           </a>
-          <button onClick={() => { setForm({ ...EMPTY_YT }); setMsg(null); }} className="px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add manually</button>
+          <button onClick={() => { setForm({ ...EMPTY_YT }); setMsg(null); }} title="For developers: connect with a channel id and a Google access code" className="min-h-9 px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add manually</button>
         </div>
       </div>
 
@@ -282,18 +288,18 @@ function YoutubeManager() {
         <div key={c.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2.5">
           <div className="w-8 h-8 rounded-lg bg-red-50 text-red-600 flex items-center justify-center shrink-0"><Youtube className="w-4 h-4" /></div>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-ink-900 truncate">{c.name} {c.isDefault && <span className="text-[10px] font-bold text-brand-700">· DEFAULT</span>}{!c.active && <span className="text-[10px] font-bold text-red-700"> · OFF</span>}</p>
-            <p className="text-[11px] text-ink-400 font-mono truncate">yt {c.ytChannelId} · {c.agentId ? `AI: ${agents.find(a => a.id === c.agentId)?.name ?? "custom"}` : "AI: global default"}</p>
+            <p className="text-sm font-semibold text-ink-900 truncate">{c.name} {c.isDefault && <span className="text-[11px] font-bold text-brand-700">· Default</span>}{!c.active && <span className="text-[11px] font-bold text-red-700"> · Off</span>}</p>
+            <p className="text-[11px] text-ink-500 truncate">{c.agentId ? `AI agent: ${agents.find(a => a.id === c.agentId)?.name ?? "custom"}` : "AI agent: your default"} · <span className="font-mono">{c.ytChannelId}</span></p>
             {/* Last background poll — makes a silent failure visible instead of
                 leaving "why didn't it reply?" unanswerable from the portal. */}
             {!st
-              ? <p className="text-[11px] text-amber-700 mt-0.5">Not checked yet — the background poller runs every few minutes.</p>
+              ? <p className="text-[11px] text-amber-700 mt-0.5">Not checked yet — new comments are checked every few minutes.</p>
               : <p className={`text-[11px] mt-0.5 ${st.lastError ? "text-red-600" : "text-ink-500"}`}>
                   Last checked {st.lastCheckedAt ? new Date(st.lastCheckedAt).toLocaleString() : "—"}
                   {typeof st.commentsSeen === "number" && <> · {st.commentsSeen} comment{st.commentsSeen === 1 ? "" : "s"} seen</>}
                   {typeof st.repliesPosted === "number" && <> · {st.repliesPosted} replied</>}
                   {st.lastError && <> · {st.lastError}</>}
-                  {!st.lastError && st.lastReplyId && <span className="font-mono"> · last reply id {st.lastReplyId}</span>}
+                  {!st.lastError && st.lastReplyAt && <> · last reply {new Date(st.lastReplyAt).toLocaleString()}</>}
                 </p>}
             {/* An active channel is checked every few minutes. A last check
                 much older than that means automatic replies are not running —
@@ -305,8 +311,8 @@ function YoutubeManager() {
             )}
           </div>
           <button onClick={() => { setForm({ id: c.id, name: c.name, ytChannelId: c.ytChannelId ?? "", token: "", agentId: c.agentId ?? "", kbTag: c.kbTag ?? "", commentAi: c.commentAi ?? true, active: c.active, isDefault: c.isDefault }); setMsg(null); }}
-            className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
-          <button onClick={() => remove(c.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
+            className="min-h-8 px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
+          <button onClick={() => remove(c.id)} aria-label={`Disconnect ${c.name}`} title="Disconnect" className="grid place-items-center w-9 h-9 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
         </div>
         );
       })}
@@ -314,40 +320,40 @@ function YoutubeManager() {
       <Drawer open={!!form} onClose={() => setForm(null)} width="md" title={form?.id ? "Edit YouTube channel" : "Connect a YouTube channel"}>
         {form && (<div className="space-y-3">
           <div className="grid grid-cols-2 gap-2">
-            <input className={inp} placeholder="Label, e.g. My Channel" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
-            <input className={inp} placeholder="YouTube channel id (UC…)" value={form.ytChannelId} onChange={e => setForm({ ...form, ytChannelId: e.target.value.trim() })} />
-            <select className={inp} value={form.agentId} onChange={e => setForm({ ...form, agentId: e.target.value })} title="Default AI persona for this channel">
-              <option value="">AI persona: global default</option>
-              {agents.map(a => <option key={a.id} value={a.id}>AI persona: {a.name}</option>)}
+            <input className={inp} placeholder="Name, e.g. My Channel" aria-label="Channel name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+            <input className={inp} placeholder="YouTube channel id (UC…)" aria-label="YouTube channel id" value={form.ytChannelId} onChange={e => setForm({ ...form, ytChannelId: e.target.value.trim() })} />
+            <select className={inp} value={form.agentId} onChange={e => setForm({ ...form, agentId: e.target.value })} title="Which AI agent replies on this channel" aria-label="AI agent">
+              <option value="">AI agent: your default</option>
+              {agents.map(a => <option key={a.id} value={a.id}>AI agent: {a.name}</option>)}
             </select>
-            <select className={inp} value={form.kbTag} onChange={e => setForm({ ...form, kbTag: e.target.value })} title="AI on this channel answers only from KB docs with this tag. With no tag it reads the whole knowledge base, unless business isolation (AI Hub) is on. Tag docs in the AI Knowledge Base tab.">
-              <option value="">Knowledge: global (all docs)</option>
+            <select className={inp} value={form.kbTag} onChange={e => setForm({ ...form, kbTag: e.target.value })} aria-label="Knowledge" title="The AI on this channel answers only from documents with this tag. With no tag it reads all your documents, unless business isolation (AI Hub) is on. Tag documents in the AI Knowledge Base.">
+              <option value="">Knowledge: all documents</option>
               {kbTags.map(t => <option key={t} value={t}>Knowledge: {t}</option>)}
               {form.kbTag && !kbTags.includes(form.kbTag) && <option value={form.kbTag}>Knowledge: {form.kbTag}</option>}
             </select>
           </div>
-          <input className={`${inp} w-full font-mono`} placeholder={form.id ? "OAuth refresh token — leave blank to keep the current one" : "OAuth refresh token (youtube.force-ssl scope)"} value={form.token} onChange={e => setForm({ ...form, token: e.target.value.trim() })} />
+          <input className={`${inp} w-full font-mono`} aria-label="Google access code (refresh token)" placeholder={form.id ? "Google access code — leave blank to keep the current one" : "Google access code (refresh token, youtube.force-ssl)"} value={form.token} onChange={e => setForm({ ...form, token: e.target.value.trim() })} />
           <div className="flex items-center gap-3 flex-wrap">
-            <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={form.isDefault} onChange={e => setForm({ ...form, isDefault: e.target.checked })} /> default</label>
-            <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} /> active</label>
-            <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer" title="When ON, the AI publicly replies to comments that don't match a fixed rule (using this channel's persona + knowledge), and keeps the conversation going: when someone replies to its answer or tags the channel in that thread, it answers again (at most 6 replies per thread). When OFF, un-ruled comments are left untouched."><input type="checkbox" className="accent-brand-700" checked={form.commentAi} onChange={e => setForm({ ...form, commentAi: e.target.checked })} /> AI answers comments</label>
+            <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={form.isDefault} onChange={e => setForm({ ...form, isDefault: e.target.checked })} /> Default channel</label>
+            <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} /> On</label>
+            <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer" title="When on, the AI publicly replies to comments that don't match a fixed rule (using this channel's AI agent and knowledge), and keeps the conversation going: when someone replies to its answer or tags the channel in that thread, it answers again (at most 6 replies per thread). When off, comments no rule matches are left alone."><input type="checkbox" className="accent-brand-700" checked={form.commentAi} onChange={e => setForm({ ...form, commentAi: e.target.checked })} /> AI answers comments</label>
             <div className="flex-1" />
-            <button onClick={save} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save channel"}</button>
-            <button onClick={() => setForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
+            <button onClick={save} disabled={busy} className="min-h-10 px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save channel"}</button>
+            <button onClick={() => setForm(null)} className="min-h-10 px-2 py-1.5 text-xs font-semibold text-ink-500 hover:text-ink-900">Cancel</button>
           </div>
-          <p className="text-[11px] text-ink-400 bg-canvas rounded-control px-3 py-2">Comments are polled every few minutes (YouTube has no live webhook) and paced to stay within the daily limit.</p>
+          <p className="text-[12px] text-ink-500 bg-canvas rounded-control px-3 py-2">New comments are checked every few minutes and replies are paced to stay within YouTube&apos;s daily limit.</p>
           <Notice notice={note} />
         </div>)}
       </Drawer>
-      {!channels.length && !form && <p className="text-xs text-ink-400">No YouTube channels connected yet.</p>}
+      {!channels.length && !form && <p className="text-xs text-ink-500">No YouTube channel connected yet. Press <b>Connect with Google</b> and sign in with the Google account that owns your channel.</p>}
 
       {/* Comment automation — public reply + moderation */}
       <div className="border-t border-line pt-3 mt-1 space-y-3">
         <div className="flex items-center justify-between">
-          <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><MessageCircle className="w-3.5 h-3.5" /> Comment automation <span className="text-[10px] font-bold text-red-600 normal-case">· public reply + moderation</span></p>
-          <button onClick={() => { setMsg(null); if (!channels.length) { setMsg("Connect a YouTube channel first."); return; } if (channels.length > 1) { setRuleForm(null); setPickChannel(true); } else { setPickChannel(false); setRuleForm({ ...BLANK_RULE, channelId: channels[0]?.id ?? null }); } }} className="shrink-0 px-3 py-1.5 rounded-control bg-red-600 hover:bg-red-500 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New rule</button>
+          <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><MessageCircle className="w-3.5 h-3.5" /> Comment automation <span className="text-[11px] font-bold text-red-600 normal-case">· public replies and hiding spam</span></p>
+          <button onClick={() => { setMsg(null); if (!channels.length) { setMsg("Connect a YouTube channel first."); return; } if (channels.length > 1) { setRuleForm(null); setPickChannel(true); } else { setPickChannel(false); setRuleForm({ ...BLANK_RULE, channelId: channels[0]?.id ?? null }); } }} className="shrink-0 min-h-9 px-3 py-1.5 rounded-control bg-red-600 hover:bg-red-500 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New rule</button>
         </div>
-        <p className="text-[11px] text-ink-400">When someone comments, publicly reply under their comment and/or moderate it. Add a few reply variants and we rotate them so replies stay natural and don&apos;t trip YouTube&apos;s spam filters. Target one video or all videos, and gate by keyword.</p>
+        <p className="text-[12px] text-ink-500">When someone comments, reply publicly under their comment, hide it, or both. Add a few reply variants and we rotate them so replies stay natural and don&apos;t trip YouTube&apos;s spam filters. Target one video or all videos, and gate by keyword.</p>
         <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-control px-3 py-2">
           <b>Testing a rule?</b> Save the rule first, then post a <b>brand-new comment</b>. Each comment is answered only once, and comments posted before the rule existed are never revisited — so re-testing with the same comment will look like nothing happened. Hit <b>Check now</b> above to run immediately instead of waiting for the next automatic check.
         </p>
@@ -362,16 +368,16 @@ function YoutubeManager() {
                 ? <img src={thumb} alt="" className="w-14 h-10 rounded-lg object-cover shrink-0" />
                 : <div className="w-14 h-10 rounded-lg bg-red-50 text-red-600 flex items-center justify-center shrink-0"><Youtube className="w-4 h-4" /></div>}
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-ink-900 truncate">{r.name || (r.keyword ? `“${r.keyword}”` : "Any comment")}{channels.length > 1 && r.channelId && <span className="text-[10px] font-bold text-red-600"> · {channels.find(c => c.id === r.channelId)?.name ?? "YT"}</span>}{!r.enabled && <span className="text-[10px] font-bold text-red-700"> · OFF</span>}</p>
-                <p className="text-[11px] text-ink-400 truncate">{r.videoId ? `Video: ${(r.videoTitle || video?.title || r.videoId).slice(0, 34) || r.videoId}` : "All videos"} · {r.keyword ? `keyword “${r.keyword}”` : "any comment"} · {nReplies} repl{nReplies === 1 ? "y" : "ies"}{r.moderate !== "off" ? ` · ${MOD_LABEL[r.moderate]}` : ""} · {r.matchCount ?? 0} done</p>
+                <p className="text-sm font-semibold text-ink-900 truncate">{r.name || (r.keyword ? `“${r.keyword}”` : "Any comment")}{channels.length > 1 && r.channelId && <span className="text-[11px] font-bold text-red-600"> · {channels.find(c => c.id === r.channelId)?.name ?? "YouTube"}</span>}{!r.enabled && <span className="text-[11px] font-bold text-red-700"> · Off</span>}</p>
+                <p className="text-[11px] text-ink-500 truncate">{r.videoId ? `Video: ${(r.videoTitle || video?.title || r.videoId).slice(0, 34) || r.videoId}` : "All videos"} · {r.keyword ? `keyword “${r.keyword}”` : "any comment"} · {nReplies} repl{nReplies === 1 ? "y" : "ies"}{r.moderate !== "off" ? ` · ${MOD_LABEL[r.moderate]}` : ""} · {r.matchCount ?? 0} done</p>
               </div>
-              <label className="flex items-center gap-1 text-[11px] text-ink-500 cursor-pointer shrink-0"><input type="checkbox" className="accent-brand-700" checked={r.enabled} onChange={() => toggleRule(r)} /> on</label>
-              <button onClick={() => { setRuleForm({ ...r, name: r.name ?? "", keyword: r.keyword ?? "", publicReplies: (r.publicReplies ?? []).filter(Boolean), moderate: r.moderate ?? "off" }); setMsg(null); }} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
-              <button onClick={() => delRule(r.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
+              <label className="flex items-center gap-1 min-h-8 text-[12px] text-ink-600 cursor-pointer shrink-0"><input type="checkbox" className="accent-brand-700 w-4 h-4" checked={r.enabled} onChange={() => toggleRule(r)} /> On</label>
+              <button onClick={() => { setRuleForm({ ...r, name: r.name ?? "", keyword: r.keyword ?? "", publicReplies: (r.publicReplies ?? []).filter(Boolean), moderate: r.moderate ?? "off" }); setMsg(null); }} className="min-h-8 px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
+              <button onClick={() => delRule(r.id)} aria-label="Delete rule" className="grid place-items-center w-9 h-9 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
             </div>
           );
         })}
-        {!rules.length && !ruleForm && !pickChannel && <p className="text-xs text-ink-400">No comment rules yet — create one to auto-reply publicly under comments.</p>}
+        {!rules.length && !ruleForm && !pickChannel && <p className="text-xs text-ink-500">No comment rules yet. A rule replies with your own words when a comment contains certain words (like “price” or “link”) — press <b>New rule</b> to make one. Without rules the AI can still answer comments if it&apos;s turned on for the channel.</p>}
 
         {/* Step 1: pick the channel so videos are never mixed across channels. */}
         {pickChannel && (
@@ -382,7 +388,7 @@ function YoutubeManager() {
                 <button key={c.id} type="button" onClick={() => { setRuleForm({ ...BLANK_RULE, channelId: c.id }); setPickChannel(false); }}
                   className="flex items-center gap-2 border border-line rounded-control px-3 py-2 text-left hover:border-red-500 hover:bg-red-50 transition-colors">
                   <div className="w-8 h-8 rounded-lg bg-red-50 text-red-600 flex items-center justify-center shrink-0"><Youtube className="w-4 h-4" /></div>
-                  <div className="min-w-0"><p className="text-sm font-semibold text-ink-900 truncate">{c.name}</p><p className="text-[10px] text-ink-400 font-mono truncate">{c.ytChannelId}</p></div>
+                  <div className="min-w-0"><p className="text-sm font-semibold text-ink-900 truncate">{c.name}</p><p className="text-[11px] text-ink-500 font-mono truncate">{c.ytChannelId}</p></div>
                 </button>
               ))}
             </div>
@@ -398,7 +404,7 @@ function YoutubeManager() {
                 <button type="button" onClick={() => { setRuleForm(null); setPickChannel(true); }} className="text-ink-400 hover:text-ink-900 font-semibold">Change channel</button>
               </div>
             )}
-            <input className={`${inp} w-full`} placeholder="Rule name (internal)" value={ruleForm.name} onChange={e => setRuleForm({ ...ruleForm, name: e.target.value })} />
+            <input className={`${inp} w-full`} placeholder="Rule name (only your team sees this)" aria-label="Rule name" value={ruleForm.name} onChange={e => setRuleForm({ ...ruleForm, name: e.target.value })} />
             <div>
               <p className="text-[11px] font-bold text-ink-500 mb-1.5">Target video</p>
               <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5 max-h-60 overflow-y-auto pr-0.5">
@@ -410,7 +416,7 @@ function YoutubeManager() {
                     content is absolute inset-0 so nothing can stretch the box. */}
                 <button type="button" onClick={() => setRuleForm({ ...ruleForm, videoId: null, videoTitle: null, videoThumbnail: null })}
                   className={`relative w-full h-0 pb-[56.25%] rounded-lg border transition-colors ${!ruleForm.videoId ? "ring-2 ring-red-500 border-red-500 text-red-600 bg-red-50" : "border-line text-ink-500 hover:bg-canvas"}`}>
-                  <span className="absolute inset-0 flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold"><Youtube className="w-4 h-4" /> All</span>
+                  <span className="absolute inset-0 flex flex-col items-center justify-center gap-0.5 text-[11px] font-bold"><Youtube className="w-4 h-4" /> All</span>
                 </button>
                 {videos.map(v => {
                   const sel = ruleForm.videoId === v.id;
@@ -446,7 +452,7 @@ function YoutubeManager() {
                     value={v}
                     onChange={e => { const next = [...ruleForm.publicReplies]; next[i] = e.target.value; setRuleForm({ ...ruleForm, publicReplies: next }); }} />
                   <button type="button" onClick={() => setRuleForm({ ...ruleForm, publicReplies: ruleForm.publicReplies.filter((_, j) => j !== i) })}
-                    className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0" title="Remove reply"><Trash2 className="w-4 h-4" /></button>
+                    className="grid place-items-center w-9 h-9 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0" title="Remove reply" aria-label="Remove reply"><Trash2 className="w-4 h-4" /></button>
                 </div>
               ))}
               {ruleForm.publicReplies.length < MAX_PUBLIC_REPLIES && (
@@ -461,20 +467,20 @@ function YoutubeManager() {
               onChange={(on, message) => setRuleForm({ ...ruleForm, waHandoff: on, waHandoffMessage: message })} />
             {/* Moderation */}
             <div className="rounded-control bg-canvas border border-line p-2.5 space-y-1.5">
-              <label className="flex items-center gap-1.5 text-[11px] font-bold text-ink-600"><ShieldAlert className="w-3.5 h-3.5" /> Moderation on match</label>
+              <label className="flex items-center gap-1.5 text-[11px] font-bold text-ink-600"><ShieldAlert className="w-3.5 h-3.5" /> Hide matching comments?</label>
               <select className={`${inp} w-full`} value={ruleForm.moderate} onChange={e => setRuleForm({ ...ruleForm, moderate: e.target.value as Moderate })}>
-                <option value="off">No moderation — just reply</option>
+                <option value="off">Don&apos;t hide — just reply</option>
                 <option value="hold_spam">Hold for review — hide until you approve</option>
                 <option value="reject_spam">Reject — hide the comment</option>
               </select>
-              <p className="text-[11px] text-ink-400">Use a keyword-gated rule with moderation to auto-hide spam or abusive comments. Leave the reply blank to moderate silently.</p>
+              <p className="text-[11px] text-ink-400">Pair trigger words with hiding to remove spam or abuse automatically. Leave the replies empty to hide without replying.</p>
             </div>
 
             <div className="flex items-center gap-3 flex-wrap">
-              <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={ruleForm.enabled} onChange={e => setRuleForm({ ...ruleForm, enabled: e.target.checked })} /> enabled</label>
+              <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={ruleForm.enabled} onChange={e => setRuleForm({ ...ruleForm, enabled: e.target.checked })} /> On</label>
               <div className="flex-1" />
-              <button onClick={saveRule} disabled={ruleBusy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{ruleBusy ? "Saving…" : "Save rule"}</button>
-              <button onClick={() => setRuleForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
+              <button onClick={saveRule} disabled={ruleBusy} className="min-h-10 px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{ruleBusy ? "Saving…" : "Save rule"}</button>
+              <button onClick={() => setRuleForm(null)} className="min-h-10 px-2 py-1.5 text-xs font-semibold text-ink-500 hover:text-ink-900">Cancel</button>
             </div>
             <Notice notice={note} />
           </div>)}

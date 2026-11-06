@@ -7,6 +7,7 @@
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { inp } from "../_shared";
+import { toast } from "@/components/toast";
 import { BUSINESS_PRESETS, BUSINESS_TYPES, LANGUAGE_LABELS, type BusinessType, type ReplyLanguage } from "@/lib/review-presets";
 
 interface Overridable {
@@ -46,7 +47,8 @@ export function LocationSettings({ locations, workspace }: { locations: { id: st
         body: JSON.stringify({ channelId: id, overrides: own ? f : null }),
       });
       const d = await r.json().catch(() => ({}));
-      setNote(r.ok ? { ok: true, text: own ? "Saved for this location." : "This location now uses the workspace settings." } : { ok: false, text: d.error || "Couldn't save." });
+      if (r.ok) { setNote(null); toast(own ? `Saved for ${locations.find(l => l.id === id)?.name ?? "this location"}` : "This location now uses your main review settings"); }
+      else setNote({ ok: false, text: d.error || "Couldn't save. Please try again." });
     } finally { setSaving(false); }
   }
 
@@ -109,7 +111,7 @@ export function LocationSettings({ locations, workspace }: { locations: { id: st
           </div>
         )}
         <div className="flex items-center gap-3">
-          <button type="button" onClick={save} disabled={saving || !id} className="rounded-control bg-ink-900 px-4 py-2 text-xs font-semibold text-white disabled:opacity-60">{saving ? "Saving…" : `Save for ${name}`}</button>
+          <button type="button" onClick={save} disabled={saving || !id} title={!id ? "Choose a location first" : undefined} className="min-h-10 rounded-control bg-ink-900 px-4 py-2 text-xs font-semibold text-white disabled:opacity-60">{saving ? "Saving…" : `Save for ${name}`}</button>
           {note && <span className={`text-xs ${note.ok ? "text-emerald-700" : "text-red-700"}`} role="status">{note.text}</span>}
         </div>
         <p className="text-[11px] text-ink-500">Approval topics and alerts are set for the whole workspace.</p>

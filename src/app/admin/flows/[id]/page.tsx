@@ -7,6 +7,7 @@ import { templatePlaceholders, paramCount } from "@/lib/template-params";
 
 import { createContext, use, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast, Toaster } from "@/components/toast";
 import {
   ReactFlow, ReactFlowProvider, Background, BackgroundVariant, Controls, MiniMap, addEdge,
   useNodesState, useEdgesState, Handle, Position, useReactFlow,
@@ -101,10 +102,10 @@ function Shell({ id, type, selected, children, target = true, foot }: {
         <button title="Delete" onClick={() => deleteElements({ nodes: [{ id }] })} className="nodrag opacity-0 group-hover:opacity-100 p-1 text-ink-400 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
       </div>
       <div className="p-2.5 space-y-1.5">{children}</div>
-      {foot && <p className="px-2.5 pb-2 -mt-1 text-[10px] text-ink-400">{foot}</p>}
+      {foot && <p className="px-2.5 pb-2 -mt-1 text-[11px] text-ink-400">{foot}</p>}
       {problems.length > 0 && (
         <div className="mx-2 mb-2 rounded-lg bg-red-50 border border-red-100 px-2.5 py-1.5 space-y-0.5">
-          {problems.map((p, i) => <p key={i} className="flex items-start gap-1 text-[10px] leading-snug text-red-600"><AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" /> {p}</p>)}
+          {problems.map((p, i) => <p key={i} className="flex items-start gap-1 text-[11px] leading-snug text-red-600"><AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" /> {p}</p>)}
         </div>
       )}
     </div>
@@ -133,29 +134,29 @@ function ReminderFields({ data, set }: { data: NodeData; set: (p: NodeData) => v
     <div className="border-t border-line pt-1.5 mt-1.5 space-y-1.5">
       <div className="flex items-center gap-1.5">
         <BellRing className="w-3 h-3 text-ink-400" />
-        <span className="text-[10px] font-bold text-ink-400">No-reply reminders</span>
+        <span className="text-[11px] font-bold text-ink-400">No-reply reminders</span>
       </div>
       {reminders.map((r, i) => (
         <div key={i} className="space-y-1">
           <div className="flex items-center gap-1.5">
-            <span className="text-[10px] text-ink-400 w-[68px] shrink-0">{i === 0 ? "If no reply in" : "then after"}</span>
+            <span className="text-[11px] text-ink-400 w-[68px] shrink-0">{i === 0 ? "If no reply in" : "then after"}</span>
             <input type="number" min={1} max={1380} className={`${inp} !w-14 !py-0.5`} placeholder="min"
               value={r.minutes || ""} onChange={e => update(i, { minutes: Math.max(0, parseInt(e.target.value || "0", 10)) })} />
-            <span className="text-[10px] text-ink-400">min, send:</span>
+            <span className="text-[11px] text-ink-400">min, send:</span>
           </div>
           <input className={inp} maxLength={1024} placeholder="Reminder message, e.g. Still there? Pick an option 👆"
             value={r.text} onChange={e => update(i, { text: e.target.value })} />
         </div>
       ))}
       <div className="flex items-center gap-3">
-        <button type="button" className="nodrag text-[10px] font-bold text-brand-700 hover:underline"
+        <button type="button" className="nodrag text-[11px] font-bold text-brand-700 hover:underline"
           onClick={() => save([...reminders, { minutes: reminders.length ? 180 : 1, text: "" }])}>+ add reminder</button>
         {reminders.length > 0 && (
-          <button type="button" className="nodrag text-[10px] font-bold text-ink-400 hover:text-red-500"
+          <button type="button" className="nodrag text-[11px] font-bold text-ink-400 hover:text-red-500"
             onClick={() => save(reminders.slice(0, -1))}>− remove last</button>
         )}
       </div>
-      {reminders.length > 1 && <p className="text-[10px] text-ink-300 leading-snug">Each delay counts from the previous reminder. Free-text only sends inside WhatsApp&apos;s 24h window.</p>}
+      {reminders.length > 1 && <p className="text-[11px] text-ink-300 leading-snug">Each delay counts from the previous reminder. Free-text only sends inside WhatsApp&apos;s 24h window.</p>}
     </div>
   );
 }
@@ -173,7 +174,7 @@ function useSet(id: string) {
 }
 function Counter({ value, max }: { value: string; max: number }) {
   if (!value) return null;
-  return <p className={`text-right text-[9px] -mt-1 ${value.length >= max ? "text-red-700 font-bold" : "text-ink-400"}`}>{value.length}/{max}</p>;
+  return <p className={`text-right text-[11px] -mt-1 ${value.length >= max ? "text-red-700 font-bold" : "text-ink-400"}`}>{value.length}/{max}</p>;
 }
 
 // ── Node types ────────────────────────────────────────────────────────────────
@@ -181,7 +182,7 @@ function StartNode() {
   return (
     <div className="bg-gradient-to-br from-brand-600 to-brand-900 text-white rounded-xl px-4 py-3 shadow w-44">
       <p className="text-xs font-bold flex items-center gap-1.5"><Play className="w-3.5 h-3.5" /> Flow start</p>
-      <p className="text-[10px] text-white/70 mt-0.5">Fires on the trigger keywords set in the top bar.</p>
+      <p className="text-[11px] text-white/70 mt-0.5">Fires on the trigger keywords set in the top bar.</p>
       <Handle type="source" position={Position.Right} className="!bg-white !border-brand-700" />
     </div>
   );
@@ -209,7 +210,7 @@ function SequenceNode({ id, type, selected, data }: NodeProps) {
             <select className={`${inp} !w-auto !py-0.5`} value={p.kind} onChange={e => setPart(i, { kind: e.target.value as SeqPart["kind"] })}>
               <option value="text">Text</option><option value="image">Image</option><option value="video">Video</option><option value="document">Document</option>
             </select>
-            <span className="text-[9px] text-ink-400 flex-1 text-right">part {i + 1}</span>
+            <span className="text-[11px] text-ink-400 flex-1 text-right">part {i + 1}</span>
             {parts.length > 1 && <button className="nodrag p-0.5 text-ink-400 hover:text-red-500" onClick={() => set({ parts: parts.filter((_, j) => j !== i) })}><X className="w-3 h-3" /></button>}
           </div>
           {p.kind === "text"
@@ -224,7 +225,7 @@ function SequenceNode({ id, type, selected, data }: NodeProps) {
         </div>
       ))}
       {parts.length < 10 && (
-        <button className="nodrag text-[10px] font-bold text-brand-700 hover:underline" onClick={() => set({ parts: [...parts, { kind: "text" }] })}>+ add part</button>
+        <button className="nodrag text-[11px] font-bold text-brand-700 hover:underline" onClick={() => set({ parts: [...parts, { kind: "text" }] })}>+ add part</button>
       )}
       <Handle type="source" position={Position.Right} className="!bg-brand-500 !border-white" />
     </Shell>
@@ -261,8 +262,8 @@ function ListNode({ id, type, selected, data }: NodeProps) {
         </OptionRow>
       ))}
       <div className="flex gap-2">
-        <button className="nodrag text-[10px] font-bold text-brand-700 hover:underline" onClick={() => rows.length < 10 && set({ rows: [...rows, { id: `row${rows.length + 1}`, title: "" }] })}>+ add option</button>
-        {rows.length > 1 && <button className="nodrag text-[10px] font-bold text-ink-400 hover:text-red-500" onClick={() => set({ rows: rows.slice(0, -1) })}>− remove last</button>}
+        <button className="nodrag text-[11px] font-bold text-brand-700 hover:underline" onClick={() => rows.length < 10 && set({ rows: [...rows, { id: `row${rows.length + 1}`, title: "" }] })}>+ add option</button>
+        {rows.length > 1 && <button className="nodrag text-[11px] font-bold text-ink-400 hover:text-red-500" onClick={() => set({ rows: rows.slice(0, -1) })}>− remove last</button>}
       </div>
       <input className={inp} placeholder="Save selection to attribute (optional, e.g. interest)" value={str(data.saveAs)} onChange={e => set({ saveAs: e.target.value })} />
       <ReminderFields data={data} set={set} />
@@ -343,8 +344,8 @@ function ConditionNode({ id, type, selected, data }: NodeProps) {
         <option value="equals">equals</option><option value="contains">contains</option>
       </select>
       <input className={inp} placeholder="Value" value={str(data.value)} onChange={e => set({ value: e.target.value })} />
-      <OptionRow id="yes"><p className="inline-flex items-center justify-end gap-1 w-full text-[10px] font-bold text-brand-600 pr-1"><Check className="w-3 h-3" /> yes</p></OptionRow>
-      <OptionRow id="no"><p className="inline-flex items-center justify-end gap-1 w-full text-[10px] font-bold text-red-700 pr-1"><X className="w-3 h-3" /> no</p></OptionRow>
+      <OptionRow id="yes"><p className="inline-flex items-center justify-end gap-1 w-full text-[11px] font-bold text-brand-600 pr-1"><Check className="w-3 h-3" /> yes</p></OptionRow>
+      <OptionRow id="no"><p className="inline-flex items-center justify-end gap-1 w-full text-[11px] font-bold text-red-700 pr-1"><X className="w-3 h-3" /> no</p></OptionRow>
     </Shell>
   );
 }
@@ -357,13 +358,13 @@ function HoursNode({ id, type, selected, data }: NodeProps) {
         <select className={inp} value={Number(data.start ?? 10)} onChange={e => set({ start: Number(e.target.value) })}>
           {hours.map(h => <option key={h} value={h}>{h}:00</option>)}
         </select>
-        <span className="text-[10px] text-ink-400">to</span>
+        <span className="text-[11px] text-ink-400">to</span>
         <select className={inp} value={Number(data.end ?? 19)} onChange={e => set({ end: Number(e.target.value) })}>
           {hours.map(h => <option key={h} value={h}>{h}:00</option>)}
         </select>
       </div>
-      <OptionRow id="open"><p className="text-[10px] font-bold text-brand-600 text-right pr-1">● open</p></OptionRow>
-      <OptionRow id="closed"><p className="text-[10px] font-bold text-amber-700 text-right pr-1">○ closed</p></OptionRow>
+      <OptionRow id="open"><p className="text-[11px] font-bold text-brand-600 text-right pr-1">● open</p></OptionRow>
+      <OptionRow id="closed"><p className="text-[11px] font-bold text-amber-700 text-right pr-1">○ closed</p></OptionRow>
     </Shell>
   );
 }
@@ -414,7 +415,7 @@ function ProductNode({ id, type, selected, data }: NodeProps) {
             <option value="">{prods.length ? "— pick a product —" : "No products yet — add them in Catalog"}</option>
             {prods.map(p => <option key={p.id} value={p.id}>{p.name}{p.buttonText ? ` · “${p.buttonText}”` : ""}</option>)}
           </select>
-          {sel && !sel.buttonUrl && <p className="text-[10px] text-amber-700">This product has no button link — add one in Catalog or it won’t send.</p>}
+          {sel && !sel.buttonUrl && <p className="text-[11px] text-amber-700">This product has no button link — add one in Catalog or it won’t send.</p>}
         </>
       ) : (
         <>
@@ -435,7 +436,7 @@ function ProductListNode({ id, type, selected, data }: NodeProps) {
       <textarea className={inp} rows={2} maxLength={1024} placeholder="Message text above the cards…" value={str(data.text)} onChange={e => set({ text: e.target.value })} />
       <input className={inp} placeholder="Catalog ID (Commerce Manager)" value={str(data.catalogId)} onChange={e => set({ catalogId: e.target.value })} />
       <textarea className={inp} rows={3} placeholder={"Product retailer IDs — one per line\nSKU-101\nSKU-102"} value={str(data.products)} onChange={e => set({ products: e.target.value })} />
-      <p className="text-right text-[9px] text-ink-400 -mt-1">{ids.length}/30 products</p>
+      <p className="text-right text-[11px] text-ink-400 -mt-1">{ids.length}/30 products</p>
       <Handle type="source" position={Position.Right} className="!bg-brand-500 !border-white" />
     </Shell>
   );
@@ -458,7 +459,7 @@ function CarouselTemplateNode({ id, type, selected, data }: NodeProps) {
             <select className={`${inp} !w-auto !py-0.5`} value={c.kind ?? "image"} onChange={e => setCard(i, { kind: e.target.value as CarouselCard["kind"] })}>
               <option value="image">Image</option><option value="video">Video</option>
             </select>
-            <span className="text-[9px] text-ink-400 flex-1 text-right">card {i + 1}</span>
+            <span className="text-[11px] text-ink-400 flex-1 text-right">card {i + 1}</span>
             {cards.length > 2 && <button className="nodrag p-0.5 text-ink-400 hover:text-red-500" onClick={() => set({ cards: cards.filter((_, j) => j !== i) })}><X className="w-3 h-3" /></button>}
           </div>
           <div className="flex items-center gap-1.5">
@@ -469,7 +470,7 @@ function CarouselTemplateNode({ id, type, selected, data }: NodeProps) {
         </div>
       ))}
       {cards.length < 10 && (
-        <button className="nodrag text-[10px] font-bold text-brand-700 hover:underline" onClick={() => set({ cards: [...cards, { kind: "image" }] })}>+ add card</button>
+        <button className="nodrag text-[11px] font-bold text-brand-700 hover:underline" onClick={() => set({ cards: [...cards, { kind: "image" }] })}>+ add card</button>
       )}
       <Handle type="source" position={Position.Right} className="!bg-brand-500 !border-white" />
     </Shell>
@@ -510,7 +511,7 @@ function TemplateNode({ id, type, selected, data }: NodeProps) {
       </select>
       {isCarousel ? (
         <>
-          <p className="text-[10px] text-amber-700 leading-snug">Carousel template — add each card&apos;s image/video below (Meta needs it at send time).</p>
+          <p className="text-[11px] text-amber-700 leading-snug">Carousel template — add each card&apos;s image/video below (Meta needs it at send time).</p>
           <input className={inp} placeholder="Bubble {{1}},{{2}}… (optional)" value={str(data.bubbleParams)} onChange={e => set({ bubbleParams: e.target.value })} />
           {cards.map((c, i) => (
             <div key={i} className="border border-line rounded-lg p-1.5 space-y-1 bg-canvas/50">
@@ -518,7 +519,7 @@ function TemplateNode({ id, type, selected, data }: NodeProps) {
                 <select className={`${inp} !w-auto !py-0.5`} value={c.kind ?? "image"} onChange={e => setCard(i, { kind: e.target.value as CarouselCard["kind"] })}>
                   <option value="image">Image</option><option value="video">Video</option>
                 </select>
-                <span className="text-[9px] text-ink-400 flex-1 text-right">card {i + 1}</span>
+                <span className="text-[11px] text-ink-400 flex-1 text-right">card {i + 1}</span>
                 {cards.length > 2 && <button className="nodrag p-0.5 text-ink-400 hover:text-red-500" onClick={() => set({ cards: cards.filter((_, j) => j !== i) })}><X className="w-3 h-3" /></button>}
               </div>
               <div className="flex items-center gap-1.5">
@@ -528,7 +529,7 @@ function TemplateNode({ id, type, selected, data }: NodeProps) {
               <input className={inp} placeholder="Card {{1}},{{2}}… (optional)" value={c.bodyParams ?? ""} onChange={e => setCard(i, { bodyParams: e.target.value })} />
             </div>
           ))}
-          {cards.length < 10 && <button className="nodrag text-[10px] font-bold text-brand-700 hover:underline" onClick={() => set({ cards: [...cards, { kind: "image" }] })}>+ add card</button>}
+          {cards.length < 10 && <button className="nodrag text-[11px] font-bold text-brand-700 hover:underline" onClick={() => set({ cards: [...cards, { kind: "image" }] })}>+ add card</button>}
         </>
       ) : (
         <>
@@ -541,7 +542,7 @@ function TemplateNode({ id, type, selected, data }: NodeProps) {
           {Array.from({ length: varCount }).map((_, i) => (
             <input key={i} className={inp} placeholder={`Value for {{${i + 1}}}`} value={params[i] ?? ""} onChange={e => setParam(i, e.target.value)} />
           ))}
-          {sel && bodyText && <p className="text-[10px] text-ink-400 line-clamp-2">{bodyText}</p>}
+          {sel && bodyText && <p className="text-[11px] text-ink-400 line-clamp-2">{bodyText}</p>}
         </>
       )}
       <Handle type="source" position={Position.Right} className="!bg-brand-500 !border-white" />
@@ -760,7 +761,7 @@ function AdTriggersPanel({ flowId, onClose }: { flowId: string; onClose: () => v
             <div className="space-y-1">
               {triggers.map(t => (
                 <div key={`${t.scope}:${t.refId}`} className="flex items-center gap-2 px-2.5 py-1.5 rounded-control bg-canvas">
-                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${t.scope === "ad" ? "bg-ink-950 text-white" : "bg-brand-100 text-brand-700"}`}>{t.scope === "ad" ? "AD" : "CAMPAIGN"}</span>
+                  <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full ${t.scope === "ad" ? "bg-ink-950 text-white" : "bg-brand-100 text-brand-700"}`}>{t.scope === "ad" ? "AD" : "CAMPAIGN"}</span>
                   <span className="text-xs text-ink-800 flex-1 truncate" title={t.refId}>{t.label || t.refId}</span>
                   <button onClick={() => remove(t)} className="text-ink-400 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
                 </div>
@@ -935,7 +936,7 @@ function Editor({ flowId }: { flowId: string }) {
       // flashing "Saved ✓" over a 500 that silently dropped the change.
       if (!res.ok) {
         const msg = await res.json().then(d => d?.error).catch(() => null);
-        alert(msg || "Couldn't save the flow — please try again.");
+        toast({ text: msg || "Couldn't save the flow — please try again.", tone: "error" });
         return;
       }
       setSavedAt(Date.now());
@@ -1000,7 +1001,7 @@ function Editor({ flowId }: { flowId: string }) {
 
       {/* Config strip — how it triggers · where it runs · what it knows */}
       <div className="px-4 h-11 shrink-0 bg-white border-b border-line flex items-center gap-2.5 z-20">
-        <span className="text-[10px] font-bold text-ink-400 uppercase tracking-wide shrink-0">Triggers</span>
+        <span className="text-[11px] font-bold text-ink-400 uppercase tracking-wide shrink-0">Triggers</span>
         <input className="border border-line rounded-control px-2.5 py-1 text-xs w-[220px] shrink-0 bg-white text-ink-900 placeholder:text-ink-400" placeholder="Keywords: hi, hello, menu" title="A message matching any of these starts the flow. To trigger from a template's quick-reply button, add the button's exact label here." value={keywords} onChange={e => setKeywords(e.target.value)} />
         <div className="relative shrink-0">
           <button onClick={() => setShowAdTriggers(v => !v)} className="flex items-center gap-1.5 px-2.5 py-1 rounded-control border border-line text-ink-600 hover:bg-canvas text-xs font-semibold whitespace-nowrap"><Flag className="w-3.5 h-3.5" /> Ad triggers</button>
@@ -1009,7 +1010,7 @@ function Editor({ flowId }: { flowId: string }) {
 
         <div className="h-5 w-px bg-line shrink-0" />
 
-        <span className="text-[10px] font-bold text-ink-400 uppercase tracking-wide shrink-0">Channels</span>
+        <span className="text-[11px] font-bold text-ink-400 uppercase tracking-wide shrink-0">Channels</span>
         <div className="flex items-center gap-1 shrink-0" title="Tick the channels this flow should run on">
           {FLOW_CHANNELS.map(c => {
             const on = parseKinds(platform).has(c.k);
@@ -1054,7 +1055,7 @@ function Editor({ flowId }: { flowId: string }) {
                       All numbers &amp; accounts
                     </button>
                     {hidden.length > 0 && (
-                      <p className="px-2 py-1.5 mt-1 text-[10px] text-amber-700 bg-amber-50 rounded leading-snug flex items-start gap-1"><AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" /> Pinned to {hidden.length} number/account not on the platforms toggled above. Pick “All numbers” to clear.</p>
+                      <p className="px-2 py-1.5 mt-1 text-[11px] text-amber-700 bg-amber-50 rounded leading-snug flex items-start gap-1"><AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" /> Pinned to {hidden.length} number/account not on the platforms toggled above. Pick “All numbers” to clear.</p>
                     )}
                     <div className="h-px bg-line my-1" />
                     {opts.map(c => {
@@ -1064,7 +1065,7 @@ function Editor({ flowId }: { flowId: string }) {
                           className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${chosen ? "bg-brand-50 text-brand-700" : "text-ink-600 hover:bg-canvas"}`}>
                           <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${chosen ? "bg-brand-600 border-brand-600" : "border-line"}`}>{chosen && <Check className="w-2.5 h-2.5 text-white" />}</span>
                           <span className="truncate">{c.name}</span>
-                          <span className="ml-auto text-[10px] text-ink-400 shrink-0">{kindNoun(c.kind)}</span>
+                          <span className="ml-auto text-[11px] text-ink-400 shrink-0">{kindNoun(c.kind)}</span>
                         </button>
                       );
                     })}
@@ -1077,7 +1078,7 @@ function Editor({ flowId }: { flowId: string }) {
 
         <div className="h-5 w-px bg-line shrink-0" />
 
-        <span className="text-[10px] font-bold text-ink-400 uppercase tracking-wide shrink-0">Knowledge</span>
+        <span className="text-[11px] font-bold text-ink-400 uppercase tracking-wide shrink-0">Knowledge</span>
         <select className="border border-line rounded-control px-2 py-1 text-xs bg-white text-ink-900 shrink-0" value={primaryKbTag} onChange={e => setPrimaryKbTag(e.target.value)} title="AI in this flow answers from KB docs with this tag first, then falls back to the default knowledge base. Tag docs in the AI Assistant tab.">
           <option value="">Default knowledge</option>
           {kbTags.map(t => <option key={t} value={t}>{t} first</option>)}
@@ -1120,7 +1121,7 @@ function Editor({ flowId }: { flowId: string }) {
                 </div>
               );
             })}
-            <p className="text-[10px] text-ink-400 leading-relaxed pt-1">Connect the green dots. Delete with ⌫. Off-script replies fall through to the AI assistant.</p>
+            <p className="text-[11px] text-ink-400 leading-relaxed pt-1">Connect the green dots. Delete with ⌫. Off-script replies fall through to the AI assistant.</p>
           </div>
         </aside>
 
@@ -1148,8 +1149,8 @@ function Editor({ flowId }: { flowId: string }) {
               <p className="text-xs font-bold text-ink-600 uppercase flex items-center gap-1.5"><Play className="w-3.5 h-3.5" /> Simulator</p>
               <div className="flex items-center gap-1.5">
                 <div className="flex rounded-full bg-canvas p-0.5 border border-line">
-                  <button onClick={() => setSimView("whatsapp")} title="WhatsApp view" className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition-colors ${!simIg ? "bg-[#25d366] text-white" : "text-ink-500 hover:text-ink-900"}`}>WhatsApp</button>
-                  <button onClick={() => setSimView("instagram")} title="Instagram view" className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition-colors ${simIg ? "bg-gradient-to-r from-[#feda75] via-[#d62976] to-[#962fbf] text-white" : "text-ink-500 hover:text-ink-900"}`}>Instagram</button>
+                  <button onClick={() => setSimView("whatsapp")} title="WhatsApp view" className={`px-2 py-0.5 rounded-full text-[11px] font-bold transition-colors ${!simIg ? "bg-[#25d366] text-white" : "text-ink-500 hover:text-ink-900"}`}>WhatsApp</button>
+                  <button onClick={() => setSimView("instagram")} title="Instagram view" className={`px-2 py-0.5 rounded-full text-[11px] font-bold transition-colors ${simIg ? "bg-gradient-to-r from-[#feda75] via-[#d62976] to-[#962fbf] text-white" : "text-ink-500 hover:text-ink-900"}`}>Instagram</button>
                 </div>
                 <button onClick={async () => { setSimLog([]); await fetch(`/api/admin/flows/${flowId}/simulate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reset: true }) }); }} title="Reset conversation" className="text-ink-400 hover:text-red-500 p-1"><Trash2 className="w-3.5 h-3.5" /></button>
               </div>
@@ -1159,7 +1160,7 @@ function Editor({ flowId }: { flowId: string }) {
               <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold ${simIg ? "bg-gradient-to-tr from-[#feda75] via-[#d62976] to-[#962fbf] text-white" : "bg-white/20 text-white"}`}>{simIg ? "@" : "B"}</div>
               <div className="min-w-0">
                 <p className={`text-xs font-semibold truncate ${simIg ? "text-ink-900" : "text-white"}`}>{name.trim() || "Your business"}</p>
-                <p className={`text-[10px] ${simIg ? "text-ink-400" : "text-white/70"}`}>{simIg ? "Instagram · Active now" : "online"}</p>
+                <p className={`text-[11px] ${simIg ? "text-ink-400" : "text-white/70"}`}>{simIg ? "Instagram · Active now" : "online"}</p>
               </div>
             </div>
             {/* Conversation thread */}
@@ -1202,6 +1203,8 @@ export default function FlowEditorPage({ params }: { params: Promise<{ id: strin
   return (
     <ReactFlowProvider>
       <Editor flowId={id} />
+      {/* The flow editor is its own page, outside the portal shell that mounts one. */}
+      <Toaster />
     </ReactFlowProvider>
   );
 }

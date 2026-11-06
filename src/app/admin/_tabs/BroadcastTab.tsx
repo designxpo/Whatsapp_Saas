@@ -1,4 +1,5 @@
 "use client";
+import { toast } from "@/components/toast";
 import { Notice, useNotice } from "@/components/Notice";
 import { PageInfo } from "@/components/PageInfo";
 import { templatePlaceholders, paramCount, isNamedFormat } from "@/lib/template-params";
@@ -703,11 +704,14 @@ function ApiBroadcasting() {
       });
       const d = await res.json();
       if (!res.ok) setMsg(d.error || "Save failed");
-      else { setEditing(null); load(); }
+      else { toast(`Rule “${editing.name.trim()}” saved`); setEditing(null); load(); }
     } finally { setSaving(false); }
   }
   async function toggleRule(r: UiRule) {
-    await fetch("/api/admin/api-rules", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: r.id, active: !r.active }) });
+    const res = await fetch("/api/admin/api-rules", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: r.id, active: !r.active }) }).catch(() => null);
+    if (!res?.ok) toast({ text: "Couldn't change the rule. Please try again.", tone: "error" });
+    // Turning a rule off is undone by turning it back on.
+    else toast(r.active ? { text: `“${r.name}” turned off`, action: { label: "Undo", onClick: () => void toggleRule({ ...r, active: false }) } } : `“${r.name}” turned on`);
     load();
   }
   async function removeRule(id: string) {
@@ -715,7 +719,8 @@ function ApiBroadcasting() {
       title: "Delete this rule?", tone: "danger", confirmLabel: "Delete rule",
       message: "Sends already queued by it are cancelled and will not go out.",
     }))) return;
-    await fetch("/api/admin/api-rules", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+    const res = await fetch("/api/admin/api-rules", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }).catch(() => null);
+    if (res?.ok) toast("Rule deleted"); else toast({ text: "Couldn't delete the rule. Please try again.", tone: "error" });
     load();
   }
 
@@ -743,12 +748,12 @@ function ApiBroadcasting() {
     <div className="max-w-4xl space-y-5">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-xl font-extrabold text-brand-dark">API broadcasting</h2><p className="text-sm text-slate-500">Your systems fire one event — the rules you define here decide what gets sent, to whom, and when.</p>
+          <h2 className="text-xl font-extrabold text-brand-dark">API broadcasting</h2><p className="text-sm text-slate-500">Send a WhatsApp message automatically when something happens in your other software — an order placed, a demo booked, a bill paid. Your software (or your developer) tells us what happened; the rules here decide which approved message goes out, to whom, and when.</p>
         </div>
         <button onClick={() => openEdit()} className="shrink-0 px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold flex items-center gap-2"><Plus className="w-4 h-4" /> New rule</button>
       </div>
 
-      {notice && <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">{notice} — apply migration <code className="font-mono">0012_api_rules.sql</code> in Supabase.</div>}
+      {notice && <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">Automatic messages from your other systems aren&apos;t set up for your workspace yet. Contact support to turn them on.</div>}
 
       <section className="bg-slate-900 rounded-card p-5 space-y-3">
         <div className="flex items-center justify-between">
@@ -871,7 +876,7 @@ function ApiBroadcasting() {
       <div className="space-y-2">
         {rules.map(r => (
           <div key={r.id} className={`bg-white rounded-card border p-4 flex items-center gap-4 ${r.active ? "border-line" : "border-slate-100 opacity-60"}`}>
-            <button onClick={() => toggleRule(r)} title={r.active ? "Deactivate" : "Activate"}
+            <button onClick={() => toggleRule(r)} title={r.active ? "Turn off" : "Turn on"} role="switch" aria-checked={r.active} aria-label={`${r.name}: ${r.active ? "on" : "off"}`}
               className={`w-9 h-5 rounded-full relative transition-colors shrink-0 ${r.active ? "bg-brand-green" : "bg-slate-200"}`}>
               <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${r.active ? "left-4.5 right-0.5" : "left-0.5"}`} style={{ left: r.active ? "1.125rem" : "0.125rem" }} />
             </button>
@@ -887,10 +892,10 @@ function ApiBroadcasting() {
               </p>
             </div>
             <button onClick={() => openEdit(r)} className="px-3 py-1.5 rounded-lg border border-line text-xs font-bold text-slate-500 hover:bg-slate-50 shrink-0">Edit</button>
-            <button onClick={() => removeRule(r.id!)} className="p-1.5 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
+            <button onClick={() => removeRule(r.id!)} aria-label={`Delete ${r.name}`} className="grid place-items-center w-9 h-9 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
           </div>
         ))}
-        {rules.length === 0 && !notice && <p className="text-center text-slate-400 text-sm py-6">No rules yet — create one above, then fire the event from your system.</p>}
+        {rules.length === 0 && !notice && <p className="text-center text-slate-500 text-sm py-6">No rules yet. Press <b>New rule</b>, give it the event name your software sends (e.g. order_placed) and pick an approved template — then ask your developer to send that event.</p>}
       </div>
 
       <section className="bg-white rounded-card border border-line p-5 space-y-3">
@@ -944,16 +949,23 @@ function AutomationsTab() {
     if (!templateName.trim()) return;
     setSaving(true);
     try {
-      await fetch("/api/admin/automations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trigger, triggerKey: triggerKey.trim() || null, templateName: templateName.trim(), variables: variables.split(/\r?\n/).map(v => v.trim()).filter(Boolean), delayValue, delayUnit }) });
+      const r = await fetch("/api/admin/automations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trigger, triggerKey: triggerKey.trim() || null, templateName: templateName.trim(), variables: variables.split(/\r?\n/).map(v => v.trim()).filter(Boolean), delayValue, delayUnit }) }).catch(() => null);
+      if (!r?.ok) { toast({ text: "Couldn't save the auto-send. Please try again.", tone: "error" }); return; }
+      toast("Auto-send saved");
       setTemplateName(""); setTriggerKey(""); load();
     } finally { setSaving(false); }
   }
-  async function disable(id: string) { await fetch("/api/admin/automations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, enabled: false }) }); load(); }
+  async function disable(id: string) {
+    const r = await fetch("/api/admin/automations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, enabled: false }) }).catch(() => null);
+    if (r?.ok) toast("Auto-send turned off");
+    else toast({ text: "Couldn't turn it off. Please try again.", tone: "error" });
+    load();
+  }
 
   return (
     <div className="max-w-2xl space-y-5">
       <div>
-        <h2 className="text-xl font-extrabold text-brand-dark">Auto-sends</h2><PageInfo className="text-sm text-slate-500" lead={<>Simple fixed-template triggers (welcome on contact added, legacy named events).</>}>For conditional sends with payload variables, windows and caps, use <b>API broadcasting</b>.</PageInfo>
+        <h2 className="text-xl font-extrabold text-brand-dark">Auto-sends</h2><PageInfo className="text-sm text-slate-500" lead={<>Send one approved message automatically — for example a welcome when someone is added to your contacts.</>}>For messages that depend on details from your other software (order number, time slot), quiet hours or limits on how often someone hears from you, use <b>API broadcasting</b>.</PageInfo>
       </div>
 
       <section className="bg-white rounded-card border border-line p-5 space-y-3">
@@ -971,7 +983,7 @@ function AutomationsTab() {
           <span className="text-xs font-semibold text-slate-500">Delay</span>
           <input type="number" min={0} className={`${inp} w-20`} value={delayValue} onChange={e => setDelayValue(parseInt(e.target.value || "0", 10))} />
           <select className={inp} value={delayUnit} onChange={e => setDelayUnit(e.target.value)}><option value="minutes">min</option><option value="hours">hours</option><option value="days">days</option></select>
-          <button onClick={add} disabled={saving} className="ml-auto px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold flex items-center gap-2 disabled:opacity-60">{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Save</button>
+          <button onClick={add} disabled={saving || !templateName.trim()} title={!templateName.trim() ? "Enter an approved template name first" : undefined} className="ml-auto min-h-10 px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold flex items-center gap-2 disabled:opacity-60">{saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Save</button>
         </div>
       </section>
 
@@ -979,10 +991,10 @@ function AutomationsTab() {
         {list.map(a => (
           <div key={a.id} className="bg-white rounded-card border border-line p-4 flex items-center justify-between">
             <div><p className="text-sm font-semibold text-brand-dark">{a.autoSendTrigger}{a.triggerKey ? ` · ${a.triggerKey}` : ""}</p><p className="text-[11px] text-slate-400 font-mono">{a.templateName} · after {a.delayValue} {a.delayUnit}</p></div>
-            <button onClick={() => disable(a.id)} className="p-2 text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
+            <button onClick={() => disable(a.id)} aria-label="Turn off this auto-send" className="p-2 text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
           </div>
         ))}
-        {list.length === 0 && <p className="text-center text-slate-400 text-sm py-6">No automations yet.</p>}
+        {list.length === 0 && <p className="text-center text-slate-500 text-sm py-6">No auto-sends yet. Pick when to send, enter an approved template name above and press Save.</p>}
       </div>
     </div>
   );

@@ -86,6 +86,9 @@ function chime() {
 
 export function useInboxAlerts(openChat: (chat: WaitingChat) => void, openReview?: (a: ReviewBellAlert) => void) {
   const [count, setCount] = useState(0);
+  // Whether the first answer has arrived, so a screen can show a placeholder
+  // rather than a confident "0 waiting" before it knows.
+  const [loaded, setLoaded] = useState(false);
   const [reviewAlerts, setReviewAlerts] = useState<ReviewBellAlert[]>([]);
   const reviewSeen = useRef(new Set<string>());
   const reviewPrimed = useRef(false);
@@ -148,6 +151,7 @@ export function useInboxAlerts(openChat: (chat: WaitingChat) => void, openReview
           primed.current = true;
           setCount(d.count);
           setChats(d.chats);
+          setLoaded(true);
         }
       } catch { /* offline for a moment: the next tick tries again */ }
       // Review alerts change slowly (the review sync runs every ~5 minutes), so
@@ -192,5 +196,5 @@ export function useInboxAlerts(openChat: (chat: WaitingChat) => void, openReview
     setPrefs(p => { const next = { ...p, desktop }; writePrefs(next); return next; });
   }, []);
 
-  return { count, chats, reviewAlerts, sound: prefs.sound, desktop: prefs.desktop && permission === "granted", permission, setSound, setDesktop };
+  return { count, chats, loaded, reviewAlerts, sound: prefs.sound, desktop: prefs.desktop && permission === "granted", permission, setSound, setDesktop };
 }

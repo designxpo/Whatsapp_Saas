@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from "react";
 import { MessageCircle, Loader2, RefreshCw } from "lucide-react";
 import { PageInfo } from "@/components/PageInfo";
 import { SegmentedControl } from "@/components/SegmentedControl";
+import { fmtAgo, fmtDay, fmtInr, fmtNum } from "@/lib/format";
 
 type Platform = "instagram" | "facebook" | "youtube";
 interface Row {
@@ -19,12 +20,10 @@ type Range = "7" | "30" | "90" | "365";
 const RANGES: { value: Range; label: string }[] = [{ value: "7", label: "7 days" }, { value: "30", label: "30 days" }, { value: "90", label: "90 days" }, { value: "365", label: "1 year" }];
 const NAME: Record<Platform, string> = { instagram: "Instagram", facebook: "Facebook", youtube: "YouTube" };
 const PAGE = 25;
-const rupees = (c: number) => `₹${Math.round(c / 100).toLocaleString("en-IN")}`;
+const rupees = (c: number) => fmtInr(c / 100);
+/** "5 min ago" for the last two days, then the date ("6 Nov"). */
 function ago(iso: string): string {
-  const m = Math.round((Date.now() - Date.parse(iso)) / 60_000);
-  if (m < 60) return m < 1 ? "just now" : `${m}m ago`;
-  const h = Math.round(m / 60);
-  return h < 48 ? `${h}h ago` : new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  return Date.now() - Date.parse(iso) < 48 * 3_600_000 ? fmtAgo(iso) : fmtDay(iso);
 }
 
 export function HandoffResults({ platform }: { platform: Platform }) {
@@ -58,9 +57,9 @@ export function HandoffResults({ platform }: { platform: Platform }) {
   }
 
   const tiles: [string, string][] = summary ? [
-    ["Invites sent", summary.sent.toLocaleString()],
-    ["Chats started", `${summary.started.toLocaleString()}${summary.sent ? ` · ${Math.round((summary.started / summary.sent) * 100)}%` : ""}`],
-    ["Orders", summary.orders.toLocaleString()],
+    ["Invites sent", fmtNum(summary.sent)],
+    ["Chats started", `${fmtNum(summary.started)}${summary.sent ? ` · ${Math.round((summary.started / summary.sent) * 100)}%` : ""}`],
+    ["Orders", fmtNum(summary.orders)],
     ["Revenue", rupees(summary.revenueCents)],
   ] : [];
 
@@ -73,7 +72,7 @@ export function HandoffResults({ platform }: { platform: Platform }) {
             People your {NAME[platform]} comment rules invited to WhatsApp with &ldquo;Continue on WhatsApp&rdquo;, and what happened next. A chat counts as started when they message you with their code; orders and revenue are paid orders from that number afterwards.
           </PageInfo>
         </div>
-        <button onClick={() => { setRows(null); load(range, cursors[page]); }} aria-label="Refresh" className="p-1.5 rounded-control text-slate-500 hover:bg-canvas hover:text-ink-900"><RefreshCw className="w-3.5 h-3.5" /></button>
+        <button onClick={() => { setRows(null); load(range, cursors[page]); }} aria-label="Refresh" className="grid place-items-center w-8 h-8 rounded-control text-slate-500 hover:bg-canvas hover:text-ink-900"><RefreshCw className="w-3.5 h-3.5" /></button>
       </div>
 
       {setup ? <p className="text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded-control px-3 py-2">{setup}</p> : <>
@@ -83,7 +82,7 @@ export function HandoffResults({ platform }: { platform: Platform }) {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {tiles.map(([label, value]) => (
               <div key={label} className="rounded-control border border-line px-3 py-2">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.06em]">{label}</p>
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-[0.06em]">{label}</p>
                 <p className="text-lg font-extrabold text-ink-900 tabular-nums leading-tight">{value}</p>
               </div>
             ))}
@@ -110,11 +109,11 @@ export function HandoffResults({ platform }: { platform: Platform }) {
         )}
         {rows && rows.length > 0 && (page > 0 || next) && (
           <nav aria-label="Pages" className="flex items-center justify-between gap-2">
-            <span className="text-[12px] text-slate-500 tabular-nums">{page * PAGE + 1}–{page * PAGE + rows.length}{summary ? ` of ${summary.sent.toLocaleString()}` : ""}</span>
+            <span className="text-[12px] text-slate-500 tabular-nums">{page * PAGE + 1}–{page * PAGE + rows.length}{summary ? ` of ${fmtNum(summary.sent)}` : ""}</span>
             <div className="flex items-center gap-1.5">
               {paging && <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" />}
-              <button onClick={() => goTo(-1)} disabled={paging || page === 0} className="px-2.5 py-1 rounded-control border border-line text-[11px] font-bold text-ink-700 hover:bg-canvas disabled:opacity-40">Newer</button>
-              <button onClick={() => goTo(1)} disabled={paging || !next} className="px-2.5 py-1 rounded-control border border-line text-[11px] font-bold text-ink-700 hover:bg-canvas disabled:opacity-40">Older</button>
+              <button onClick={() => goTo(-1)} disabled={paging || page === 0} className="min-h-8 px-3 rounded-control border border-line text-[12px] font-bold text-ink-700 hover:bg-canvas disabled:opacity-40">Newer</button>
+              <button onClick={() => goTo(1)} disabled={paging || !next} className="min-h-8 px-3 rounded-control border border-line text-[12px] font-bold text-ink-700 hover:bg-canvas disabled:opacity-40">Older</button>
             </div>
           </nav>
         )}

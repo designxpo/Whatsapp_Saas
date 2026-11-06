@@ -10,6 +10,7 @@ import { Star, Loader2, ChevronDown, QrCode, Printer } from "lucide-react";
 import { Notice, useNotice } from "@/components/Notice";
 import { PageInfo } from "@/components/PageInfo";
 import { inp } from "../_shared";
+import { toast } from "@/components/toast";
 
 interface Config {
   enabled: boolean; locationId: string | null; reviewUrl: string;
@@ -54,17 +55,17 @@ export function ReviewBooster() {
     const r = await fetch("/api/admin/review-booster", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).catch(() => null);
     const j = await r?.json().catch(() => ({})) ?? {};
     setBusy(false);
-    if (!r?.ok || j.error) { say(j.error || "That didn't work."); return false; }
+    if (!r?.ok || j.error) { say(j.error || "That didn't work. Please try again."); return false; }
     const bad = j.status && j.status !== "sent" && j.status !== "scheduled";
-    say(done(j), bad ? "warn" : "ok");
+    if (bad) say(done(j), "warn"); else toast(done(j));
     load(bad);
     return true;
   }
   const edit = (patch: Partial<Config>) => { setCfg({ ...cfg, ...patch }); setDirty(true); };
-  const save = () => post({ action: "save", config: cfg }, () => (cfg.enabled ? "Saved. Requests are on." : "Saved."));
+  const save = () => post({ action: "save", config: cfg }, () => (cfg.enabled ? "Saved — review requests are on" : "Review request settings saved"));
   async function send() {
     if (dirty && !(await save())) return;
-    await post({ action: "send", phone }, j => j.status === "sent" ? "Sent on WhatsApp." : String(j.detail ?? j.status));
+    await post({ action: "send", phone }, j => j.status === "sent" ? "Review request sent on WhatsApp" : String(j.detail ?? j.status));
   }
   function printQr(loc: { id: string; name: string }) {
     const w = window.open("", "_blank", "width=520,height=720");
@@ -81,7 +82,7 @@ export function ReviewBooster() {
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 [&::-webkit-details-marker]:hidden">
         <span className="flex flex-wrap items-center gap-2 text-xs font-semibold text-ink-700">
           <Star className="h-3.5 w-3.5 text-ink-400" /> Review requests
-          <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${cfg.enabled ? "bg-emerald-50 text-emerald-700" : "bg-canvas text-ink-500"}`}>{cfg.enabled ? "On" : "Off"}</span>
+          <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${cfg.enabled ? "bg-emerald-50 text-emerald-700" : "bg-canvas text-ink-500"}`}>{cfg.enabled ? "On" : "Off"}</span>
           {s.sent > 0 && <span className="text-[11px] font-normal text-ink-500 tabular-nums">{s.sent} sent in 30 days</span>}
         </span>
         <ChevronDown className="h-4 w-4 text-ink-400 transition-transform group-open:rotate-180" />
@@ -115,7 +116,7 @@ export function ReviewBooster() {
               {d.locations.filter(l => l.reviewUri).map(l => (
                 <span key={l.id} className="inline-flex items-center gap-1">
                   <a href={`/api/admin/review-booster/qr?location=${encodeURIComponent(l.id)}`} download={`${l.name}-review-qr.png`} className="inline-flex items-center gap-1 rounded-control border border-line px-2.5 py-1 text-[11px] font-semibold text-ink-700 hover:bg-canvas"><QrCode className="h-3.5 w-3.5" /> QR for {l.name}</a>
-                  <button type="button" onClick={() => printQr(l)} className="rounded-control border border-line p-1 text-ink-500 hover:bg-canvas" title={`Print a QR card for ${l.name}`} aria-label={`Print a QR card for ${l.name}`}><Printer className="h-3.5 w-3.5" /></button>
+                  <button type="button" onClick={() => printQr(l)} className="grid h-8 w-8 place-items-center rounded-control border border-line text-ink-500 hover:bg-canvas" title={`Print a QR card for ${l.name}`} aria-label={`Print a QR card for ${l.name}`}><Printer className="h-3.5 w-3.5" /></button>
                 </span>
               ))}
             </div>
@@ -136,7 +137,7 @@ export function ReviewBooster() {
           ))}
           <div className="flex gap-2">
             <input className={`${inp} flex-1`} placeholder="Another event from your tools, e.g. appointment.completed" value={customEvent} onChange={e => setCustomEvent(e.target.value)} aria-label="Custom event name" />
-            <button type="button" disabled={!/^[a-z0-9_.:-]{2,80}$/i.test(customEvent.trim())} onClick={() => { edit({ triggers: { ...cfg.triggers, events: [...new Set([...cfg.triggers.events, customEvent.trim()])] } }); setCustomEvent(""); }} className="rounded-control border border-line px-3 text-xs font-semibold text-ink-700 disabled:opacity-50">Add</button>
+            <button type="button" disabled={!/^[a-z0-9_.:-]{2,80}$/i.test(customEvent.trim())} onClick={() => { edit({ triggers: { ...cfg.triggers, events: [...new Set([...cfg.triggers.events, customEvent.trim()])] } }); setCustomEvent(""); }} title={!/^[a-z0-9_.:-]{2,80}$/i.test(customEvent.trim()) ? "Type the event name first — letters, numbers, dots or dashes, no spaces" : undefined} className="min-h-9 rounded-control border border-line px-3 text-xs font-semibold text-ink-700 disabled:opacity-50">Add</button>
           </div>
           <div className="grid sm:grid-cols-2 gap-2">
             <label className="text-xs font-semibold text-ink-700 space-y-1.5 block">
@@ -172,9 +173,9 @@ export function ReviewBooster() {
         <div className="space-y-2">
           <p className="text-[11px] font-bold text-ink-500 uppercase tracking-wide">Message</p>
           <textarea className={`${inp} w-full`} rows={2} maxLength={600} value={cfg.message} onChange={e => edit({ message: e.target.value })} aria-label="Request message" />
-          <div className="rounded-control border border-line bg-canvas/60 px-3 py-2 text-[12px] text-ink-700 whitespace-pre-wrap" aria-label="Message preview"><span className="block text-[10px] font-bold uppercase text-ink-500">Preview</span>{`${cfg.message}\n\n⭐ https://app.thetalko.in/r/rv/…\n\nSomething not right? Just reply here and we'll put it right.`}</div>
+          <div className="rounded-control border border-line bg-canvas/60 px-3 py-2 text-[12px] text-ink-700 whitespace-pre-wrap" aria-label="Message preview"><span className="block text-[11px] font-bold uppercase text-ink-500">Preview</span>{`${cfg.message}\n\n⭐ https://app.thetalko.in/r/rv/…\n\nSomething not right? Just reply here and we'll put it right.`}</div>
           <label className="text-xs font-semibold text-ink-700 space-y-1.5 block">
-            <span>Template for customers outside WhatsApp&apos;s 24-hour window</span>
+            <span>Approved message for customers who haven&apos;t messaged you in the last 24 hours</span>
             <select className={`${inp} w-full`} value={tplChoice} onChange={e => { const [name, language] = e.target.value.split("|"); edit({ template: name ? { name, language } : null }); }}>
               <option value="">None — only ask customers who messaged in the last 24 hours</option>
               {d.templates.map(t => <option key={`${t.name}|${t.language}`} value={`${t.name}|${t.language}`} disabled={!t.usable}>{t.name} ({t.language}, {t.category.toLowerCase()}){t.usable ? "" : " — no place for the link"}</option>)}
@@ -187,10 +188,10 @@ export function ReviewBooster() {
           <input type="checkbox" className="accent-brand-700" checked={cfg.enabled} onChange={e => edit({ enabled: e.target.checked })} /> Send review requests automatically
         </label>
         <div className="flex flex-wrap items-center gap-2">
-          <button onClick={save} disabled={busy} className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60 inline-flex items-center gap-1.5">{busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Save{dirty ? " changes" : ""}</button>
+          <button onClick={save} disabled={busy} className="min-h-9 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60 inline-flex items-center gap-1.5">{busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Save{dirty ? " changes" : ""}</button>
           <span className="text-[11px] text-ink-500">or ask one customer now:</span>
           <input className={`${inp} w-44`} placeholder="98XXXXXXXX" inputMode="tel" value={phone} onChange={e => setPhone(e.target.value)} aria-label="Customer WhatsApp number" />
-          <button onClick={send} disabled={busy || phone.replace(/\D/g, "").length < 10} className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-700 hover:bg-canvas disabled:opacity-60">Send request</button>
+          <button onClick={send} disabled={busy || phone.replace(/\D/g, "").length < 10} title={phone.replace(/\D/g, "").length < 10 ? "Enter the customer's 10-digit WhatsApp number first" : undefined} className="min-h-9 px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-700 hover:bg-canvas disabled:opacity-60">Send request</button>
         </div>
         <Notice notice={note} onClose={() => say(null)} />
 

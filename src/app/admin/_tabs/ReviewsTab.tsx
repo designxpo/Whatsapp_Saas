@@ -10,6 +10,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Star, Loader2, RefreshCw, Plus, SlidersHorizontal, MapPin, Link2, Unlink, AlertTriangle, ChevronDown, ShieldCheck } from "lucide-react";
 import { inp } from "../_shared";
 import { useConfirm } from "@/components/confirm-dialog";
+import { toast } from "@/components/toast";
 import { Drawer, Modal } from "@/components/overlay";
 import { ReviewBooster } from "./ReviewBooster";
 import { ReviewInbox, type InboxMeta, type LocationInfo } from "./ReviewInbox";
@@ -46,7 +47,7 @@ function PickStars({ n, onPick }: { n: number; onPick: (v: number) => void }) {
   return (
     <span className="inline-flex items-center gap-0.5" role="radiogroup" aria-label="Rating">
       {[1, 2, 3, 4, 5].map(i => (
-        <button key={i} type="button" role="radio" aria-checked={i === n} onClick={() => onPick(i)} title={`${i} star${i > 1 ? "s" : ""}`}>
+        <button key={i} type="button" role="radio" aria-checked={i === n} onClick={() => onPick(i)} title={`${i} star${i > 1 ? "s" : ""}`} aria-label={`${i} star${i > 1 ? "s" : ""}`} className="grid h-8 w-8 place-items-center rounded-control hover:bg-canvas">
           <Star className={`w-4 h-4 ${i <= n ? "text-amber-400 fill-amber-400" : "text-slate-300"}`} />
         </button>
       ))}
@@ -77,7 +78,7 @@ export default function ReviewsTab({ isAdmin = true }: { isAdmin?: boolean }) {
   const [pickerError, setPickerError] = useState<string | null>(null);
   const [pickerBusy, setPickerBusy] = useState<string | null>(null);   // location id currently being saved
 
-  const locations: LocationInfo[] = meta?.locations ?? [];
+  const locations: LocationInfo[] = Array.isArray(meta?.locations) ? meta.locations : [];
   const settings = meta?.settings as unknown as ReviewSettingsValue | undefined;
 
   // One-time results: the "Connect with Google" redirect, or an alert/email
@@ -122,9 +123,9 @@ export default function ReviewsTab({ isAdmin = true }: { isAdmin?: boolean }) {
         body: JSON.stringify({ channelId: pickerChannelId, accountId: loc.accountId, locationId: loc.id, locationName: loc.name }),
       });
       const d = await res.json().catch(() => ({}));
-      if (!res.ok) { setMsg(d.error || "Save failed"); return; }
+      if (!res.ok) { setMsg(d.error || "Couldn't save that location. Please try again."); return; }
       setPickerChannelId(null); setPickerLocations([]);
-      setSyncNote(`${loc.name} is connected. Its reviews start arriving within a few minutes — or use Sync from Google now.`);
+      toast(`${loc.name} is connected — its reviews arrive within a few minutes`);
       reload();
     } finally { setPickerBusy(null); }
   }
@@ -136,6 +137,7 @@ export default function ReviewsTab({ isAdmin = true }: { isAdmin?: boolean }) {
     }))) return;
     const r = await fetch("/api/admin/channels", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: l.id }) }).catch(() => null);
     if (!r?.ok) { setMsg("Couldn't disconnect — try again."); return; }
+    toast(`${l.name} disconnected`);
     reload();
   }
 
@@ -145,8 +147,8 @@ export default function ReviewsTab({ isAdmin = true }: { isAdmin?: boolean }) {
     try {
       const res = await fetch("/api/admin/reviews", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(addForm) });
       const d = await res.json().catch(() => ({}));
-      if (!res.ok) setMsg(d.error || "Save failed");
-      else { setAddForm({ author: "", rating: 5, text: "", locationName: "" }); setShowAdd(false); reload(); }
+      if (!res.ok) setMsg(d.error || "Couldn't add the review. Please try again.");
+      else { setAddForm({ author: "", rating: 5, text: "", locationName: "" }); setShowAdd(false); toast("Review added — a drafted reply is waiting in the inbox"); reload(); }
     } finally { setAdding(false); }
   }
 
@@ -157,7 +159,8 @@ export default function ReviewsTab({ isAdmin = true }: { isAdmin?: boolean }) {
       const d = await res.json().catch(() => ({}));
       if (!res.ok) { setMsg(d.error || "Couldn't reach Google — try again."); return; }
       const parts = [d.imported ? `${d.imported} new review${d.imported === 1 ? "" : "s"}` : null, d.updated ? `${d.updated} change${d.updated === 1 ? "" : "s"} from Google` : null].filter(Boolean);
-      setSyncNote(`${parts.length ? `Synced: ${parts.join(", ")}.` : "Up to date with Google."}${d.errors?.length ? ` ${d.errors.map((e: { profile: string; error: string }) => `${e.profile}: ${e.error}`).join(" ")}` : ""}`);
+      if (d.errors?.length) setSyncNote(`${parts.length ? `Synced: ${parts.join(", ")}.` : ""} ${d.errors.map((e: { profile: string; error: string }) => `${e.profile}: ${e.error}`).join(" ")}`.trim());
+      else toast(parts.length ? `Synced: ${parts.join(", ")}` : "Up to date with Google");
       reload();
     } finally { setSyncing(false); }
   }
@@ -167,7 +170,8 @@ export default function ReviewsTab({ isAdmin = true }: { isAdmin?: boolean }) {
     try {
       const res = await fetch("/api/admin/reviews/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(v) });
       const d = await res.json().catch(() => ({}));
-      if (!res.ok) { setMsg(d.error || "Save failed"); return; }
+      if (!res.ok) { setMsg(d.error || "Couldn't save your settings. Please try again."); return; }
+      toast("Review settings saved");
       setShowSettings(false); reload();
     } finally { setSavingSettings(false); }
   }
@@ -180,16 +184,16 @@ export default function ReviewsTab({ isAdmin = true }: { isAdmin?: boolean }) {
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-bold text-ink-900"><Star className="h-5 w-5 text-amber-400" /> Google Reviews</h1>
-          <p className="text-xs text-ink-500 mt-0.5">Read customer feedback and approve AI-drafted replies.</p>
+          <p className="text-xs text-ink-500 mt-0.5 max-w-xl">Every review of your business on Google, in one place. The AI writes a reply to each one; you choose which replies go out on their own and which wait for your OK.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {locations.length > 0 && (
-            <button onClick={syncGoogle} disabled={syncing} title="Fetch new and changed reviews from Google now" className="px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
+            <button onClick={syncGoogle} disabled={syncing} title="Fetch new and changed reviews from Google now" className="min-h-9 px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
               {syncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />} Sync from Google
             </button>
           )}
-          {isAdmin && <button onClick={() => { setShowSettings(true); setShowAdd(false); }} disabled={!settings} className="px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5 disabled:opacity-60"><SlidersHorizontal className="w-3.5 h-3.5" /> Settings</button>}
-          {isAdmin && <button onClick={() => { setShowAdd(true); setShowSettings(false); }} className="px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5" title="Paste a review from anywhere. Talko drafts a reply you copy and post yourself."><Plus className="w-3.5 h-3.5" /> Paste a review</button>}
+          {isAdmin && <button onClick={() => { setShowSettings(true); setShowAdd(false); }} disabled={!settings} title={!settings ? "Loading your review settings…" : undefined} className="min-h-9 px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5 disabled:opacity-60"><SlidersHorizontal className="w-3.5 h-3.5" /> Settings</button>}
+          {isAdmin && <button onClick={() => { setShowAdd(true); setShowSettings(false); }} className="min-h-9 px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5" title="Paste a review from anywhere. Talko drafts a reply you copy and post yourself."><Plus className="w-3.5 h-3.5" /> Paste a review</button>}
         </div>
       </div>
 
@@ -214,7 +218,7 @@ export default function ReviewsTab({ isAdmin = true }: { isAdmin?: boolean }) {
           <div className="flex items-center gap-3 text-[11px] text-ink-500">
             {lastSync && <span>Last successful sync {ago(lastSync)} · checks every ~5 min</span>}
             {isAdmin && (
-              <a href="/api/admin/onboarding/google-reviews/start" className="px-3 py-1.5 rounded-control bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold inline-flex items-center gap-1.5">
+              <a href="/api/admin/onboarding/google-reviews/start" className="min-h-9 px-3 py-1.5 rounded-control bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold inline-flex items-center gap-1.5">
                 <Link2 className="w-3.5 h-3.5" /> {locations.length ? "Connect another location" : "Connect with Google"}
               </a>
             )}
@@ -231,7 +235,7 @@ export default function ReviewsTab({ isAdmin = true }: { isAdmin?: boolean }) {
                     <MapPin className={`w-3.5 h-3.5 shrink-0 ${bad ? "text-red-600" : "text-emerald-600"}`} aria-hidden />
                     <span className="font-bold text-ink-900 truncate flex-1">{l.name}</span>
                     {s?.mapsUri && <a href={s.mapsUri} target="_blank" rel="noopener noreferrer" className="text-blue-700 font-semibold hover:underline">Google Maps</a>}
-                    {isAdmin && <button onClick={() => disconnect(l)} className="text-ink-400 hover:text-red-600" title={`Disconnect ${l.name}`} aria-label={`Disconnect ${l.name}`}><Unlink className="w-3.5 h-3.5" /></button>}
+                    {isAdmin && <button onClick={() => disconnect(l)} className="-my-1 grid h-8 w-8 place-items-center rounded-control text-ink-400 hover:bg-red-50 hover:text-red-600" title={`Disconnect ${l.name}`} aria-label={`Disconnect ${l.name}`}><Unlink className="w-3.5 h-3.5" /></button>}
                   </div>
                   <p className={`mt-1 ${bad ? "text-red-800" : "text-ink-500"}`}>
                     {!s ? "Waiting for the first sync — usually within 5 minutes."
@@ -276,11 +280,11 @@ export default function ReviewsTab({ isAdmin = true }: { isAdmin?: boolean }) {
             ))}
           </div>
           <p className="text-[11px] text-ink-500">Picking a location you&apos;ve connected before replaces its old connection.</p>
-          <button onClick={() => setPickerChannelId(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-500 hover:text-ink-900">Cancel</button>
+          <button onClick={() => setPickerChannelId(null)} className="min-h-9 px-2 py-1.5 text-xs font-semibold text-ink-500 hover:text-ink-900">Cancel</button>
         </div>
       )}
 
-      {settings && (
+      {settings && typeof settings.autoMinStars === "number" && (
         <p className="flex items-start gap-2 px-1 text-xs leading-relaxed text-ink-500">
           <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-400" aria-hidden />
           {settings.autoMinStars > 5 ? "All replies need your approval." : `Auto-replies for ${settings.autoMinStars}★ and above. Flagged reviews always need approval.`}
@@ -292,7 +296,7 @@ export default function ReviewsTab({ isAdmin = true }: { isAdmin?: boolean }) {
 
       <div className="flex gap-1 rounded-xl bg-canvas p-1 w-fit" role="tablist" aria-label="Reviews sections">
         {(["inbox", "insights"] as const).map(m => (
-          <button key={m} role="tab" aria-selected={mode === m} onClick={() => setMode(m)} className={`rounded-lg px-4 py-1.5 text-xs font-semibold ${mode === m ? "bg-white text-ink-900 shadow-sm" : "text-ink-500 hover:text-ink-900"}`}>{m === "inbox" ? "Inbox" : "Insights"}</button>
+          <button key={m} role="tab" aria-selected={mode === m} onClick={() => setMode(m)} className={`min-h-9 rounded-lg px-4 py-1.5 text-xs font-semibold ${mode === m ? "bg-white text-ink-900 shadow-sm" : "text-ink-500 hover:text-ink-900"}`}>{m === "inbox" ? "Inbox" : "Insights"}</button>
         ))}
       </div>
       <div hidden={mode !== "inbox"}>
@@ -305,8 +309,8 @@ export default function ReviewsTab({ isAdmin = true }: { isAdmin?: boolean }) {
 
       <Drawer open={showSettings} onClose={() => setShowSettings(false)} width="lg" title="Review settings" subtitle="Control replies, approval rules and notifications."
         footer={<div className="flex w-full items-center gap-2">
-          <button type="button" onClick={() => setShowSettings(false)} className="rounded-control border border-line bg-white px-4 py-2 text-xs font-semibold text-ink-600 hover:bg-canvas">Cancel</button>
-          <button type="submit" form="review-settings-form" disabled={savingSettings || !settings} className="inline-flex items-center gap-2 rounded-control bg-brand-700 px-4 py-2 text-xs font-semibold text-white hover:bg-brand-600 disabled:opacity-60">{savingSettings && <Loader2 className="h-3.5 w-3.5 animate-spin" />}{savingSettings ? "Saving…" : "Save settings"}</button>
+          <button type="button" onClick={() => setShowSettings(false)} className="min-h-10 rounded-control border border-line bg-white px-4 py-2 text-xs font-semibold text-ink-600 hover:bg-canvas">Cancel</button>
+          <button type="submit" form="review-settings-form" disabled={savingSettings || !settings} className="inline-flex min-h-10 items-center gap-2 rounded-control bg-brand-700 px-4 py-2 text-xs font-semibold text-white hover:bg-brand-600 disabled:opacity-60">{savingSettings && <Loader2 className="h-3.5 w-3.5 animate-spin" />}{savingSettings ? "Saving…" : "Save settings"}</button>
         </div>}>
         {showSettings && settings && (
           <ReviewSettingsPanel value={settings} signaturePlaceholder={`— Team ${who}`} emailAvailable={!!meta?.emailAlertsAvailable}
@@ -325,8 +329,9 @@ export default function ReviewsTab({ isAdmin = true }: { isAdmin?: boolean }) {
           <div className="flex items-center gap-2 text-xs font-semibold text-ink-700">Rating <PickStars n={addForm.rating} onPick={v => setAddForm({ ...addForm, rating: v })} /></div>
           <textarea className={`${inp} w-full`} aria-label="Review text" rows={3} placeholder="Paste the review text here…" value={addForm.text} onChange={e => setAddForm({ ...addForm, text: e.target.value })} />
           <div className="flex items-center gap-2">
-            <button onClick={addReview} disabled={adding} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{adding ? "Adding…" : "Add review"}</button>
-            <button onClick={() => setShowAdd(false)} className="px-2 py-1.5 text-xs font-semibold text-ink-500 hover:text-ink-900">Cancel</button>
+            <button onClick={addReview} disabled={adding || (!addForm.text.trim() && !addForm.author.trim())} title={!addForm.text.trim() && !addForm.author.trim() ? "Paste the review text first" : undefined} className="min-h-10 px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{adding ? "Adding…" : "Add review"}</button>
+            <button onClick={() => setShowAdd(false)} className="min-h-10 px-2 py-1.5 text-xs font-semibold text-ink-500 hover:text-ink-900">Cancel</button>
+            {!addForm.text.trim() && !addForm.author.trim() && !adding && <span className="text-[12px] text-ink-500">Paste the review text first.</span>}
           </div>
         </div>)}
         {msg && <p className="text-xs font-semibold text-amber-700 mt-3">{msg}</p>}

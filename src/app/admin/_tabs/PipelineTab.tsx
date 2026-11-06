@@ -106,7 +106,7 @@ function AddLeadBox({ onPick, onClose }: { onPick: (contactId: string) => void; 
       {res.map(c => (
         <button key={c.id} onClick={() => onPick(c.id)} className="w-full text-left px-2 py-1.5 rounded-control hover:bg-canvas">
           <p className="text-xs font-semibold text-ink-900 truncate">{c.name || c.phone}</p>
-          <p className="text-[10px] text-ink-400 font-mono truncate">{c.phone}</p>
+          <p className="text-[11px] text-ink-400 font-mono truncate">{c.phone}</p>
         </button>
       ))}
       {q.trim().length >= 2 && !res.length && <p className="text-[11px] text-ink-400 px-2 py-1">No matching {vocab.contact.many.toLowerCase()}.</p>}
@@ -187,9 +187,9 @@ export default function PipelineTab({ goTo }: { goTo: GoTo }) {
                         <GripVertical className="w-3.5 h-3.5 text-ink-300 shrink-0 mt-0.5" />
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-semibold text-ink-900 truncate">{c.name || c.phone}</p>
-                          <p className="text-[10px] text-ink-400 font-mono truncate">{c.phone}</p>
+                          <p className="text-[11px] text-ink-400 font-mono truncate">{c.phone}</p>
                           {c.lastMessage && <p className="text-[11px] text-ink-500 truncate mt-1">{c.lastMessage}</p>}
-                          {!!c.tags.length && <div className="flex flex-wrap gap-1 mt-1.5">{c.tags.slice(0, 3).map(t => <span key={t} className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700">{t}</span>)}</div>}
+                          {!!c.tags.length && <div className="flex flex-wrap gap-1 mt-1.5">{c.tags.slice(0, 3).map(t => <span key={t} className="text-[11px] font-bold px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700">{t}</span>)}</div>}
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5 mt-2">

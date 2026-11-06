@@ -1,7 +1,7 @@
 "use client";
 
-// "Which persona would answer this?" — type a customer message and see which AI
-// persona the live routing would pick, why, and how well each one fits. Nothing
+// "Which AI assistant would answer this?" — type a customer message and see which AI
+// assistant (persona) the live routing would pick, why, and how well each one fits. Nothing
 // is sent; it only scores the message (route-preview.ts).
 
 import { useState } from "react";
@@ -31,14 +31,14 @@ export function RoutePreviewCard({ agents }: { agents: { id: string; name: strin
 
   const top = res?.scores[0]?.score ?? 0;
   return (
-    <section className="bg-white rounded-card border border-line p-5 space-y-3" aria-label="Test which persona answers">
+    <section className="bg-white rounded-card border border-line p-5 space-y-3" aria-label="Test which AI assistant answers">
       <div>
-        <p className="text-xs font-bold text-ink-900 inline-flex items-center gap-1.5"><Route className="w-3.5 h-3.5" /> Which persona would answer?</p>
+        <p className="text-xs font-bold text-ink-900 inline-flex items-center gap-1.5"><Route className="w-3.5 h-3.5" /> Which AI assistant would answer?</p>
         <p className="text-xs text-slate-500 mt-0.5">Type what a customer might write. Nothing is sent — this shows what the live routing would do.</p>
       </div>
       <form onSubmit={run} className="flex flex-col gap-2 sm:flex-row">
         <input value={message} onChange={e => setMessage(e.target.value)} maxLength={1000} placeholder="e.g. Do you have a table for 4 tonight?" className={`${inp} flex-1`} aria-label="Customer message" />
-        <select value={current} onChange={e => setCurrent(e.target.value)} className={inp} aria-label="Persona already in the chat">
+        <select value={current} onChange={e => setCurrent(e.target.value)} className={inp} aria-label="AI assistant already in the chat">
           <option value="">New chat</option>
           {agents.map(a => <option key={a.id} value={a.id}>Chat with {a.name}</option>)}
         </select>
@@ -49,7 +49,7 @@ export function RoutePreviewCard({ agents }: { agents: { id: string; name: strin
       {err && <p role="alert" className="text-xs text-red-600">{err}</p>}
       {res && (
         <div className="space-y-2 rounded-control bg-canvas p-3">
-          <p className="text-sm text-ink-900"><b>{res.answeredBy ? res.answeredBy.name : "Your channel's default persona"}</b> {res.switches ? "takes over." : "answers."}</p>
+          <p className="text-sm text-ink-900"><b>{res.answeredBy ? res.answeredBy.name : "Your channel's default AI assistant"}</b> {res.switches ? "takes over." : "answers."}</p>
           <p className="text-xs text-ink-600">{res.why}</p>
           {res.scores.length > 0 && (
             <ul className="space-y-1">

@@ -11,6 +11,7 @@ import { Notice, useNotice } from "@/components/Notice";
 import { PageInfo } from "@/components/PageInfo";
 import { SegmentedControl } from "@/components/SegmentedControl";
 import { inp } from "../_shared";
+import { toast } from "@/components/toast";
 
 interface Group { key: string; question: string; count: number; lastAt: string; platforms: string[]; reasons: string[] }
 type Range = "7" | "30" | "90";
@@ -43,7 +44,7 @@ export function AiGaps() {
   async function post(body: Record<string, unknown>): Promise<boolean> {
     const r = await fetch("/api/admin/ai/gaps", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const j = await r.json().catch(() => ({}));
-    if (!r.ok || j.error) { (body.dismiss ? say : sayForm)(j.error || `That didn't work (HTTP ${r.status}).`); return false; }
+    if (!r.ok || j.error) { (body.dismiss ? say : sayForm)(j.error || "That didn't work. Please try again."); return false; }
     return true;
   }
   async function save() {
@@ -54,7 +55,7 @@ export function AiGaps() {
     if (!ok) return;
     setGroups(g => (g ?? []).filter(x => x.key !== open.key));
     setOpen(null);
-    say("Added to your knowledge base. The AI answers this from now on.", "ok");
+    toast("Added to your knowledge base — the AI answers this from now on");
   }
 
   return (
@@ -79,8 +80,8 @@ export function AiGaps() {
                   <p className="text-[11px] text-slate-500 mt-0.5">Asked {g.count}× · last {ago(g.lastAt)} · {g.platforms.map(p => CHANNEL[p] ?? p).join(", ")}</p>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
-                  <button onClick={() => { setOpen(g); setAnswer(""); setTag(""); sayForm(null); }} className="px-2.5 py-1 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-[11px] font-bold">Add answer</button>
-                  <button onClick={async () => { if (await post({ key: g.key, dismiss: true })) setGroups(x => (x ?? []).filter(y => y.key !== g.key)); }} className="px-2 py-1 rounded-control text-[11px] font-bold text-slate-500 hover:bg-canvas">Dismiss</button>
+                  <button onClick={() => { setOpen(g); setAnswer(""); setTag(""); sayForm(null); }} className="min-h-8 px-2.5 py-1 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-[12px] font-bold">Add answer</button>
+                  <button onClick={async () => { if (await post({ key: g.key, dismiss: true })) { setGroups(x => (x ?? []).filter(y => y.key !== g.key)); toast("Question dismissed"); } }} className="min-h-8 px-2 py-1 rounded-control text-[12px] font-bold text-slate-600 hover:bg-canvas">Dismiss</button>
                 </div>
               </li>
             ))}
@@ -91,7 +92,8 @@ export function AiGaps() {
         subtitle="It goes into your knowledge base, so the AI answers this question, and ones like it, from now on."
         footer={<>
           <button onClick={() => setOpen(null)} disabled={busy} className="px-3 py-2 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas disabled:opacity-60">Cancel</button>
-          <button onClick={save} disabled={busy || answer.trim().length < 3} className="ml-auto px-3.5 py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60 inline-flex items-center gap-1.5">
+          {answer.trim().length < 3 && !busy && <span className="ml-auto text-[12px] text-slate-500">Write the answer first.</span>}
+          <button onClick={save} disabled={busy || answer.trim().length < 3} title={answer.trim().length < 3 ? "Write the answer first" : undefined} className="ml-auto px-3.5 py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60 inline-flex items-center gap-1.5">
             {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Add to knowledge base
           </button>
         </>}>

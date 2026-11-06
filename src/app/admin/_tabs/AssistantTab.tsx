@@ -3,12 +3,15 @@
 // AI Knowledge Base (Assistant) tab — KnowledgeRail + AssistantTab + KB add form
 // + test box, extracted from admin/page.tsx and lazy-loaded. Logic unchanged.
 import { Notice, useNotice } from "@/components/Notice";
+import { toast } from "@/components/toast";
+import { useConfirm } from "@/components/confirm-dialog";
 import { KbChecksCard } from "./KbChecksCard";
 import { PageInfo } from "@/components/PageInfo";
 import { AiGaps } from "./AiGaps";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { AlertTriangle, BookOpen, Check, ChevronDown, ChevronRight, Download, Edit3, FolderOpen, Save, X, ArrowRight, Bot, Database, FileText, FlaskConical, Globe, Loader2, MessageSquare, Plus, RefreshCw, Send, ShieldCheck, Sparkles, Trash2, UploadCloud } from "lucide-react";
 import { type Tab, type GoTo, inp, railLoading, RailCard, StatRow, RailBar, statusBadge, ConvAvatar, useAnalytics } from "../_shared";
+import { fmtDay, fmtNum } from "@/lib/format";
 
 
 // AI Knowledge Base: answer-engine split, latency/savings, personas, inbox.
@@ -25,46 +28,46 @@ function KnowledgeRail({ goTo }: { goTo: GoTo }) {
   const a = useAnalytics();
   const [rs, setRs] = useState<RouterStatsData | null>(null);
   const [agents, setAgents] = useState<{ id: string; name: string; active: boolean }[] | null>(null);
-  useEffect(() => { fetch("/api/admin/router/stats?days=7").then(r => r.json()).then(d => setRs(d.error ? null : d)).catch(() => {}); }, []);
+  useEffect(() => { fetch("/api/admin/router/stats?days=7").then(r => r.json()).then(d => setRs(d && !d.error && d.counts ? d : null)).catch(() => {}); }, []);
   useEffect(() => { fetch("/api/admin/ai/agents").then(r => r.json()).then(d => setAgents(d.agents ?? [])).catch(() => setAgents([])); }, []);
   const answered = rs ? (rs.counts.MEMORY_HIT ?? 0) + (rs.counts.FAQ_MATCH ?? 0) + (rs.counts.CACHE_HIT ?? 0) + (rs.counts.RAG_USED ?? 0) : 0;
   return (
     <aside className="hidden xl:flex flex-col gap-4 w-80 shrink-0">
       <RailCard title="Answer engine — 7 days">
         {!rs || answered === 0
-          ? <p className="text-xs text-slate-400">No customer questions answered yet. Once chats flow in, you&apos;ll see how many were answered instantly (FAQ/cache) vs. by the full AI.</p>
+          ? <p className="text-xs text-slate-500">No customer questions answered yet. Once chats come in, you&apos;ll see how many were answered instantly and how many needed the AI to read your documents.</p>
           : <div className="space-y-2">
-              <RailBar label="Instant — FAQ" count={rs.counts.FAQ_MATCH ?? 0} pct={rs.faqHitRate} color="bg-brand-700" />
-              <RailBar label="Instant — cache" count={rs.counts.CACHE_HIT ?? 0} pct={rs.cacheHitRate} color="bg-brand-500" />
-              <RailBar label="Remembered answer" count={rs.counts.MEMORY_HIT ?? 0} pct={rs.memoryResolvedRate} color="bg-brand-300" />
-              <RailBar label="Full AI (RAG)" count={rs.counts.RAG_USED ?? 0} pct={rs.ragUsageRate} color="bg-ink-900" />
-              <p className="text-[11px] text-slate-400 pt-1">{answered.toLocaleString()} answered · ~{rs.estTokensSaved.toLocaleString()} AI tokens saved{rs.avgLatencyMs.RAG_USED ? ` · AI avg ${rs.avgLatencyMs.RAG_USED}ms` : ""}</p>
+              <RailBar label="Instant — a saved FAQ answer" count={rs.counts.FAQ_MATCH ?? 0} pct={Math.round(rs.faqHitRate)} color="bg-brand-700" />
+              <RailBar label="Instant — same question asked before" count={rs.counts.CACHE_HIT ?? 0} pct={Math.round(rs.cacheHitRate)} color="bg-brand-500" />
+              <RailBar label="Remembered from this chat" count={rs.counts.MEMORY_HIT ?? 0} pct={Math.round(rs.memoryResolvedRate)} color="bg-brand-300" />
+              <RailBar label="AI read your documents" count={rs.counts.RAG_USED ?? 0} pct={Math.round(rs.ragUsageRate)} color="bg-ink-900" />
+              <p className="text-[11px] text-slate-500 pt-1">{fmtNum(answered)} answered{rs.avgLatencyMs.RAG_USED ? ` · the AI takes about ${Math.max(1, Math.round(rs.avgLatencyMs.RAG_USED / 1000))} s` : ""}</p>
             </div>}
       </RailCard>
-      <RailCard title="AI personas" action="AI Hub" onAction={() => goTo("aihub")}>
+      <RailCard title="AI agents" action="AI Hub" onAction={() => goTo("aihub")}>
         {!agents ? railLoading : agents.length === 0
-          ? <p className="text-xs text-slate-400">No personas yet — create agents in AI Hub (e.g. Sales, Support) and the router switches between them per question.</p>
+          ? <p className="text-xs text-slate-500">No AI agents yet — create them in AI Hub (e.g. Sales, Support) and the right one answers each question.</p>
           : agents.map(ag => (
             <div key={ag.id} className="flex items-center gap-2 py-0.5">
               <span className={`w-1.5 h-1.5 rounded-full ${ag.active ? "bg-brand-500" : "bg-slate-300"}`} />
               <span className="text-xs font-semibold text-ink-900 truncate">{ag.name}</span>
-              {ag.active && <span className="text-[10px] font-bold text-brand-700 ml-auto">DEFAULT</span>}
+              {ag.active && <span className="text-[11px] font-bold text-brand-700 ml-auto">Default</span>}
             </div>
           ))}
       </RailCard>
       <RailCard title="Conversations" action="Live Chat" onAction={() => goTo("livechat")}>
         {!a ? railLoading : <>
-          <StatRow label="Awaiting your reply" value={a.conversations.needsReply} tone={a.conversations.needsReply > 0 ? "warn" : undefined} onClick={() => goTo("livechat", { filter: "needs_reply" })} />
-          <StatRow label="Escalated" value={a.conversations.escalated} tone={a.conversations.escalated > 0 ? "bad" : undefined} onClick={() => goTo("livechat", { filter: "escalated" })} />
+          <StatRow label="Waiting for you" value={a.conversations.needsReply} tone={a.conversations.needsReply > 0 ? "warn" : undefined} onClick={() => goTo("livechat", { filter: "needs_reply" })} />
+          <StatRow label="Needs a person" value={a.conversations.escalated} tone={a.conversations.escalated > 0 ? "bad" : undefined} onClick={() => goTo("livechat", { filter: "escalated" })} />
           <StatRow label="Total" value={a.conversations.total} />
         </>}
       </RailCard>
       <RailCard title="Make answers better">
         <ul className="space-y-1.5 text-[11px] text-slate-500 list-disc pl-4">
           <li>Add product/brochure <b>URLs</b> to the knowledge base — the AI turns them into tappable buttons.</li>
-          <li>Short FAQ-style docs answer fastest; the router serves them without calling the AI.</li>
-          <li>Tune personas, functions, and auto-routing in <b>AI Hub</b>.</li>
-          <li>Watch real replies land in <b>Live Chat</b> — toggle the bot off per chat to take over.</li>
+          <li>Short question-and-answer documents answer fastest — often instantly.</li>
+          <li>Set up AI agents, lead capture and auto-routing in <b>AI Hub</b>.</li>
+          <li>Watch real replies land in <b>Live Chat</b> — pause the AI in a chat to take over.</li>
         </ul>
       </RailCard>
     </aside>
@@ -75,11 +78,11 @@ type KbDoc = { id: string; title: string; sourceType: "pdf" | "docx" | "text" | 
 // ImageUpload, the Conversation type and ConvAvatar now live in ./_shared.
 
 const PIPELINE: { icon: React.ReactNode; title: string; desc: string }[] = [
-  { icon: <MessageSquare className="w-5 h-5" />, title: "Inbound", desc: "Customer sends a WhatsApp message" },
-  { icon: <Database className="w-5 h-5" />, title: "Retrieve", desc: "Search business docs (pgvector) for relevant context" },
-  { icon: <Sparkles className="w-5 h-5" />, title: "Draft", desc: "Gemini drafts a reply grounded in that context" },
-  { icon: <ShieldCheck className="w-5 h-5" />, title: "Guardrails", desc: "Opt-out, grounding & escalation checks" },
-  { icon: <Send className="w-5 h-5" />, title: "Reply", desc: "Delivered back on the same channel the customer wrote from" },
+  { icon: <MessageSquare className="w-5 h-5" />, title: "Message", desc: "A customer asks a question in any chat" },
+  { icon: <Database className="w-5 h-5" />, title: "Look up", desc: "The AI finds the parts of your documents that answer it" },
+  { icon: <Sparkles className="w-5 h-5" />, title: "Write", desc: "It writes a reply using only what your documents say" },
+  { icon: <ShieldCheck className="w-5 h-5" />, title: "Check", desc: "Respects opt-outs, sticks to your facts, hands to a person when unsure" },
+  { icon: <Send className="w-5 h-5" />, title: "Reply", desc: "Sent back on the same channel the customer wrote from" },
 ];
 
 // statusBadge now lives in ./_shared (used by ChatView here + the Assistant tab).
@@ -87,7 +90,10 @@ const PIPELINE: { icon: React.ReactNode; title: string; desc: string }[] = [
 function AssistantTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [docs, setDocs] = useState<KbDoc[]>([]);
-  const [backendReady, setBackendReady] = useState(true);
+  // "loading" until the first answer, "error" when the documents couldn't be
+  // fetched (a network blip or a server error) — never a reason to block adding.
+  const [docsState, setDocsState] = useState<"loading" | "ok" | "error">("loading");
+  const ask = useConfirm();
   // The OKF library. Absent until 0105/0106 are applied, so a failure here is
   // "not set up yet" and must not blank the documents list above it.
   const [review, setReview] = useState<ReviewItem[]>([]);
@@ -98,8 +104,8 @@ function AssistantTab({ goTo }: { goTo: (t: Tab) => void }) {
 
   const load = useCallback(() => {
     fetch("/api/admin/kb").then(r => { if (!r.ok) throw new Error(); return r.json(); })
-      .then(d => { setDocs(d.documents ?? []); setEnabled(d.botEnabled ?? null); setBackendReady(true); })
-      .catch(() => setBackendReady(false));
+      .then(d => { setDocs(d.documents ?? []); setEnabled(d.botEnabled ?? null); setDocsState("ok"); })
+      .catch(() => setDocsState("error"));
     fetch("/api/admin/kb/concepts").then(r => r.ok ? r.json() : null)
       .then(d => { if (!d || d.error) return; setReview(d.review ?? []); setAreas(d.areas ?? []); setSpine(d.spine ?? []); setLibraryOn(!!d.live); })
       .catch(() => {});
@@ -124,10 +130,10 @@ function AssistantTab({ goTo }: { goTo: (t: Tab) => void }) {
       const r = await fetch("/api/admin/kb", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(kind === "sync" ? { resync: doc.id } : { reprocess: doc.id }) });
       const d = await r.json().catch(() => ({}));
       if (!r.ok || d.error) throw new Error(d.error || "Request failed");
-      setDocNote({ ok: true, text: kind === "sync" ? `Re-crawling “${doc.title}”… this can take up to a minute.` : `Re-processing “${doc.title}”…` });
+      setDocNote({ ok: true, text: kind === "sync" ? `Reading the page “${doc.title}” again… this can take up to a minute.` : `Reading “${doc.title}” again…` });
       await refreshDocs();
     } catch (e) {
-      setDocNote({ ok: false, text: e instanceof Error ? e.message : "Request failed" });
+      setDocNote({ ok: false, text: e instanceof Error && e.message !== "Request failed" ? e.message : "That didn't work. Please try again." });
     } finally {
       setBusyDoc(b => { const n = { ...b }; delete n[doc.id]; return n; });
     }
@@ -144,21 +150,38 @@ function AssistantTab({ goTo }: { goTo: (t: Tab) => void }) {
     return () => clearInterval(t);
   }, [anyProcessing, refreshDocs, load]);
 
+  async function removeDoc(d: KbDoc) {
+    if (!(await ask({
+      title: "Remove this document?", tone: "danger", confirmLabel: "Remove document",
+      message: "The AI stops using it to answer customers. To bring it back you'd upload it again.",
+      facts: [{ label: "Document", value: d.title }],
+    }))) return;
+    const r = await fetch("/api/admin/kb", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: d.id }) }).catch(() => null);
+    if (r?.ok) toast(`“${d.title}” removed`); else toast({ text: "Couldn't remove the document. Please try again.", tone: "error" });
+    load();
+  }
+  async function retag(d: KbDoc, v: string) {
+    const r = await fetch("/api/admin/kb", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ retag: d.id, tag: v || null }) }).catch(() => null);
+    if (r?.ok) toast(v ? `Tagged #${v}` : "Tag removed"); else toast({ text: "Couldn't save the tag. Please try again.", tone: "error" });
+    load();
+  }
+
   return (
     <div className="flex gap-6 items-start">
     <div className="flex-1 min-w-0 max-w-4xl space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Bot className="w-5 h-5" /> AI Knowledge Base</h2><PageInfo className="text-sm text-slate-500" lead={<>Teach and test the AI here — knowledge base + dry-run testing.</>}>Customer conversations live in <b>Live Chat</b>.</PageInfo>
+          <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Bot className="w-5 h-5" /> AI Knowledge Base</h2><PageInfo className="text-sm text-slate-500" lead={<>Teach the AI about your business with your own documents, then test what it would reply.</>}>Customer conversations live in <b>Live Chat</b>.</PageInfo>
         </div>
         <span className={statusBadge(enabled ? "active" : enabled === false ? "paused" : "processing")}>
-          {enabled === null ? "status unknown" : enabled ? "● live" : "○ paused"}
+          {enabled === null ? "Checking…" : enabled ? "● AI replying" : "○ AI paused"}
         </span>
       </div>
 
-      {!backendReady && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
-          <b>Backend not wired yet.</b> This view shows the planned flow. The knowledge base and conversations populate once the assistant backend (migrations + Gemini + webhook) is built — see <code className="bg-amber-100 px-1 rounded">AUTOMATION-PLAN.md</code>.
+      {docsState === "error" && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-2 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-800">
+          <span className="flex items-center gap-2"><AlertTriangle className="w-4 h-4 shrink-0" /> Couldn&apos;t load your documents. Check your connection and try again.</span>
+          <button onClick={() => { setDocsState("loading"); load(); }} className="min-h-9 px-3 rounded-control border border-red-300 bg-white text-xs font-bold text-red-700 hover:bg-red-100 inline-flex items-center gap-1.5"><RefreshCw className="w-3.5 h-3.5" /> Retry</button>
         </div>
       )}
 
@@ -217,9 +240,9 @@ function AssistantTab({ goTo }: { goTo: (t: Tab) => void }) {
       <section className="bg-white rounded-card border border-line p-5 space-y-3">
         <div className="flex items-center justify-between">
           <p className="text-xs font-bold text-slate-400 uppercase">Knowledge base</p>
-          <span className="text-xs text-slate-400">{docs.length} document{docs.length === 1 ? "" : "s"}</span>
+          {docsState === "ok" && <span className="text-xs text-slate-500">{fmtNum(docs.length)} document{docs.length === 1 ? "" : "s"}</span>}
         </div>
-        <KbAddForm onAdded={load} disabled={!backendReady} />
+        <KbAddForm onAdded={load} />
         {docNote && <p role="status" className={`text-xs rounded-lg px-3 py-2 ${docNote.ok ? "bg-brand-50 text-brand-700" : "bg-red-50 text-red-600"}`}>{docNote.text}</p>}
         <div className="divide-y divide-slate-100 border-t border-slate-100 pt-1">
           {docs.map(d => (
@@ -228,29 +251,34 @@ function AssistantTab({ goTo }: { goTo: (t: Tab) => void }) {
                 {d.sourceType === "url" ? <Globe className="w-4 h-4 text-slate-400 shrink-0" /> : <FileText className="w-4 h-4 text-slate-400 shrink-0" />}
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-brand-dark truncate">{d.title}</p>
-                  <p className="text-[11px] text-slate-400">{d.sourceType.toUpperCase()}{d.tag ? ` · #${d.tag}` : ""} · {d.chunkCount} chunks{d.sourceType === "url" ? ` · auto-updates${d.lastSyncedAt ? ` · synced ${new Date(d.lastSyncedAt).toLocaleDateString()}` : ""}` : ""}{d.error ? ` · ${d.error}` : ""}</p>
+                  <p className="text-[11px] text-slate-500">{d.sourceType === "url" ? "Web page" : d.sourceType === "text" ? "Text" : d.sourceType.toUpperCase()}{d.tag ? ` · #${d.tag}` : ""} · {fmtNum(d.chunkCount)} section{d.chunkCount === 1 ? "" : "s"}{d.sourceType === "url" ? ` · updates itself${d.lastSyncedAt ? ` · checked ${fmtDay(d.lastSyncedAt)}` : ""}` : ""}{d.error ? ` · ${d.error}` : ""}</p>
                 </div>
               </div>
-              <div className="flex items-center gap-3 shrink-0">
-                <input className="w-24 border border-line rounded px-1.5 py-0.5 text-[11px] text-ink-700 placeholder:text-ink-300" placeholder="+ topic tag" title="Tag this doc so a flow can use it as primary knowledge (Enter to save)" defaultValue={d.tag ?? ""}
+              <div className="flex items-center gap-2 shrink-0">
+                <input className="hidden sm:block w-24 min-h-8 border border-line rounded px-1.5 py-0.5 text-[12px] text-ink-700 placeholder:text-ink-400" placeholder="+ topic tag" aria-label={`Topic tag for ${d.title}`} title="Tag this document so a flow or a number can use it as its main knowledge (Enter to save)" defaultValue={d.tag ?? ""}
                   onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                  onBlur={e => { const v = e.target.value.trim(); if (v !== (d.tag ?? "")) fetch("/api/admin/kb", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ retag: d.id, tag: v || null }) }).then(load).catch(() => {}); }} />
-                <span className={statusBadge(d.status)}>{d.status}</span>
+                  onBlur={e => { const v = e.target.value.trim(); if (v !== (d.tag ?? "")) void retag(d, v); }} />
+                <span className={statusBadge(d.status)}>{d.status === "ready" ? "Ready" : d.status === "processing" ? "Reading…" : "Failed"}</span>
                 {d.sourceType === "url" && (
-                  <button title={busyDoc[d.id] === "sync" || d.status === "processing" ? "Syncing…" : "Sync now — re-crawl this page"} aria-label="Sync now" disabled={!!busyDoc[d.id] || d.status === "processing"}
-                    onClick={() => runDocAction(d, "sync")} className={`p-1.5 rounded-lg disabled:cursor-wait ${busyDoc[d.id] === "sync" || d.status === "processing" ? "text-brand-700 bg-brand-50" : "text-slate-400 hover:text-brand-700 hover:bg-brand-50"}`}>
+                  <button title={busyDoc[d.id] === "sync" || d.status === "processing" ? "Reading the page…" : "Read this page again now"} aria-label={`Read ${d.title} again now`} disabled={!!busyDoc[d.id] || d.status === "processing"}
+                    onClick={() => runDocAction(d, "sync")} className={`grid place-items-center w-9 h-9 rounded-lg disabled:cursor-wait ${busyDoc[d.id] === "sync" || d.status === "processing" ? "text-brand-700 bg-brand-50" : "text-slate-400 hover:text-brand-700 hover:bg-brand-50"}`}>
                     <RefreshCw className={`w-4 h-4 ${busyDoc[d.id] === "sync" || d.status === "processing" ? "animate-spin" : ""}`} />
                   </button>
                 )}
-                <button title="Reprocess — re-chunk &amp; re-embed with the latest smart chunker (no re-upload)" aria-label="Reprocess" disabled={!!busyDoc[d.id] || d.status === "processing"}
-                  onClick={() => runDocAction(d, "reprocess")} className={`p-1.5 rounded-lg disabled:cursor-wait ${busyDoc[d.id] === "reprocess" ? "text-brand-700 bg-brand-50" : "text-slate-400 hover:text-brand-700 hover:bg-brand-50"}`}>
+                <button title="Read this document again (no need to upload it again)" aria-label={`Read ${d.title} again`} disabled={!!busyDoc[d.id] || d.status === "processing"}
+                  onClick={() => runDocAction(d, "reprocess")} className={`grid place-items-center w-9 h-9 rounded-lg disabled:cursor-wait ${busyDoc[d.id] === "reprocess" ? "text-brand-700 bg-brand-50" : "text-slate-400 hover:text-brand-700 hover:bg-brand-50"}`}>
                   {busyDoc[d.id] === "reprocess" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
                 </button>
-                <button onClick={() => fetch("/api/admin/kb", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: d.id }) }).then(load).catch(() => {})} className="p-1.5 text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
+                <button onClick={() => void removeDoc(d)} aria-label={`Remove ${d.title}`} title="Remove" className="grid place-items-center w-9 h-9 text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
               </div>
             </div>
           ))}
-          {docs.length === 0 && <p className="text-center text-slate-400 text-sm py-6">No documents yet — add PDFs, text, or a URL above to ground the assistant.</p>}
+          {docsState === "loading" && docs.length === 0 && (
+            <div aria-busy="true" aria-label="Loading documents" className="space-y-2 py-2">
+              {[0, 1, 2].map(i => <div key={i} className="h-10 rounded-lg bg-slate-100 animate-pulse" />)}
+            </div>
+          )}
+          {docsState === "ok" && docs.length === 0 && <p className="text-center text-slate-500 text-sm py-6">No documents yet. Upload your price list, FAQ or brochure, paste some text, or add your website&apos;s address — the AI answers customers only from what you add here.</p>}
         </div>
       </section>
 
@@ -259,7 +287,7 @@ function AssistantTab({ goTo }: { goTo: (t: Tab) => void }) {
     </div>
   );
 }
-function KbAddForm({ onAdded, disabled }: { onAdded: () => void; disabled: boolean }) {
+function KbAddForm({ onAdded }: { onAdded: () => void }) {
   const [mode, setMode] = useState<"file" | "text" | "url">("file");
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
@@ -267,6 +295,7 @@ function KbAddForm({ onAdded, disabled }: { onAdded: () => void; disabled: boole
   const [tag, setTag] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const missing = mode === "text" && !text.trim() ? "Paste some text first." : mode === "url" && !/^https?:\/\/\S+\.\S+/i.test(url.trim()) ? "Enter the page address, starting with https://" : null;
 
   async function submit(file?: File) {
     setBusy(true); setMsg(null);
@@ -281,11 +310,12 @@ function KbAddForm({ onAdded, disabled }: { onAdded: () => void; disabled: boole
       }
       if (!res.ok) {
         const d = await res.json().catch(() => ({} as { error?: string }));
-        setMsg(d.error ? `Failed: ${d.error}` : "Failed to add.");
+        setMsg(d.error ? `Couldn't add it: ${d.error}` : "Couldn't add it. Please try again.");
         return;
       }
+      toast(`Added “${title || (file?.name ?? (mode === "url" ? url : "Pasted text"))}” — the AI is reading it now`);
       setTitle(""); setText(""); setUrl(""); setTag(""); onAdded();
-    } catch { setMsg("Connection error."); }
+    } catch { setMsg("Couldn't reach the server. Check your connection and try again."); }
     finally { setBusy(false); }
   }
 
@@ -293,23 +323,25 @@ function KbAddForm({ onAdded, disabled }: { onAdded: () => void; disabled: boole
     <div className="space-y-2">
       <div className="flex gap-2">
         {(["file", "text", "url"] as const).map(m => (
-          <button key={m} onClick={() => setMode(m)} className={`px-3 py-1.5 rounded-lg text-sm font-semibold border ${mode === m ? "border-brand-dark bg-brand-700 text-white" : "border-line text-slate-600"}`}>
-            {m === "file" ? "File" : m === "text" ? "Text" : "URL"}
+          <button key={m} onClick={() => setMode(m)} aria-pressed={mode === m} className={`min-h-9 px-3 py-1.5 rounded-lg text-sm font-semibold border ${mode === m ? "border-brand-dark bg-brand-700 text-white" : "border-line text-slate-600"}`}>
+            {m === "file" ? "File" : m === "text" ? "Text" : "Web page"}
           </button>
         ))}
       </div>
-      <input className={`${inp} w-full`} placeholder="Title (optional)" value={title} onChange={e => setTitle(e.target.value)} />
-      <input className={`${inp} w-full`} placeholder="Topic tag (optional, e.g. spring-launch) — lets a flow use these docs as its primary knowledge" value={tag} onChange={e => setTag(e.target.value)} />
-      {mode === "text" && <textarea className={`${inp} w-full`} rows={3} placeholder="Paste business content (FAQ, policies, product info)…" value={text} onChange={e => setText(e.target.value)} />}
-      {mode === "url" && <input className={`${inp} w-full`} placeholder="https://yourbusiness.com/faq" value={url} onChange={e => setUrl(e.target.value)} />}
-      <div className="flex items-center gap-3">
+      <input className={`${inp} w-full`} placeholder="Title (optional)" aria-label="Title (optional)" value={title} onChange={e => setTitle(e.target.value)} />
+      <input className={`${inp} w-full`} placeholder="Topic tag (optional, e.g. spring-launch) — lets a flow or a number use these documents as its main knowledge" aria-label="Topic tag (optional)" value={tag} onChange={e => setTag(e.target.value)} />
+      {mode === "text" && <textarea className={`${inp} w-full`} rows={3} aria-label="Text to add" placeholder="Paste business content (FAQ, policies, product info)…" value={text} onChange={e => setText(e.target.value)} />}
+      {mode === "url" && <input className={`${inp} w-full`} type="url" inputMode="url" aria-label="Web page address" placeholder="https://yourbusiness.com/faq" value={url} onChange={e => setUrl(e.target.value)} />}
+      <div className="flex flex-wrap items-center gap-3">
         {mode === "file"
-          ? <label className={`flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold cursor-pointer ${busy || disabled ? "opacity-60 pointer-events-none" : ""}`}>
-              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />} Upload & ingest
-              <input type="file" accept=".pdf,.doc,.docx,.txt,.md,.markdown,.json" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) submit(f); e.currentTarget.value = ""; }} />
+          ? <label className={`flex items-center gap-1.5 min-h-10 px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold cursor-pointer focus-within:ring-2 focus-within:ring-brand-500 focus-within:ring-offset-2 ${busy ? "opacity-60 pointer-events-none" : ""}`}>
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />} {busy ? "Uploading…" : "Upload a file"}
+              <input type="file" accept=".pdf,.doc,.docx,.txt,.md,.markdown,.json" className="sr-only" onChange={e => { const f = e.target.files?.[0]; if (f) submit(f); e.currentTarget.value = ""; }} />
             </label>
-          : <button onClick={() => submit()} disabled={busy || disabled} className="px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold flex items-center gap-2 disabled:opacity-60">{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Add & ingest</button>}
-        {msg && <span className="text-xs text-slate-500">{msg}</span>}
+          : <button onClick={() => submit()} disabled={busy || !!missing} title={missing ?? undefined} aria-describedby={missing ? "kb-add-missing" : undefined} className="min-h-10 px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold flex items-center gap-2 disabled:opacity-60">{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} {busy ? "Adding…" : "Add"}</button>}
+        {mode === "file" && !busy && <span className="text-[12px] text-slate-500">PDF, Word, text or Markdown</span>}
+        {mode !== "file" && missing && <span id="kb-add-missing" className="text-[12px] text-slate-500">{missing}</span>}
+        {msg && <span role="alert" className="text-xs text-red-600">{msg}</span>}
       </div>
     </div>
   );
@@ -337,8 +369,8 @@ function TestAssistantBox() {
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
       <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><FlaskConical className="w-3.5 h-3.5" /> Test the assistant (no message is sent)</p>
       <div className="flex gap-2">
-        <input className={`${inp} flex-1`} placeholder="Ask like a customer would… e.g. What are your pricing plans?" value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => { if (e.key === "Enter") run(); }} />
-        <button onClick={run} disabled={busy || !q.trim()} className="px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold flex items-center gap-2 disabled:opacity-60">
+        <input className={`${inp} flex-1 min-w-0`} aria-label="Test question" placeholder="Ask like a customer would… e.g. What are your pricing plans?" value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => { if (e.key === "Enter") run(); }} />
+        <button onClick={run} disabled={busy || !q.trim()} title={!q.trim() ? "Type a question first" : undefined} className="min-h-10 px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold flex items-center gap-2 disabled:opacity-60">
           {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />} Test
         </button>
       </div>
@@ -347,11 +379,11 @@ function TestAssistantBox() {
           {result.error
             ? <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{result.error}</div>
             : result.escalate
-              ? <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800"><b>Would escalate to a human.</b>{result.reason ? ` Reason: ${result.reason}` : ""}</div>
+              ? <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800"><b>The AI would hand this to a person.</b>{result.reason ? ` Why: ${result.reason}` : ""}</div>
               : <div className="bg-brand-green/10 border border-brand-green/40 rounded-lg px-4 py-3 text-sm whitespace-pre-wrap">{result.reply}</div>}
           {result.retrieved?.length > 0 && (
             <details className="text-xs text-slate-500">
-              <summary className="cursor-pointer font-semibold">Retrieved context ({result.usedChunks} used)</summary>
+              <summary className="cursor-pointer font-semibold">What it read from your documents ({result.usedChunks} used)</summary>
               <div className="mt-1.5 space-y-1">
                 {result.retrieved.map((r, i) => (
                   <p key={i} className="bg-slate-50 rounded px-2 py-1.5"><b>{r.similarity}</b> — {r.preview}…</p>
@@ -444,7 +476,7 @@ function KbLibraryActions({ docs, onChanged }: { docs: number; onChanged: () => 
             {check.ready ? "No coverage lost" : "Not ready to switch"}
           </p>
           <p className="text-[11px] text-slate-600 mt-0.5">{check.reason}</p>
-          <p className="text-[10px] text-slate-400 mt-1">
+          <p className="text-[11px] text-slate-400 mt-1">
             This compares what each index returns. It cannot say the library is more accurate — there is no answer key —
             so read the flagged cases before switching.
           </p>
@@ -505,7 +537,7 @@ function KbMismatches({ items }: { items: Mismatch[] }) {
                       {m.field.startsWith("price:") ? `₹${Number(c.value).toLocaleString("en-IN")}` : c.value}
                     </span>
                     <span className="text-[12px] text-slate-600 min-w-0 truncate">{c.source || "unknown source"}</span>
-                    <span className={`ml-auto text-[10px] font-semibold uppercase tracking-wide ${wins ? "text-emerald-700" : "text-red-700"}`}>
+                    <span className={`ml-auto text-[11px] font-semibold uppercase tracking-wide ${wins ? "text-emerald-700" : "text-red-700"}`}>
                       {wins ? "in use" : "fix this"}
                     </span>
                   </div>
@@ -531,10 +563,12 @@ function KbReviewQueue({ items, onResolved }: { items: ReviewItem[]; onResolved:
   const act = async (id: string, which: "approve" | "reject") => {
     setBusy(id);
     try {
-      await fetch("/api/admin/kb/concepts", {
+      const r = await fetch("/api/admin/kb/concepts", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ [which]: id }),
-      });
+      }).catch(() => null);
+      if (r?.ok) toast(which === "approve" ? "The new version is now in use" : "Kept the published version");
+      else toast({ text: "That didn't save. Please try again.", tone: "error" });
       onResolved();
     } finally { setBusy(null); }
   };
@@ -573,7 +607,7 @@ function KbReviewQueue({ items, onResolved }: { items: ReviewItem[]; onResolved:
 
             <div className="grid sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-slate-100">
               <div className="p-3">
-                <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">
+                <p className="text-[11px] font-bold uppercase text-slate-500 mb-1">
                   {it.live ? "Published now" : "Nothing published yet"}
                 </p>
                 <p className="text-[12px] leading-relaxed text-slate-600 whitespace-pre-wrap">
@@ -581,7 +615,7 @@ function KbReviewQueue({ items, onResolved }: { items: ReviewItem[]; onResolved:
                 </p>
               </div>
               <div className="p-3 bg-amber-50/40">
-                <p className="text-[10px] font-bold uppercase text-amber-700 mb-1">Incoming</p>
+                <p className="text-[11px] font-bold uppercase text-amber-700 mb-1">Incoming</p>
                 <p className="text-[12px] leading-relaxed text-slate-700 whitespace-pre-wrap">
                   {it.incoming.body.slice(0, 600)}
                 </p>
@@ -633,6 +667,7 @@ function KbConceptBrowser({ areas, spine }: { areas: AreaCount[]; spine: { slug:
       body: JSON.stringify({ save: id, body: draft }),
     }).then(x => x.json()).catch(() => ({ error: "save failed" }));
     if (r.error) { setErr(r.error); return; }
+    toast("Saved — the AI uses the new wording now");
     setEditing(null);
     if (open) void load(open);
   };
@@ -664,7 +699,7 @@ function KbConceptBrowser({ areas, spine }: { areas: AreaCount[]; spine: { slug:
                     <div className="flex items-center justify-between gap-2">
                       <div className="min-w-0">
                         <p className="text-[13px] font-semibold text-brand-dark truncate">{c.title ?? c.path}</p>
-                        <code className="text-[10px] text-slate-400">{c.path}</code>
+                        <code className="text-[11px] text-slate-400">{c.path}</code>
                       </div>
                       <button onClick={() => { setEditing(editing === c.id ? null : c.id); setDraft(c.body); setErr(""); }}
                         className="text-[11px] font-semibold text-brand-700 hover:underline shrink-0">
@@ -678,7 +713,7 @@ function KbConceptBrowser({ areas, spine }: { areas: AreaCount[]; spine: { slug:
                           className="w-full border border-line rounded-lg p-2 text-[12px] font-mono leading-relaxed" />
                         {err && <p className="text-[11px] text-red-600">{err}</p>}
                         <div className="flex items-center justify-between">
-                          <p className="text-[10px] text-slate-400">Saving re-embeds this concept only.</p>
+                          <p className="text-[11px] text-slate-500">Saving updates only this part.</p>
                           <button onClick={() => save(c.id)}
                             className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-brand-700 text-white hover:bg-brand-900">Save</button>
                         </div>

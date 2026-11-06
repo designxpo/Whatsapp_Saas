@@ -8,8 +8,10 @@ import { useState, useEffect, useCallback } from "react";
 import { useVocab } from "@/lib/vocab-client";
 import { ArrowRight, Check, ClipboardList, ExternalLink, Loader2, Plus, RefreshCw, Trash2, X, Calendar } from "lucide-react";
 import { adminFetch } from "@/lib/adminfetch";
-import { type Tab, inp, btnPrimary, RailCard, StatRow, ChannelSelect } from "../_shared";
+import { type Tab, inp, btnPrimary, RailCard, StatRow, ChannelSelect, EmptyState } from "../_shared";
 import { useConfirm } from "@/components/confirm-dialog";
+import { toast } from "@/components/toast";
+import { usePromptDialog } from "@/components/prompt-dialog";
 import { Drawer } from "@/components/overlay";
 
 function FormsRail({ goTo, forms }: { goTo: (t: Tab) => void; forms: { status: string }[] }) {
@@ -20,7 +22,7 @@ function FormsRail({ goTo, forms }: { goTo: (t: Tab) => void; forms: { status: s
       <RailCard title="Form status">
         <StatRow label="Published — live" value={c("PUBLISHED")} />
         <StatRow label="Drafts" value={c("DRAFT")} tone={c("DRAFT") > 0 ? "warn" : undefined} />
-        <StatRow label="Deprecated" value={c("DEPRECATED")} />
+        <StatRow label="Retired" value={c("DEPRECATED")} />
       </RailCard>
       <RailCard title={`From build to ${vocab.lead.one.toLowerCase()}`}>
         <ol className="space-y-1.5 text-[11px] text-slate-500 list-decimal pl-4">
@@ -40,7 +42,7 @@ function FormsRail({ goTo, forms }: { goTo: (t: Tab) => void; forms: { status: s
       <RailCard title="Tips">
         <ul className="space-y-1.5 text-[11px] text-slate-500 list-disc pl-4">
           <li>Short forms convert best — 3–5 fields.</li>
-          <li>Published forms can&apos;t be edited — create a new version, deprecate the old.</li>
+          <li>Live forms can&apos;t be edited — make a copy, then retire the old one.</li>
           <li>Mark only truly essential fields as required.</li>
         </ul>
       </RailCard>
@@ -78,9 +80,9 @@ function FormResponsesPanel() {
   const badge = (s: string) => s === "submitted" ? "bg-emerald-50 text-emerald-700" : s === "abandoned" ? "bg-amber-50 text-amber-700" : "bg-canvas text-ink-400";
   return (
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
-      <button onClick={() => setOpen(o => !o)} className="w-full flex items-center justify-between">
+      <button onClick={() => setOpen(o => !o)} aria-expanded={open} className="w-full min-h-10 flex items-center justify-between gap-2">
         <span className="text-sm font-bold text-ink-900 flex items-center gap-2"><ClipboardList className="w-4 h-4 text-brand-700" /> Form responses</span>
-        <span className="text-[11px] text-ink-400">{submitted} submitted · {abandoned} abandoned · {open ? "hide" : "show"}</span>
+        <span className="text-[12px] text-ink-500">{submitted} submitted · {abandoned} not finished · {open ? "hide" : "show"}</span>
       </button>
       {open && (err ? <p className="text-xs text-red-600">Couldn&apos;t load form responses — {err}</p> : responses.length ? (
         <div className="space-y-1.5 max-h-96 overflow-y-auto">
@@ -88,14 +90,14 @@ function FormResponsesPanel() {
             <div key={r.id} className="border border-line rounded-control px-3 py-2">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[13px] font-semibold text-ink-900 truncate">{r.phone || "—"}</span>
-                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${badge(r.status)}`}>{r.status.toUpperCase()}</span>
+                <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${badge(r.status)}`}>{r.status === "submitted" ? "Submitted" : r.status === "abandoned" ? "Not finished" : "Sent"}</span>
               </div>
               {r.data && Object.keys(r.data).length > 0 && <p className="text-[11px] text-ink-500 mt-0.5 break-words">{Object.entries(r.data).map(([k, v]) => `${k}: ${v}`).join(" · ")}</p>}
-              <p className="text-[10px] text-ink-400 mt-0.5">{new Date(r.submittedAt ?? r.sentAt).toLocaleString()}</p>
+              <p className="text-[11px] text-ink-400 mt-0.5">{new Date(r.submittedAt ?? r.sentAt).toLocaleString()}</p>
             </div>
           ))}
         </div>
-      ) : <p className="text-xs text-ink-400">No form responses yet.</p>)}
+      ) : <p className="text-xs text-ink-500">No form responses yet. When a customer fills in one of your forms in WhatsApp, their answers appear here and on their contact.</p>)}
     </section>
   );
 }
@@ -103,6 +105,7 @@ function FormResponsesPanel() {
 function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const { vocab } = useVocab();
   const ask = useConfirm();
+  const [askText, textDialog] = usePromptDialog();
   const [forms, setForms] = useState<WaFormRow[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -166,15 +169,22 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
   }
 
   // Rename a form (works on published too — only content is locked once live).
-  async function renameForm(f: WaFormRow) {
-    const next = prompt("Rename form", f.name);
-    if (next == null || !next.trim() || next.trim() === f.name) return;
+  async function renameTo(f: WaFormRow, to: string, from: string, undoable: boolean) {
     setBusy("rename:" + f.id); setMsg(null);
     try {
-      const res = await fetch("/api/admin/waforms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: f.id, rename: next.trim(), channelId }) });
-      const d = await res.json();
-      if (!res.ok) setMsg(d.error || "Rename failed"); else { setMsg("Renamed", "ok"); load(); }
+      const res = await fetch("/api/admin/waforms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: f.id, rename: to, channelId }) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { toast({ text: d.error || "Couldn't rename the form. Please try again.", tone: "error" }); return; }
+      toast(undoable
+        ? { text: `Renamed to “${to}”`, action: { label: "Undo", onClick: () => void renameTo(f, from, to, false) } }
+        : `Name changed back to “${to}”`);
+      load();
     } finally { setBusy(null); }
+  }
+  async function renameForm(f: WaFormRow) {
+    const next = await askText({ title: "Rename form", label: "Form name (only your team sees this)", defaultValue: f.name, required: true, confirmLabel: "Rename" });
+    if (next == null || !next.trim() || next.trim() === f.name) return;
+    await renameTo(f, next.trim(), f.name, true);
   }
 
   const load = useCallback(async () => {
@@ -217,7 +227,7 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
     try {
       const res = await fetch("/api/admin/waforms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, publish: true, channelId }) });
       const d = await res.json();
-      if (!res.ok) setMsg(d.error || "Publish failed"); else setMsg("Published — the form is live.", "ok");
+      if (!res.ok) setMsg(d.error || "Publish failed"); else toast("Published — the form is live");
       load();
     } finally { setBusy(null); }
   }
@@ -245,15 +255,16 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
   }
 
   async function remove(f: WaFormRow) {
-    const verb = f.status === "PUBLISHED" ? "Deprecate" : "Delete";
+    const verb = f.status === "PUBLISHED" ? "Retire" : "Delete";
     if (!(await ask({
       title: `${verb} this form?`, tone: "danger", confirmLabel: verb,
-      message: "Flows that send it will stop being able to. Responses already collected are kept.",
+      message: "Chatbot flows that send it won't be able to any more. Answers already collected are kept.",
       facts: [{ label: "Form", value: f.name }],
     }))) return;
     setMsg(null);
     const r = await adminFetch("/api/admin/waforms", { method: "DELETE", body: { id: f.id, channelId } });
     if (!r.ok) { setMsg(`${verb} failed — ${r.error}`); return; }
+    toast(verb === "Retire" ? `“${f.name}” retired` : `“${f.name}” deleted`);
     load();
   }
 
@@ -302,10 +313,10 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
                   </select>
                   <input className={`${inp} flex-1`} maxLength={f.type === "optin" ? 120 : 30} placeholder={f.type === "optin" ? "Opt-in text, e.g. Send me updates on WhatsApp" : "Field label, e.g. What are you looking for?"} value={f.label} onChange={e => setField(i, { label: e.target.value })} />
                   {isChoice(f.type) && <input className={`${inp} flex-1`} placeholder="Options, comma-separated" value={f.options} onChange={e => setField(i, { options: e.target.value })} />}
-                  <label className="flex items-center gap-1 text-[11px] text-ink-400 shrink-0 cursor-pointer">
-                    <input type="checkbox" className="accent-brand-700" checked={f.required} onChange={e => setField(i, { required: e.target.checked })} /> req
+                  <label className="flex items-center gap-1 text-[12px] text-ink-500 shrink-0 cursor-pointer min-h-8">
+                    <input type="checkbox" className="accent-brand-700" checked={f.required} onChange={e => setField(i, { required: e.target.checked })} /> Required
                   </label>
-                  <button onClick={() => setFields(fs => fs.filter((_, j) => j !== i))} className="p-1 text-ink-400 hover:text-red-500 shrink-0"><X className="w-4 h-4" /></button>
+                  <button onClick={() => setFields(fs => fs.filter((_, j) => j !== i))} aria-label={`Remove field ${f.label || i + 1}`} className="grid place-items-center w-8 h-8 text-ink-400 hover:text-red-500 shrink-0 rounded-control"><X className="w-4 h-4" /></button>
                 </div>
               ))}
               {fields.length < 15 && (
@@ -327,25 +338,25 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
 
           {/* Phone-style preview */}
           <div className="bg-[#e5ddd5] rounded-card p-4 sticky top-4">
-            <p className="text-[10px] font-bold text-ink-600 uppercase mb-2">Preview</p>
+            <p className="text-[11px] font-bold text-ink-600 uppercase mb-2">Preview</p>
             <div className="bg-white rounded-xl overflow-hidden shadow-sm">
               <div className="bg-brand-700 text-white text-[12px] font-semibold px-3 py-2">{title.trim() || name.trim() || "Form"}</div>
               <div className="p-3 space-y-2.5">
                 {fields.filter(f => f.label.trim()).map((f, i) => (
                   <div key={i}>
-                    <p className="text-[10px] font-semibold text-ink-600 mb-0.5">{f.label}{f.required && <span className="text-red-700"> *</span>}</p>
+                    <p className="text-[11px] font-semibold text-ink-600 mb-0.5">{f.label}{f.required && <span className="text-red-700"> *</span>}</p>
                     {isChoice(f.type)
                       ? <div className="space-y-1">{f.options.split(",").map(s => s.trim()).filter(Boolean).slice(0, 4).map(o => (
-                          <div key={o} className="flex items-center gap-1.5 text-[10px] text-ink-400">
+                          <div key={o} className="flex items-center gap-1.5 text-[11px] text-ink-400">
                             <span className={`inline-block w-3 h-3 border border-line ${f.type === "checkbox" ? "rounded" : "rounded-full"}`} />{o}
                           </div>
                         ))}</div>
                       : f.type === "optin"
-                        ? <div className="flex items-center gap-1.5 text-[10px] text-ink-400"><span className="inline-block w-3 h-3 border border-line rounded" />{f.label}</div>
-                        : <div className="border border-line rounded-lg px-2 py-1.5 text-[10px] text-ink-400">{f.type === "date" ? <span className="inline-flex items-center gap-1"><Calendar className="w-3 h-3" /> Select date</span> : f.type === "textarea" ? "Type here…" : `Enter ${f.type}`}</div>}
+                        ? <div className="flex items-center gap-1.5 text-[11px] text-ink-400"><span className="inline-block w-3 h-3 border border-line rounded" />{f.label}</div>
+                        : <div className="border border-line rounded-lg px-2 py-1.5 text-[11px] text-ink-400">{f.type === "date" ? <span className="inline-flex items-center gap-1"><Calendar className="w-3 h-3" /> Select date</span> : f.type === "textarea" ? "Type here…" : `Enter ${f.type}`}</div>}
                   </div>
                 ))}
-                {!fields.some(f => f.label.trim()) && <p className="text-[10px] text-ink-400 text-center py-4">Add fields to see them here</p>}
+                {!fields.some(f => f.label.trim()) && <p className="text-[11px] text-ink-400 text-center py-4">Add fields to see them here</p>}
                 <button className="w-full py-1.5 rounded-full bg-brand-700 text-white text-[11px] font-bold">Submit</button>
               </div>
             </div>
@@ -362,7 +373,7 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
               <button onClick={() => renameForm(f)} disabled={busy === "rename:" + f.id} title="Click to rename" className="text-sm font-semibold text-ink-900 truncate text-left hover:underline disabled:opacity-60">{f.name}</button>
               {f.validationErrors.length > 0 && <p className="text-[11px] text-red-700 truncate">Fix before publishing: {f.validationErrors.join(" · ")}</p>}
             </div>
-            <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold shrink-0 ${statusPill(f.status)}`}>{f.status}</span>
+            <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold shrink-0 ${statusPill(f.status)}`}>{f.status === "PUBLISHED" ? "Live" : f.status === "DRAFT" ? "Draft" : f.status === "DEPRECATED" ? "Retired" : f.status.charAt(0) + f.status.slice(1).toLowerCase()}</span>
             {f.previewUrl && (
               <a href={f.previewUrl} target="_blank" rel="noreferrer" title="Open Meta's interactive preview"
                 className="p-1.5 text-ink-400 hover:text-brand-700 hover:bg-brand-50 rounded-lg shrink-0"><ExternalLink className="w-4 h-4" /></a>
@@ -381,20 +392,25 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
             )}
             {f.status === "PUBLISHED" && (
               <button onClick={() => publishAll(f)} disabled={busy === "all:" + f.id}
-                title="Publish an identical copy of this form to every other connected number's WABA, so a chatbot flow can send it natively from any number"
+                title="Publish an identical copy of this form to every other WhatsApp number you've connected, so a chatbot flow can send it from any number"
                 className="px-3 py-1.5 rounded-control border border-brand-700 text-brand-700 text-xs font-bold hover:bg-brand-50 shrink-0 disabled:opacity-60">
                 {busy === "all:" + f.id ? "…" : "Publish to all numbers"}
               </button>
             )}
-            <button onClick={() => remove(f)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
+            <button onClick={() => remove(f)} aria-label={`${f.status === "PUBLISHED" ? "Retire" : "Delete"} ${f.name}`} title={f.status === "PUBLISHED" ? "Retire" : "Delete"} className="grid place-items-center w-9 h-9 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
           </div>
         ))}
-        {forms.length === 0 && <p className="px-4 py-8 text-center text-ink-400 text-sm">{notice ? "Forms appear here once Meta credentials are set." : "No forms yet — hit New form to build your first one."}</p>}
+        {forms.length === 0 && (notice
+          ? <p className="px-4 py-8 text-center text-ink-500 text-sm">Your forms will appear here once your WhatsApp number is connected.</p>
+          : <EmptyState mood="sleeping" title="No WhatsApp forms yet"
+              body="A form opens inside WhatsApp so customers can share their name, email, choices or a date without leaving the chat. Build one, then send it from a chatbot flow."
+              action={<button onClick={() => { resetBuilder(); setShowBuilder(true); }} className={btnPrimary}><Plus className="w-4 h-4" /> New form</button>} />)}
       </div>
 
       <p className="text-[11px] text-ink-400">To send a form in a chatbot: open <b>Chatbot Flows</b> → drag the <b>WhatsApp form</b> block → pick a published form. The flow waits for the submission and then continues.</p>
     </div>
     <FormsRail goTo={goTo} forms={forms} />
+    {textDialog}
     </div>
   );
 }

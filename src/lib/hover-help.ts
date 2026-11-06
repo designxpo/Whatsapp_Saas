@@ -1,21 +1,36 @@
 const TARGETS = '[data-help], [data-tour-link], [data-tour]:not([data-tour="navigation"]), button, a[href], input:not([type="hidden"]), select, textarea, [role="tab"], [role="button"]';
 
+/** How long the pointer (or keyboard focus) rests on a control before its help shows. */
+export const HELP_DELAY_MS = 700;
+
+/** Truly unavailable right now: the control itself (or its fieldset) is disabled. */
+function isDisabled(element: HTMLElement): boolean {
+  if (element.getAttribute('aria-disabled') === 'true') return true;
+  if ((element as HTMLButtonElement).disabled === true) return true;
+  return element.matches(':disabled');
+}
+
+/**
+ * The help for one control, or null when there is nothing worth saying.
+ *
+ * Only real help is shown: the control's own `data-help`, the reason a control
+ * is unavailable (`data-help-disabled`, or a plain "not available" — and only
+ * when it really is disabled), or the name of an icon-only button whose label
+ * isn't visible. A generic "activate this control" line on every button said
+ * nothing, and at a short delay it would follow the pointer everywhere.
+ */
 export function helpFor(element: HTMLElement): { title: string; description: string } | null {
   const labels = (element as HTMLInputElement).labels;
+  const visibleText = (element.matches('input, select, textarea') ? '' : element.textContent || '').trim();
   const title = (element.dataset.helpTitle || element.getAttribute('aria-label') || element.getAttribute('title') ||
-    labels?.[0]?.textContent || (element.matches('input, select, textarea') ? element.getAttribute('placeholder') : element.textContent) || '').trim().replace(/\s+/g, ' ').slice(0, 160);
+    labels?.[0]?.textContent || (element.matches('input, select, textarea') ? element.getAttribute('placeholder') : visibleText) || '').trim().replace(/\s+/g, ' ').slice(0, 160);
   if (!title) return null;
-  let description = element.dataset.help;
-  if (element.dataset.tour === "replay") description = "Restart the guided walkthrough. Close it anytime to return to your work.";
-  if (!description) {
-    if (element.matches(':disabled, [aria-disabled="true"]')) description = 'This control is currently unavailable. Complete the required fields or steps on this screen first.';
-    else if (element.matches('input[type="checkbox"], input[type="radio"]')) description = 'Select this option to change your selection. Review the form before saving.';
-    else if (element.matches('select')) description = 'Open the list and choose an option.';
-    else if (element.matches('input, textarea')) description = 'Enter or edit this field. Follow any format or validation message shown beside it.';
-    else if (element.matches('a')) description = 'Open this link to view the named page or resource.';
-    else description = 'Activate this control to perform the named action. Review any options or confirmation shown before continuing.';
-  }
-  return { title, description };
+  if (isDisabled(element)) return { title, description: element.dataset.helpDisabled || element.dataset.help || 'Not available right now.' };
+  if (element.dataset.tour === "replay") return { title, description: "Restart the guided walkthrough. Close it anytime to return to your work." };
+  if (element.dataset.help) return { title, description: element.dataset.help };
+  // An icon-only control: its name isn't on screen, so say it.
+  if (!visibleText && !element.matches('input, select, textarea')) return { title, description: '' };
+  return null;
 }
 
 /** Delegated listeners cover controls added by queries, sheets and route updates. */
@@ -27,7 +42,9 @@ export function installHoverHelp(): () => void {
   let previousDescription: string | null = null;
   const id = 'talko-context-help';
 
+  const watch = new MutationObserver(() => hide());
   const hide = () => {
+    watch.disconnect();
     clearTimeout(timer);
     clearTimeout(leaveTimer);
     if (target && bubble) {
@@ -50,8 +67,11 @@ export function installHoverHelp(): () => void {
     const text = document.createElement('p');
     // Never interpolate labels or user-provided values into HTML.
     heading.textContent = help.title;
-    text.textContent = help.description;
-    bubble.append(heading, text);
+    bubble.append(heading);
+    if (help.description) {
+      text.textContent = help.description;
+      bubble.append(text);
+    }
     document.body.append(bubble);
     const rect = target.getBoundingClientRect();
     const box = bubble.getBoundingClientRect();
@@ -60,6 +80,9 @@ export function installHoverHelp(): () => void {
     bubble.style.top = `${Math.max(12, Math.min(top, window.innerHeight - box.height - 12))}px`;
     previousDescription = target.getAttribute('aria-describedby');
     target.setAttribute('aria-describedby', [previousDescription, id].filter(Boolean).join(' '));
+    // A control that turns on or off while its help is up would leave the
+    // wrong words showing ("not available" on a button that now works).
+    watch.observe(target, { attributes: true, attributeFilter: ['disabled', 'aria-disabled', 'data-help'] });
   };
   const enter = (event: Event) => {
     if (event instanceof PointerEvent && event.pointerType === 'touch') return;
@@ -71,7 +94,7 @@ export function installHoverHelp(): () => void {
     hide();
     if (!next || !helpFor(next)) return;
     target = next;
-    timer = setTimeout(show, 4000);
+    timer = setTimeout(show, HELP_DELAY_MS);
   };
   const leave = (event: Event) => {
     const related = (event as PointerEvent | FocusEvent).relatedTarget;

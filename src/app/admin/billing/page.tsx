@@ -405,7 +405,7 @@ function Billing() {
                     <option value="">Select your state…</option>
                     {GST_STATES.map(([code, name]) => <option key={code} value={code}>{code} — {name}</option>)}
                   </select>
-                  <span className="block text-[10px] text-ink-400 mt-1">The 2-digit GST state code decides CGST+SGST vs IGST on your invoice.</span>
+                  <span className="block text-[11px] text-ink-400 mt-1">The 2-digit GST state code decides CGST+SGST vs IGST on your invoice.</span>
                 </label>
                 <label className="block">
                   <span className="text-[11px] font-bold text-ink-600">GSTIN <span className="font-medium text-ink-400">(optional)</span></span>
@@ -413,7 +413,7 @@ function Billing() {
                     placeholder="27AAAAA0000A1Z5" />
                   {/* Only a tax invoice from a GST-registered supplier can carry
                       input tax credit, so don't promise ITC we can't issue. */}
-                  <span className="block text-[10px] text-ink-400 mt-1">
+                  <span className="block text-[11px] text-ink-400 mt-1">
                     {taxInvoiceReady
                       ? "Needed to claim input tax credit on the GST we charge you — leave blank if you aren't registered."
                       : "We'll record it on your billing documents; input tax credit applies once we issue tax invoices."}
@@ -463,7 +463,7 @@ function Billing() {
                 </ul>
                 {/* Per-plan feature breakdown — included (✓) vs not in this plan (✗). */}
                 <div className="mt-3 border-t border-line pt-3 flex-1">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-ink-400 mb-1.5">Features</p>
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-ink-400 mb-1.5">Features</p>
                   <ul className="space-y-1">
                     {FEATURE_KEYS.map(k => {
                       const on = p.features?.[k] === true;
@@ -513,7 +513,7 @@ function Billing() {
                   {/* The button stays live and explains itself on click (see
                       billingDetailsReady) — this is the heads-up before it. */}
                   {!isCurrent && !detailsComplete && offer && (
-                    <p className="mt-1.5 text-[10px] text-amber-700 text-center">Billing details needed first</p>
+                    <p className="mt-1.5 text-[11px] text-amber-700 text-center">Billing details needed first</p>
                   )}
                 </div>
               </div>

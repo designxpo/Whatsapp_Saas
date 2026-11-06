@@ -14,6 +14,8 @@ import { inp, RailCard, StatRow, ConvAvatar, type ChannelRow, setChannelCache, t
 import { launchWhatsAppSignup, whatsappSignupReady, whatsappSignupMissing, launchFacebookSignup, facebookSignupReady, facebookSignupMissing, metaPreview } from "@/lib/embedded-signup-client";
 import { qrImageUrl, waClickToChatUrl } from "@/lib/qrcode";
 import { useConfirm } from "@/components/confirm-dialog";
+import { toast } from "@/components/toast";
+import { usePromptDialog } from "@/components/prompt-dialog";
 import { TerminologyCard } from "./TerminologyCard";
 import { Drawer } from "@/components/overlay";
 
@@ -46,7 +48,7 @@ function SettingsRail({ goTo }: { goTo: (t: Tab) => void }) {
         <ul className="space-y-1.5 text-[11px] text-slate-500 list-disc pl-4">
           <li>Keep your WhatsApp two-step PIN recorded somewhere safe.</li>
           <li>Rotate the admin password once setup is done.</li>
-          <li>The cron heartbeat sends queued broadcasts every 5 minutes.</li>
+          <li>Scheduled broadcasts go out on their own — Talko checks for them every 5 minutes.</li>
         </ul>
       </RailCard>
     </aside>
@@ -89,7 +91,7 @@ function TeamManager() {
       const res = await fetch("/api/admin/team", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
       const d = await res.json();
       if (!res.ok) setMsg(d.error || "Save failed");
-      else { setForm(null); load(); }
+      else { toast(form.id ? "Teammate saved" : `${form.name || form.email} can now sign in`); setForm(null); load(); }
     } finally { setBusy(false); }
   }
 
@@ -99,7 +101,8 @@ function TeamManager() {
       message: "They are signed out immediately and cannot log in again until you re-invite them.",
       facts: [{ label: "Account", value: u.email }],
     }))) return;
-    await fetch("/api/admin/team", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: u.id, email: u.email }) });
+    const r = await fetch("/api/admin/team", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: u.id, email: u.email }) }).catch(() => null);
+    if (r?.ok) toast(`${u.name || u.email} no longer has access`); else toast({ text: "Couldn't remove their access. Please try again.", tone: "error" });
     load();
   }
 
@@ -113,13 +116,13 @@ function TeamManager() {
           className="shrink-0 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add member</button>
       </div>
 
-      {notice && <p className="text-xs text-amber-700 bg-amber-50 rounded-control px-3 py-2">{notice} — apply migration <code className="font-mono">0014_team.sql</code>.</p>}
+      {notice && <p className="text-xs text-amber-800 bg-amber-50 rounded-control px-3 py-2">Team accounts are still being set up for your workspace. If this doesn&apos;t clear in a day, contact Talko support.</p>}
 
       {owner && (
         <div className="flex items-center gap-3 border border-line rounded-control px-3 py-2.5 bg-canvas/50">
           <div className="w-8 h-8 rounded-full bg-ink-950 text-white flex items-center justify-center text-xs font-bold shrink-0"><Star className="w-4 h-4 fill-current" /></div>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-ink-900 truncate">{owner} <span className="text-[10px] font-bold text-brand-700">· OWNER</span></p>
+            <p className="text-sm font-semibold text-ink-900 truncate">{owner} <span className="text-[11px] font-bold text-brand-700">· Owner</span></p>
             <p className="text-[11px] text-ink-400">The env account — always admin, managed via ADMIN_USER/ADMIN_PASSWORD</p>
           </div>
         </div>
@@ -165,9 +168,9 @@ function TeamManager() {
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-ink-900 truncate">
-              {u.name || u.email} <span className={`text-[10px] font-bold ${u.role === "admin" ? "text-brand-700" : "text-ink-400"}`}>· {u.role === "lead" ? "TEAM LEAD" : u.role.toUpperCase()}</span>
-              {u.team && <span className="text-[10px] font-bold text-blue-600"> · {TEAM_SHORT[u.team].toUpperCase()}</span>}
-              {!u.active && <span className="text-[10px] font-bold text-red-500"> · DISABLED</span>}
+              {u.name || u.email} <span className={`text-[11px] font-bold ${u.role === "admin" ? "text-brand-700" : "text-ink-400"}`}>· {u.role === "lead" ? "TEAM LEAD" : u.role.toUpperCase()}</span>
+              {u.team && <span className="text-[11px] font-bold text-blue-600"> · {TEAM_SHORT[u.team].toUpperCase()}</span>}
+              {!u.active && <span className="text-[11px] font-bold text-red-500"> · Disabled</span>}
             </p>
             <p className="text-[11px] text-ink-400 truncate">{u.title ? `${u.title} · ` : ""}{u.channelId && numbers.find(n => n.id === u.channelId) ? `works ${numbers.find(n => n.id === u.channelId)!.name} · ` : ""}{u.email}{u.lastLoginAt ? ` · last login ${new Date(u.lastLoginAt).toLocaleString()}` : " · never logged in"}</p>
           </div>
@@ -263,7 +266,7 @@ function ActivityLog() {
       <div className="max-h-96 overflow-y-auto divide-y divide-line -mx-5 px-5">
         {entries.map(e => (
           <div key={e.id} className="py-2 flex items-start gap-3">
-            <div className="w-7 h-7 rounded-full bg-brand-50 text-brand-700 flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
+            <div className="w-7 h-7 rounded-full bg-brand-50 text-brand-700 flex items-center justify-center text-[11px] font-bold shrink-0 mt-0.5">
               {(e.userName || e.userEmail).slice(0, 1).toUpperCase()}
             </div>
             <div className="min-w-0 flex-1">
@@ -276,7 +279,7 @@ function ActivityLog() {
             </div>
           </div>
         ))}
-        {entries.length === 0 && <p className="py-6 text-center text-xs text-ink-400">No activity recorded yet (needs migration 0014_team.sql).</p>}
+        {entries.length === 0 && <p className="py-6 text-center text-xs text-ink-400">No activity recorded yet. Changes your team makes — saving settings, sending broadcasts, removing people — are listed here.</p>}
       </div>
     </section>
   );
@@ -337,7 +340,7 @@ function ChannelsManager() {
         setForm(f => (f ? { ...f, id: d.channel?.id ?? f.id, token: "" } : f));
         load();
       }
-      else { setForm(null); load(); }
+      else { toast("Number saved"); setForm(null); load(); }
     } finally { setBusy(false); }
   }
 
@@ -346,7 +349,8 @@ function ChannelsManager() {
       title: "Remove this number?", tone: "danger", confirmLabel: "Remove number",
       message: "Its conversations stay, but replies go out through the default credentials instead — possibly a different WhatsApp Business Account, where this number's templates do not exist.",
     }))) return;
-    await fetch("/api/admin/channels", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+    const r = await fetch("/api/admin/channels", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }).catch(() => null);
+    if (r?.ok) toast("Number removed"); else toast({ text: "Couldn't remove it. Please try again.", tone: "error" });
     load();
   }
 
@@ -372,7 +376,7 @@ function ChannelsManager() {
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="min-w-[240px]">
-          <p className="text-xs font-bold text-slate-400 uppercase">WhatsApp numbers</p><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>Connect multiple WhatsApp numbers — each gets its own AI persona, flows, templates, and broadcasts.</>}>Inbound routes automatically; replies always leave from the same number.</PageInfo>
+          <p className="text-xs font-bold text-slate-400 uppercase">WhatsApp numbers</p><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>Connect multiple WhatsApp numbers — each gets its own AI personality, flows, templates, and broadcasts.</>}>Inbound routes automatically; replies always leave from the same number.</PageInfo>
         </div>
         <div className="flex items-center gap-2 flex-wrap shrink-0">
           {(whatsappSignupReady() || metaPreview()) && (
@@ -385,7 +389,7 @@ function ChannelsManager() {
                 className="px-3 py-1.5 rounded-control border border-[#0783fd] text-[#0783fd] hover:bg-sky-50 text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
                 <Smartphone className="w-3.5 h-3.5" /> Connect existing app number
               </button>
-              {!whatsappSignupReady() && <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">Preview</span>}
+              {!whatsappSignupReady() && <span className="text-[11px] font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">Preview</span>}
             </div>
           )}
           <button onClick={() => { setForm({ ...EMPTY_CHANNEL }); setMsg(null); }} className="px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add manually</button>
@@ -425,7 +429,7 @@ function ChannelsManager() {
                   <button onClick={() => setFoldedTeams(f => ({ ...f, [key]: !folded }))} aria-expanded={!folded} className="w-full flex items-center gap-2 pt-1 text-left">
                     <ChevronRight className={`w-3.5 h-3.5 text-ink-400 shrink-0 transition-transform ${folded ? "" : "rotate-90"}`} />
                     <p className="text-[11px] font-bold uppercase tracking-wide text-ink-600">{team ? TEAM_LABELS[team] : "No team"}</p>
-                    <span className="text-[10px] font-bold text-ink-400 bg-canvas rounded-full px-1.5 py-0.5">{chans.length}</span>
+                    <span className="text-[11px] font-bold text-ink-400 bg-canvas rounded-full px-1.5 py-0.5">{chans.length}</span>
                     {folded && <span className="text-[11px] text-ink-400 truncate">{all.slice(0, 3).map(c => c.name).join(", ")}{all.length > 3 ? ` +${all.length - 3}` : ""}</span>}
                     <div className="flex-1 h-px bg-line" />
                   </button>
@@ -434,7 +438,7 @@ function ChannelsManager() {
                   <div key={c.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2.5">
                     <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-700 flex items-center justify-center shrink-0"><Phone className="w-4 h-4" /></div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-ink-900 truncate">{c.name} {c.isDefault && <span className="text-[10px] font-bold text-brand-700">· DEFAULT</span>}{c.mode === "manual" && <span className="text-[10px] font-bold text-amber-600"> · MANUAL</span>}{c.coex && <span className="text-[10px] font-bold text-sky-600" title="Coexistence — this number is also active on the WhatsApp Business phone app; replies sent from the app show up here and pause the bot"> · APP+API</span>}{!c.active && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
+                      <p className="text-sm font-semibold text-ink-900 truncate">{c.name} {c.isDefault && <span className="text-[11px] font-bold text-brand-700">· Default</span>}{c.mode === "manual" && <span className="text-[11px] font-bold text-amber-600"> · Manual</span>}{c.coex && <span className="text-[11px] font-bold text-sky-600" title="Coexistence — this number is also active on the WhatsApp Business phone app; replies sent from the app show up here and pause the bot"> · APP+API</span>}{!c.active && <span className="text-[11px] font-bold text-red-500"> · Off</span>}</p>
                       <p className="text-[11px] text-ink-400 font-mono truncate">phone {c.phoneId} · waba {c.wabaId} · {c.agentId ? `AI: ${agents.find(a => a.id === c.agentId)?.name ?? "custom"}` : "AI: global default"}{c.crmSource ? ` · CRM: ${c.crmSource}` : ""}</p>
                     </div>
                     <button onClick={() => { setProfileFor(profileFor?.id === c.id ? null : { id: c.id, name: c.name, coex: !!c.coex }); setForm(null); }}
@@ -480,11 +484,11 @@ function ChannelsManager() {
             <p className="text-[11px] text-ink-400 mt-1">Optional. A member pinned to a <b>team</b> (Settings → Team) only sees the chats on that team&apos;s numbers. Leave blank and every member sees this number, as before.</p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
-            <select className={inp} value={form.agentId} onChange={e => setForm({ ...form, agentId: e.target.value })} title="Default AI persona for this number">
-              <option value="">AI persona: global default</option>
-              {agents.map(a => <option key={a.id} value={a.id}>AI persona: {a.name}</option>)}
+            <select className={inp} value={form.agentId} onChange={e => setForm({ ...form, agentId: e.target.value })} title="Which AI personality answers on this number">
+              <option value="">AI personality: your default</option>
+              {agents.map(a => <option key={a.id} value={a.id}>AI personality: {a.name}</option>)}
             </select>
-            <select className={inp} value={form.kbTag} onChange={e => setForm({ ...form, kbTag: e.target.value })} title="AI on this number answers only from KB docs with this tag. With no tag it reads the whole knowledge base, unless business isolation (AI Hub) is on. Tag docs in the AI Knowledge Base tab.">
+            <select className={inp} value={form.kbTag} onChange={e => setForm({ ...form, kbTag: e.target.value })} title="AI on this number answers only from knowledge base documents with this tag. With no tag it reads the whole knowledge base, unless business isolation (AI Hub) is on. Tag docs in the AI Knowledge Base tab.">
               <option value="">Knowledge: global (all docs)</option>
               {kbTags.map(t => <option key={t} value={t}>Knowledge: {t}</option>)}
               {form.kbTag && !kbTags.includes(form.kbTag) && <option value={form.kbTag}>Knowledge: {form.kbTag}</option>}
@@ -586,7 +590,7 @@ function BusinessProfileEditor({ channelId, name, coex, onClose }: { channelId: 
               <div>
                 <input ref={fileRef} type="file" accept="image/jpeg,image/png" hidden onChange={e => { const f = e.target.files?.[0]; if (f) uploadPhoto(f); }} />
                 <button onClick={() => fileRef.current?.click()} disabled={busy} className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas disabled:opacity-60">Change photo</button>
-                <p className="text-[10px] text-ink-400 mt-1">Square JPEG/PNG, ≥192px.</p>
+                <p className="text-[11px] text-ink-400 mt-1">Square JPEG/PNG, ≥192px.</p>
               </div>
             )}
           </div>
@@ -686,15 +690,18 @@ function ApiKeysCard() {
     setBusy(true); setFresh(null);
     try {
       const d = await fetch("/api/admin/api-keys", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) }).then(r => r.json());
-      if (d.key) { setFresh(d.key); setName(""); load(); } else alert(d.error || "Failed");
-    } finally { setBusy(false); }
+      if (d.key) { setFresh(d.key); setName(""); load(); toast("API key created — copy it now"); }
+      else toast({ text: d.error || "Couldn't create the key. Please try again.", tone: "error" });
+    } catch { toast({ text: "Couldn't reach the server. Please try again.", tone: "error" }); }
+    finally { setBusy(false); }
   }
   async function revoke(id: string) {
     if (!(await ask({
       title: "Revoke this API key?", tone: "danger", confirmLabel: "Revoke key",
       message: "Anything authenticating with it starts failing straight away, and the key cannot be restored. You will need to issue a new one and update every integration.",
     }))) return;
-    await fetch("/api/admin/api-keys", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+    const r = await fetch("/api/admin/api-keys", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }).catch(() => null);
+    if (r?.ok) toast("API key revoked"); else toast({ text: "Couldn't revoke the key. Please try again.", tone: "error" });
     load();
   }
 
@@ -703,7 +710,7 @@ function ApiKeysCard() {
       <p className="text-xs font-bold text-slate-400 uppercase">API access (developers)</p><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>Keys for calling the {who} API from your own systems.</>}>Use a key as <code className="font-mono">Authorization: Bearer ak_live_…</code> to call <code className="font-mono">/api/broadcast</code>, <code className="font-mono">/api/events</code> and <code className="font-mono">/api/contacts</code>. Each key is scoped to this workspace.</PageInfo>
       <div className="flex gap-2">
         <input className="flex-1 border border-line rounded-control px-2 py-1.5 text-xs bg-white" placeholder="Key name (e.g. CRM integration)" value={name} onChange={e => setName(e.target.value)} />
-        <button onClick={create} disabled={busy} className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold shrink-0">Create key</button>
+        <button onClick={create} disabled={busy} className="min-h-9 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold shrink-0 disabled:opacity-50">{busy ? "Creating…" : "Create key"}</button>
       </div>
       {fresh && (
         <div className="bg-emerald-50 border border-emerald-200 rounded-control px-3 py-2 space-y-1">
@@ -718,10 +725,10 @@ function ApiKeysCard() {
               <span className="text-xs font-bold text-brand-dark">{k.name}</span>
               <p className="text-[11px] text-slate-500 font-mono">{k.prefix} · {k.lastUsedAt ? `last used ${new Date(k.lastUsedAt).toLocaleDateString()}` : "never used"}</p>
             </div>
-            <button onClick={() => revoke(k.id)} className="text-[11px] font-bold text-red-500 hover:text-red-700 shrink-0">Revoke</button>
+            <button onClick={() => revoke(k.id)} className="min-h-8 px-2 rounded-control text-[12px] font-bold text-red-600 hover:text-red-700 hover:bg-red-50 shrink-0">Revoke</button>
           </div>
         ))}
-        {keys.filter(k => !k.revoked).length === 0 && <p className="text-center text-slate-400 text-sm py-3">No API keys yet.</p>}
+        {keys.filter(k => !k.revoked).length === 0 && <p className="text-center text-slate-500 text-sm py-3">No API keys yet. You only need one if a developer is connecting your own software to Talko.</p>}
       </div>
     </section>
   );
@@ -938,7 +945,7 @@ function EscalationSweepCard({ isAdmin }: { isAdmin: boolean }) {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ runNow: true }),
       }).then(r => r.json());
       if (d.error) setMsg(d.error);
-      else { setS(d.status); setMsg(`Reset ${d.reset} chat(s).`, "ok"); }
+      else { setS(d.status); setMsg(null); toast(`${d.reset} chat${d.reset === 1 ? "" : "s"} moved back to the AI`); }
     } finally { setBusy(false); }
   }
 
@@ -946,11 +953,11 @@ function EscalationSweepCard({ isAdmin }: { isAdmin: boolean }) {
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-xs font-bold text-slate-400 uppercase">Escalation clean-up</p>
+          <p className="text-xs font-bold text-slate-400 uppercase">Old &ldquo;Needs a person&rdquo; chats clean-up</p>
           <p className="text-xs text-slate-500 mt-0.5">
-            Chats left Escalated for a long time go back to Active and their bot is turned back on, so the Escalated list
-            only shows what really needs a person. Turning the bot back on is the point — a chat a human replied to has the
-            bot off, so resetting the status alone would leave it silent with nobody watching.
+            Chats left in &ldquo;Needs a person&rdquo; for a long time go back to normal and the AI starts replying in them again,
+            so that list only shows what really needs someone. Turning the AI back on is the point — when a person has
+            replied the AI is paused, so moving the chat back alone would leave it silent with nobody watching.
           </p>
         </div>
         {s === null ? <Loader2 className="w-4 h-4 animate-spin text-slate-300 shrink-0" /> : isAdmin && (
@@ -971,7 +978,7 @@ function EscalationSweepCard({ isAdmin }: { isAdmin: boolean }) {
                   onChange={e => setS({ ...s, staleAfterDays: Number(e.target.value) })}
                   onBlur={e => save({ staleAfterDays: Number(e.target.value) })}
                   className="w-16 border border-line rounded-control px-2 py-1 text-xs" />
-                <span className="text-slate-500">days escalated</span>
+                <span className="text-slate-500">days waiting for a person</span>
               </span>
             </label>
             <label className="text-[11px]">
@@ -985,8 +992,8 @@ function EscalationSweepCard({ isAdmin }: { isAdmin: boolean }) {
               </span>
             </label>
             {isAdmin && (
-              <button onClick={runNow} disabled={busy || s.dueNow === 0}
-                className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas disabled:opacity-40">
+              <button onClick={runNow} disabled={busy || s.dueNow === 0} title={s.dueNow === 0 ? "Nothing to reset right now" : undefined}
+                className="min-h-9 px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas disabled:opacity-40">
                 Run now
               </button>
             )}
@@ -995,7 +1002,7 @@ function EscalationSweepCard({ isAdmin }: { isAdmin: boolean }) {
           {/* Blast radius before anything happens. */}
           <div className="text-[11px] text-slate-500 border-t border-line pt-2 space-y-0.5">
             <p>
-              <b className={s.dueNow > 0 ? "text-amber-700" : "text-slate-600"}>{s.dueNow.toLocaleString()} chat(s)</b> would be reset right now
+              <b className={s.dueNow > 0 ? "text-amber-700" : "text-slate-600"}>{s.dueNow.toLocaleString("en-IN")} chat{s.dueNow === 1 ? "" : "s"}</b> would be reset right now
               {s.dueNow > 500 && <span className="text-amber-700"> — capped at 500 per run, so the rest follow on later runs</span>}.
             </p>
             <p>
@@ -1003,7 +1010,7 @@ function EscalationSweepCard({ isAdmin }: { isAdmin: boolean }) {
                 ? <>Last run {new Date(s.lastRunAt).toLocaleString()}{s.lastResetCount != null ? ` · reset ${s.lastResetCount}` : ""}{s.enabled && s.nextRunAt ? ` · next ${new Date(s.nextRunAt).toLocaleDateString()}` : ""}</>
                 : "Never run."}
             </p>
-            {s.dueNow === 0 && <p className="text-slate-400">Nothing is old enough yet. If migration 0103 was just applied, existing chats are dated from the customer&apos;s last message.</p>}
+            {s.dueNow === 0 && <p className="text-slate-500">Nothing is old enough to reset yet. A chat counts from the customer&apos;s last message.</p>}
           </div>
           <Notice notice={note} />
         </>
@@ -1082,7 +1089,7 @@ function CannedTemplatesCard() {
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-xs font-bold text-slate-400 uppercase">Canned templates (one-click sends)</p><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>Buttons above the Live Chat composer — one tap sends an approved template (works outside the 24h window) and can move the lead&apos;s CRM stage.</>}>E.g. Follow-up, post-call follow-up.</PageInfo>
+          <p className="text-xs font-bold text-slate-400 uppercase">Canned templates (one-click sends)</p><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>Buttons above the Live Chat composer — one tap sends an approved template (works even when the customer hasn&apos;t messaged you in the last 24 hours) and can move the lead&apos;s CRM stage.</>}>E.g. Follow-up, post-call follow-up.</PageInfo>
         </div>
         <button onClick={() => { setForm({ id: "", label: "", templateName: "", language: "en_US", params: [], stage: "" }); setMsg(null); }}
           className="px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5 shrink-0"><Plus className="w-3.5 h-3.5" /> Add</button>
@@ -1091,7 +1098,7 @@ function CannedTemplatesCard() {
       {list.map(c => (
         <div key={c.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2">
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-ink-900 truncate">{c.label}{c.stage && <span className="ml-2 px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 text-[10px] font-bold align-middle">→ {c.stage}</span>}</p>
+            <p className="text-sm font-semibold text-ink-900 truncate">{c.label}{c.stage && <span className="ml-2 px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 text-[11px] font-bold align-middle">→ {c.stage}</span>}</p>
             <p className="text-[11px] text-ink-400 font-mono truncate">{c.templateName} · {c.language}{c.params.length ? ` · ${c.params.join(" · ")}` : ""}</p>
           </div>
           <button onClick={() => { setForm({ ...c, params: [...c.params] }); setMsg(null); }} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
@@ -1104,7 +1111,7 @@ function CannedTemplatesCard() {
         {form && (<div className="space-y-3">
           {channels.length > 0 && (
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold text-ink-400 uppercase tracking-wide shrink-0">Browse templates on</span>
+              <span className="text-[11px] font-bold text-ink-400 uppercase tracking-wide shrink-0">Browse templates on</span>
               <select className={`${inp} !py-1.5 text-xs`} value={browse} onChange={e => setBrowse(e.target.value)} title="Templates are WABA-scoped — pick the number whose WABA to list. The send always uses the conversation's own number.">
                 <option value="">Workspace default number</option>
                 {channels.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -1133,7 +1140,7 @@ function CannedTemplatesCard() {
             <input className={`${inp} w-full`} placeholder="Header image URL (https://…)" value={form.headerImageUrl ?? ""} onChange={e => setForm({ ...form, headerImageUrl: e.target.value })} />
           )}
           <input className={`${inp} w-full`} placeholder="CRM (LeadSquared) stage to set on send (optional, e.g. Contacted)" value={form.stage ?? ""} onChange={e => setForm({ ...form, stage: e.target.value })} />
-          <p className="text-[10px] text-ink-400">Tokens fill per send: <code className="font-mono">{"{agent}"}</code> = logged-in team member, <code className="font-mono">{"{name}"}</code> = contact name, <code className="font-mono">{"{<attribute>}"}</code> = contact attribute. A send with an empty value is blocked with a clear error. The send always leaves from the conversation&apos;s own number — the template must be approved on that number&apos;s WABA.</p>
+          <p className="text-[11px] text-ink-400">Tokens fill per send: <code className="font-mono">{"{agent}"}</code> = logged-in team member, <code className="font-mono">{"{name}"}</code> = contact name, <code className="font-mono">{"{<attribute>}"}</code> = contact attribute. A send with an empty value is blocked with a clear error. The send always leaves from the conversation&apos;s own number — the template must be approved on that number&apos;s WABA.</p>
           <div className="flex gap-2">
             <button onClick={submitForm} disabled={busy || !form.templateName} className="px-4 py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "…" : form.id ? "Save changes" : "Add canned template"}</button>
             <button onClick={() => { setForm(null); setMsg(null); }} className="px-3 py-2 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas">Cancel</button>
@@ -1273,7 +1280,7 @@ function OtpServiceCard() {
   const tstat = (cid: string) => {
     const s = st.templateStatus?.[cid] ?? null;
     const tone = s === "APPROVED" ? "bg-brand-100 text-brand-700" : s ? "bg-amber-100 text-amber-700" : "bg-canvas text-ink-400";
-    return <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${tone}`}>template: {s ?? "not created"}</span>;
+    return <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold shrink-0 ${tone}`}>template: {s ?? "not created"}</span>;
   };
   const templateBtn = (cid: string) => st.templateStatus?.[cid] === "APPROVED" ? null : (
     <button onClick={() => post({ createTemplate: true, channelId: cid || "" }, "tpl:" + cid)} disabled={!!busy || !st.secretSet}
@@ -1290,15 +1297,16 @@ function OtpServiceCard() {
           <p className="text-xs font-bold text-slate-400 uppercase">OTP service</p><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>Your website calls this workspace to send login codes on WhatsApp and verify them, authenticating with a workspace API key.</>}>Route different areas to different numbers. Codes are stored only as hashes.</PageInfo>
         </div>
         <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
-          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${st.secretSet ? "bg-brand-100 text-brand-700" : "bg-amber-100 text-amber-700"}`}>{st.secretSet ? "secret set" : "OTP_HASH_SECRET missing"}</span>
-          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${st.tableReady ? "bg-brand-100 text-brand-700" : "bg-amber-100 text-amber-700"}`}>{st.tableReady ? "store ready" : "apply migration 0076"}</span>
+          {st.secretSet && st.tableReady
+            ? <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-brand-100 text-brand-700">Ready</span>
+            : <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800" title={[!st.secretSet && "OTP_HASH_SECRET missing", !st.tableReady && "migration 0076 not applied"].filter(Boolean).join(" · ")}>Still being set up — contact support</span>}
           <span className="text-[11px] text-ink-400 self-center">{st.sendsToday} sent today</span>
         </div>
       </div>
 
       {/* Default number — used when a send has no area. */}
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-[10px] font-bold text-ink-400 uppercase tracking-wide w-14 shrink-0">Default</span>
+        <span className="text-[11px] font-bold text-ink-400 uppercase tracking-wide w-14 shrink-0">Default</span>
         <select className={`${inp} !py-1.5 text-xs`} value={st.defaultChannelId || ""} onChange={e => post({ defaultChannelId: e.target.value || null }, "default")} disabled={busy === "default"}>
           <option value="">Workspace default number</option>
           {channels.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -1309,7 +1317,7 @@ function OtpServiceCard() {
 
       {/* Area → number routes. */}
       <div className="space-y-2">
-        <p className="text-[10px] font-bold text-ink-400 uppercase tracking-wide">Areas — route by <code className="font-mono">area</code> in the send call</p>
+        <p className="text-[11px] font-bold text-ink-400 uppercase tracking-wide">Areas — route by <code className="font-mono">area</code> in the send call</p>
         {routes.map((r, i) => (
           <div key={i} className="flex items-center gap-2 flex-wrap">
             <input className={`${inp} !py-1.5 text-xs w-40`} placeholder="area key, e.g. delhi" value={r.area}
@@ -1350,27 +1358,27 @@ function OtpServiceCard() {
         return (
           <div className="bg-canvas rounded-control px-3 py-2.5 space-y-2">
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <p className="text-[10px] font-bold text-ink-400 uppercase">Website snippet — create a workspace API key (Settings → API access), set it as <code className="font-mono">OTP_API_KEY</code> on the site, then paste this</p>
+              <p className="text-[11px] font-bold text-ink-400 uppercase">Website snippet — create a workspace API key (Settings → API access), set it as <code className="font-mono">OTP_API_KEY</code> on the site, then paste this</p>
               <div className="flex items-center gap-1 shrink-0">
                 {(["nextjs", "node", "curl"] as const).map(k => (
                   <button key={k} onClick={() => setSnippetKind(k)}
-                    className={`px-2 py-0.5 rounded text-[10px] font-bold ${snippetKind === k ? "bg-brand-700 text-white" : "bg-white border border-line text-ink-500 hover:bg-canvas"}`}>
+                    className={`px-2 py-0.5 rounded text-[11px] font-bold ${snippetKind === k ? "bg-brand-700 text-white" : "bg-white border border-line text-ink-500 hover:bg-canvas"}`}>
                     {k === "nextjs" ? "Next.js" : k === "node" ? "Node" : "cURL"}
                   </button>
                 ))}
-                <button onClick={() => copy(snippet, "main")} className="px-2.5 py-0.5 rounded text-[10px] font-bold bg-white border border-brand-700 text-brand-700 hover:bg-brand-50 inline-flex items-center gap-1">{copiedKey === "main" ? <><Check className="w-3 h-3" /> Copied</> : "Copy"}</button>
+                <button onClick={() => copy(snippet, "main")} className="px-2.5 py-0.5 rounded text-[11px] font-bold bg-white border border-brand-700 text-brand-700 hover:bg-brand-50 inline-flex items-center gap-1">{copiedKey === "main" ? <><Check className="w-3 h-3" /> Copied</> : "Copy"}</button>
               </div>
             </div>
             <pre className="text-[11px] font-mono text-ink-700 bg-white border border-line rounded p-2.5 overflow-auto whitespace-pre leading-relaxed max-h-80">{snippet}</pre>
 
-            <p className="text-[10px] font-bold text-ink-400 uppercase pt-1">Send call per number</p>
+            <p className="text-[11px] font-bold text-ink-400 uppercase pt-1">Send call per number</p>
             {numberRows.map(row => {
               const call = buildNumberCall(snippetKind, origin, row.area);
               return (
                 <div key={row.key} className="flex items-center gap-2">
                   <span className="text-[11px] font-semibold text-ink-700 w-44 shrink-0 truncate" title={row.label}>{row.label}</span>
                   <code className="text-[11px] font-mono text-ink-600 bg-white border border-line rounded px-2 py-1 flex-1 min-w-0 truncate" title={call}>{call}</code>
-                  <button onClick={() => copy(call, "num:" + row.key)} className="px-2 py-1 rounded text-[10px] font-bold bg-white border border-line text-ink-600 hover:bg-canvas shrink-0 inline-flex items-center justify-center gap-1">{copiedKey === "num:" + row.key ? <Check className="w-3 h-3" /> : "Copy"}</button>
+                  <button onClick={() => copy(call, "num:" + row.key)} className="px-2 py-1 rounded text-[11px] font-bold bg-white border border-line text-ink-600 hover:bg-canvas shrink-0 inline-flex items-center justify-center gap-1">{copiedKey === "num:" + row.key ? <Check className="w-3 h-3" /> : "Copy"}</button>
                 </div>
               );
             })}
@@ -1561,7 +1569,7 @@ export function MessengerCard() {
       if (!res.ok) setMsg(d.error || "Save failed");
       else if (d.webhook && !d.webhook.ok) { setMsg(`Saved, but Meta wouldn't finish connecting this Page: ${d.webhook.detail}. Messages won't arrive until it's fixed — the access token may be missing messaging permission.`, "warn"); load(); }
       else if (d.webhook?.degraded) { setMsg(d.webhook.detail, "warn"); setForm(null); load(); }
-      else { setForm(null); load(); }
+      else { toast("Page saved"); setForm(null); load(); }
     } finally { setBusy(false); }
   }
   // Connect a Page via Facebook Login for Business (config_id-based, same
@@ -1593,7 +1601,7 @@ export function MessengerCard() {
         // error line, so support cannot see it either.
         d.diagnostic?.scopes?.length ? `Granted: ${d.diagnostic.scopes.join(", ")}.` : "",
       ].filter(Boolean).join(" "));
-      else if (d.webhook && !d.webhook.ok) { setMsg(`Connected, but Meta wouldn't finish the webhook: ${d.webhook.detail}. Messages won't arrive until it's fixed — check the Page's messaging permission.`, "warn"); setPagePick(null); load(); }
+      else if (d.webhook && !d.webhook.ok) { setMsg(`Connected, but Meta wouldn't finish connecting this Page: ${d.webhook.detail}. Messages won't arrive until it's fixed — check the Page's messaging permission.`, "warn"); setPagePick(null); load(); }
       // Partial success: Page DMs are live, comment events are not.
       else if (d.webhook?.degraded) { setMsg(d.webhook.detail, "warn"); setPagePick(null); load(); }
       else { setMsg("Facebook Page connected and receiving messages.", "ok"); setPagePick(null); load(); }
@@ -1606,7 +1614,8 @@ export function MessengerCard() {
       title: "Remove this Facebook Page?", tone: "danger", confirmLabel: "Remove Page",
       message: "Its conversations stay in Live Chat, but the app stops replying to comments and messages on it. You will need the Page access token again to reconnect.",
     }))) return;
-    await fetch("/api/admin/channels", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+    const r = await fetch("/api/admin/channels", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }).catch(() => null);
+    if (r?.ok) toast("Facebook Page removed"); else toast({ text: "Couldn't remove it. Please try again.", tone: "error" });
     load();
   }
 
@@ -1620,7 +1629,7 @@ export function MessengerCard() {
         const res = await fetch("/api/admin/fb-comment-rules", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...ruleForm, buttons: [], publicReplies }) });
         const d = await res.json();
         if (!res.ok) setMsg(d.error || "Save failed");
-        else { setRuleForm(null); loadRules(); }
+        else { toast("Comment rule saved"); setRuleForm(null); loadRules(); }
       } finally { setRuleBusy(false); }
       return;
     }
@@ -1633,11 +1642,12 @@ export function MessengerCard() {
       const res = await fetch("/api/admin/fb-comment-rules", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...ruleForm, buttons, publicReplies }) });
       const d = await res.json();
       if (!res.ok) setMsg(d.error || "Save failed");
-      else { setRuleForm(null); loadRules(); }
+      else { toast("Comment rule saved"); setRuleForm(null); loadRules(); }
     } finally { setRuleBusy(false); }
   }
   async function toggleRule(r: FbCommentRule) {
-    await fetch("/api/admin/fb-comment-rules", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...r, enabled: !r.enabled }) }).catch(() => {});
+    const res = await fetch("/api/admin/fb-comment-rules", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...r, enabled: !r.enabled }) }).catch(() => null);
+    if (res?.ok) toast(r.enabled ? "Comment rule paused" : "Comment rule turned on"); else toast({ text: "Couldn't change the rule. Please try again.", tone: "error" });
     loadRules();
   }
   async function delRule(id?: string) {
@@ -1645,7 +1655,8 @@ export function MessengerCard() {
       title: "Delete this comment rule?", tone: "danger", confirmLabel: "Delete rule",
       message: "Comments matching it stop getting a reply or a DM.",
     }))) return;
-    await fetch("/api/admin/fb-comment-rules", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }).catch(() => {});
+    const res = await fetch("/api/admin/fb-comment-rules", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }).catch(() => null);
+    if (res?.ok) toast("Comment rule deleted"); else toast({ text: "Couldn't delete the rule. Please try again.", tone: "error" });
     loadRules();
   }
 
@@ -1653,7 +1664,7 @@ export function MessengerCard() {
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><Facebook className="w-3.5 h-3.5 text-blue-600" /> Facebook Messenger</p><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>Connect a Facebook Page to auto-reply to Messenger DMs with your AI — within Meta&apos;s rules (24-hour window, no cold messages).</>}>Page DMs land in the same Live Chat inbox.</PageInfo>
+          <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><Facebook className="w-3.5 h-3.5 text-blue-600" /> Facebook Messenger</p><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>Connect a Facebook Page to auto-reply to Messenger DMs with your AI — within Meta&apos;s rules (you can reply within 24 hours of their last message, and can&apos;t message people who never wrote to you).</>}>Page DMs land in the same Live Chat inbox.</PageInfo>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {(facebookSignupReady() || metaPreview()) && (
@@ -1661,7 +1672,7 @@ export function MessengerCard() {
               <button onClick={() => connectWithFacebook()} disabled={busy} className="px-3 py-1.5 rounded-control bg-[#0783fd] hover:bg-[#0668d6] text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
                 {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Facebook className="w-3.5 h-3.5" />} Connect with Facebook
               </button>
-              {!facebookSignupReady() && <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">Preview</span>}
+              {!facebookSignupReady() && <span className="text-[11px] font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">Preview</span>}
             </div>
           )}
           <button onClick={() => { setForm({ ...EMPTY_FB_PAGE }); setMsg(null); }} className="px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add Page</button>
@@ -1690,7 +1701,7 @@ export function MessengerCard() {
         <div key={c.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2.5">
           <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0"><Facebook className="w-4 h-4" /></div>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-ink-900 truncate">{c.name}{c.isDefault && <span className="text-[10px] font-bold text-brand-700"> · DEFAULT</span>}{!c.active && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
+            <p className="text-sm font-semibold text-ink-900 truncate">{c.name}{c.isDefault && <span className="text-[11px] font-bold text-brand-700"> · Default</span>}{!c.active && <span className="text-[11px] font-bold text-red-500"> · Off</span>}</p>
             <p className="text-[11px] text-ink-400 font-mono truncate">page {c.pageId} · {c.agentId ? `AI: ${agents.find(a => a.id === c.agentId)?.name ?? "custom"}` : "AI: global default"}</p>
           </div>
           <button onClick={() => { setForm({ id: c.id, name: c.name, pageId: c.pageId ?? "", token: "", agentId: c.agentId ?? "", kbTag: c.kbTag ?? "", active: c.active, isDefault: c.isDefault }); setMsg(null); }}
@@ -1707,11 +1718,11 @@ export function MessengerCard() {
           </div>
           <input className={`${inp} w-full font-mono`} placeholder={form.id ? "Page access token — leave blank to keep the current one" : "Page access token (pages_messaging)"} value={form.token} onChange={e => setForm({ ...form, token: e.target.value.trim() })} />
           <div className="grid grid-cols-2 gap-2">
-            <select className={inp} value={form.agentId} onChange={e => setForm({ ...form, agentId: e.target.value })} title="Default AI persona for this Page">
-              <option value="">AI persona: global default</option>
-              {agents.map(a => <option key={a.id} value={a.id}>AI persona: {a.name}</option>)}
+            <select className={inp} value={form.agentId} onChange={e => setForm({ ...form, agentId: e.target.value })} title="Which AI personality answers on this Page">
+              <option value="">AI personality: your default</option>
+              {agents.map(a => <option key={a.id} value={a.id}>AI personality: {a.name}</option>)}
             </select>
-            <select className={inp} value={form.kbTag} onChange={e => setForm({ ...form, kbTag: e.target.value })} title="AI on this Page answers only from KB docs with this tag. With no tag it reads the whole knowledge base, unless business isolation (AI Hub) is on. Tag docs in the AI Knowledge Base tab.">
+            <select className={inp} value={form.kbTag} onChange={e => setForm({ ...form, kbTag: e.target.value })} title="AI on this Page answers only from knowledge base documents with this tag. With no tag it reads the whole knowledge base, unless business isolation (AI Hub) is on. Tag docs in the AI Knowledge Base tab.">
               <option value="">Knowledge: global (all docs)</option>
               {kbTags.map(t => <option key={t} value={t}>Knowledge: {t}</option>)}
               {form.kbTag && !kbTags.includes(form.kbTag) && <option value={form.kbTag}>Knowledge: {form.kbTag}</option>}
@@ -1761,7 +1772,7 @@ export function MessengerCard() {
                 ? <img src={thumb} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />
                 : <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0"><MessageCircle className="w-4 h-4" /></div>}
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-ink-900 truncate">{r.name || (r.keyword ? `“${r.keyword}”` : "Any comment")}{pages.length > 1 && r.channelId && <span className="text-[10px] font-bold text-blue-600"> · {pages.find(c => c.id === r.channelId)?.name ?? "Page"}</span>}{!r.enabled && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
+                <p className="text-sm font-semibold text-ink-900 truncate">{r.name || (r.keyword ? `“${r.keyword}”` : "Any comment")}{pages.length > 1 && r.channelId && <span className="text-[11px] font-bold text-blue-600"> · {pages.find(c => c.id === r.channelId)?.name ?? "Page"}</span>}{!r.enabled && <span className="text-[11px] font-bold text-red-500"> · Off</span>}</p>
                 <p className="text-[11px] text-ink-400 truncate">{r.postId ? `Post: ${(r.postCaption || post?.caption || r.postId).slice(0, 38) || r.postId}` : "All posts"} · {r.keyword ? `keyword “${r.keyword}”` : "any comment"}{fbButtonsOf(r).length ? <> · <Link2 className="w-3 h-3 inline-block align-middle" /> {fbButtonsOf(r).length} button{fbButtonsOf(r).length > 1 ? "s" : ""}</> : ""} · {r.matchCount ?? 0} sent</p>
               </div>
               <label className="flex items-center gap-1 text-[11px] text-ink-500 cursor-pointer shrink-0"><input type="checkbox" className="accent-blue-600" checked={r.enabled} onChange={() => toggleRule(r)} /> on</label>
@@ -1775,7 +1786,7 @@ export function MessengerCard() {
         {/* Comment-reply-only automation — posts a public reply, never a DM. */}
         <div className="border-t border-line pt-3 mt-1 space-y-3">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><MessageCircle className="w-3.5 h-3.5" /> Comment reply automation <span className="text-[10px] font-bold text-violet-600 normal-case">· public reply, no DM</span></p>
+            <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><MessageCircle className="w-3.5 h-3.5" /> Comment reply automation <span className="text-[11px] font-bold text-violet-600 normal-case">· public reply, no DM</span></p>
             <button onClick={() => { setMsg(null); setPendingReplyOnly(true); if (pages.length > 1) { setRuleForm(null); setPickAccount(true); } else { setPickAccount(false); setRuleForm({ ...BLANK_FB_RULE, replyOnly: true, channelId: pages[0]?.id ?? null }); } }} className="shrink-0 px-3 py-1.5 rounded-control bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New reply rule</button>
           </div>
           <p className="text-[11px] text-ink-400">When someone comments, publicly reply under their comment — no DM is sent. Add a few reply variants and we rotate them so replies stay natural and don&apos;t trip Meta&apos;s spam filters. Target a post or all posts, and gate by keywords.</p>
@@ -1790,7 +1801,7 @@ export function MessengerCard() {
                   ? <img src={thumb} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />
                   : <div className="w-10 h-10 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center shrink-0"><MessageCircle className="w-4 h-4" /></div>}
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-ink-900 truncate">{r.name || (r.keyword ? `“${r.keyword}”` : "Any comment")}{pages.length > 1 && r.channelId && <span className="text-[10px] font-bold text-violet-600"> · {pages.find(c => c.id === r.channelId)?.name ?? "Page"}</span>}{!r.enabled && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
+                  <p className="text-sm font-semibold text-ink-900 truncate">{r.name || (r.keyword ? `“${r.keyword}”` : "Any comment")}{pages.length > 1 && r.channelId && <span className="text-[11px] font-bold text-violet-600"> · {pages.find(c => c.id === r.channelId)?.name ?? "Page"}</span>}{!r.enabled && <span className="text-[11px] font-bold text-red-500"> · Off</span>}</p>
                   <p className="text-[11px] text-ink-400 truncate">{r.postId ? `Post: ${(r.postCaption || post?.caption || r.postId).slice(0, 38) || r.postId}` : "All posts"} · {r.keyword ? `keyword “${r.keyword}”` : "any comment"} · <MessageCircle className="w-3 h-3 inline-block align-middle" /> {nReplies} repl{nReplies === 1 ? "y" : "ies"} · {r.matchCount ?? 0} sent</p>
                 </div>
                 <label className="flex items-center gap-1 text-[11px] text-ink-500 cursor-pointer shrink-0"><input type="checkbox" className="accent-blue-600" checked={r.enabled} onChange={() => toggleRule(r)} /> on</label>
@@ -1811,7 +1822,7 @@ export function MessengerCard() {
                 <button key={c.id} type="button" onClick={() => { setRuleForm({ ...BLANK_FB_RULE, replyOnly: pendingReplyOnly, channelId: c.id }); setPickAccount(false); }}
                   className="flex items-center gap-2 border border-line rounded-control px-3 py-2 text-left hover:border-blue-500 hover:bg-blue-50 transition-colors">
                   <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0"><Facebook className="w-4 h-4" /></div>
-                  <div className="min-w-0"><p className="text-sm font-semibold text-ink-900 truncate">{c.name}</p><p className="text-[10px] text-ink-400 font-mono truncate">{c.pageId}</p></div>
+                  <div className="min-w-0"><p className="text-sm font-semibold text-ink-900 truncate">{c.name}</p><p className="text-[11px] text-ink-400 font-mono truncate">{c.pageId}</p></div>
                 </button>
               ))}
             </div>
@@ -1827,7 +1838,7 @@ export function MessengerCard() {
                 <button type="button" onClick={() => { setRuleForm(null); setPickAccount(true); }} className="text-ink-400 hover:text-ink-900 font-semibold">Change Page</button>
               </div>
             )}
-            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${ruleForm.replyOnly ? "bg-violet-100 text-violet-700" : "bg-blue-100 text-blue-700"}`}>
+            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold ${ruleForm.replyOnly ? "bg-violet-100 text-violet-700" : "bg-blue-100 text-blue-700"}`}>
               {ruleForm.replyOnly ? <><MessageCircle className="w-3 h-3" /> Comment reply only — no DM</> : <><Send className="w-3 h-3" /> Comment → DM</>}
             </span>
             <input className={`${inp} w-full`} placeholder="Rule name (internal)" value={ruleForm.name} onChange={e => setRuleForm({ ...ruleForm, name: e.target.value })} />
@@ -1835,7 +1846,7 @@ export function MessengerCard() {
               <p className="text-[11px] font-bold text-ink-500 mb-1.5">Target post {pages.length > 1 && ruleForm.channelId && <span className="text-ink-400 font-normal">· {pages.find(c => c.id === ruleForm.channelId)?.name}</span>}</p>
               <div className="grid grid-cols-5 sm:grid-cols-6 gap-1.5 max-h-60 overflow-y-auto pr-0.5">
                 <button type="button" onClick={() => setRuleForm({ ...ruleForm, postId: null, postCaption: null, postPermalink: null, postThumbnail: null })}
-                  className={`aspect-square rounded-lg flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold border transition-colors ${!ruleForm.postId ? "ring-2 ring-blue-500 border-blue-500 text-blue-600 bg-blue-50" : "border-line text-ink-500 hover:bg-canvas"}`}>
+                  className={`aspect-square rounded-lg flex flex-col items-center justify-center gap-0.5 text-[11px] font-bold border transition-colors ${!ruleForm.postId ? "ring-2 ring-blue-500 border-blue-500 text-blue-600 bg-blue-50" : "border-line text-ink-500 hover:bg-canvas"}`}>
                   <Facebook className="w-4 h-4" /> All
                 </button>
                 {posts.map(p => {
@@ -1982,7 +1993,7 @@ export function WebchatCard() {
     try {
       const res = await fetch("/api/admin/channels/webchat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: form.id, name: form.name, allowedOrigins: form.origins, active: form.active, agentId: form.agentId || null, kbTag: form.kbTag || null, widgetConfig: { color: form.color, title: form.title, welcome: form.welcome, position: form.position, iconUrl: form.iconUrl, logoFit: form.logoFit, badgeColor: form.badgeColor, logoScale: form.logoScale, ...(form.offsetSide.trim() !== "" ? { offsetSide: Number(form.offsetSide) } : {}), ...(form.offsetBottom.trim() !== "" ? { offsetBottom: Number(form.offsetBottom) } : {}) } }) });
       const d = await res.json();
-      if (!res.ok) setMsg(d.error || "Save failed"); else { setForm(null); load(); }
+      if (!res.ok) setMsg(d.error || "Save failed"); else { toast("Widget saved"); setForm(null); load(); }
     } finally { setBusy(false); }
   }
   async function remove(id: string) {
@@ -1990,7 +2001,8 @@ export function WebchatCard() {
       title: "Remove this web-chat widget?", tone: "danger", confirmLabel: "Remove widget",
       message: "The embed snippet already on the site stops working, so the chat bubble disappears for visitors.",
     }))) return;
-    await fetch("/api/admin/channels", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+    const r = await fetch("/api/admin/channels", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }).catch(() => null);
+    if (r?.ok) toast("Widget removed"); else toast({ text: "Couldn't remove it. Please try again.", tone: "error" });
     load();
   }
 
@@ -2008,7 +2020,7 @@ export function WebchatCard() {
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center shrink-0"><MessageSquare className="w-4 h-4" /></div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-ink-900 truncate">{c.name}{!c.active && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
+              <p className="text-sm font-semibold text-ink-900 truncate">{c.name}{!c.active && <span className="text-[11px] font-bold text-red-500"> · Off</span>}</p>
               <p className="text-[11px] text-ink-400 truncate">{(c.allowedOrigins && c.allowedOrigins.length) ? c.allowedOrigins.join(", ") : "any origin (lock this down by adding your domains)"}</p>
             </div>
             <button onClick={() => { const w = c.widgetConfig ?? {}; setForm({ id: c.id, name: c.name, origins: (c.allowedOrigins ?? []).join("\n"), active: c.active, agentId: c.agentId ?? "", kbTag: c.kbTag ?? "", color: w.color || "#0783fd", title: w.title || "Chat with us", welcome: w.welcome || "", position: w.position === "left" ? "left" : "right", iconUrl: w.iconUrl || "", logoFit: w.logoFit === "contain" ? "contain" : "cover", badgeColor: w.badgeColor || "#ffffff", logoScale: typeof w.logoScale === "number" ? w.logoScale : 100, offsetSide: w.offsetSide != null ? String(w.offsetSide) : "", offsetBottom: w.offsetBottom != null ? String(w.offsetBottom) : "" }); setMsg(null); }} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
@@ -2035,11 +2047,11 @@ export function WebchatCard() {
 
           {/* ── AI ── */}
           <div className="grid grid-cols-2 gap-2">
-            <select className={inp} value={form.agentId} onChange={e => setForm({ ...form, agentId: e.target.value })} title="Default AI persona for this widget">
-              <option value="">AI persona: global default</option>
-              {agents.map(a => <option key={a.id} value={a.id}>AI persona: {a.name}</option>)}
+            <select className={inp} value={form.agentId} onChange={e => setForm({ ...form, agentId: e.target.value })} title="Which AI personality answers in this widget">
+              <option value="">AI personality: your default</option>
+              {agents.map(a => <option key={a.id} value={a.id}>AI personality: {a.name}</option>)}
             </select>
-            <select className={inp} value={form.kbTag} onChange={e => setForm({ ...form, kbTag: e.target.value })} title="AI on this widget answers only from KB docs with this tag. With no tag it reads the whole knowledge base, unless business isolation (AI Hub) is on. Tag docs in the AI Knowledge Base tab.">
+            <select className={inp} value={form.kbTag} onChange={e => setForm({ ...form, kbTag: e.target.value })} title="AI on this widget answers only from knowledge base documents with this tag. With no tag it reads the whole knowledge base, unless business isolation (AI Hub) is on. Tag docs in the AI Knowledge Base tab.">
               <option value="">Knowledge: global (all docs)</option>
               {kbTags.map(t => <option key={t} value={t}>Knowledge: {t}</option>)}
               {form.kbTag && !kbTags.includes(form.kbTag) && <option value={form.kbTag}>Knowledge: {form.kbTag}</option>}
@@ -2119,7 +2131,7 @@ export function WebchatCard() {
             );
             return (
               <div className="rounded-control border border-line bg-slate-200/70 p-4">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-3">Live preview</p>
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide mb-3">Live preview</p>
                 <div className={`flex items-end gap-4 ${form.position === "left" ? "flex-row-reverse justify-end" : "justify-end"}`}>
                   <div className="w-[270px] rounded-2xl overflow-hidden shadow-xl bg-white border border-black/5">
                     <div className="px-3.5 py-3 flex items-center gap-2.5 text-white" style={{ background: brand }}>
@@ -2141,14 +2153,14 @@ export function WebchatCard() {
                     </div>
                     <div className="px-3 py-2 bg-white border-t border-line flex items-center gap-2">
                       <span className="flex-1 text-[11px] text-ink-400 bg-canvas border border-line rounded-full px-3 py-1.5">Type a message...</span>
-                      <span className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center text-white text-[10px]" style={{ background: brand }}>&#10148;</span>
+                      <span className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center text-white text-[11px]" style={{ background: brand }}>&#10148;</span>
                     </div>
                   </div>
                   <span className="shrink-0 w-[60px] h-[60px] rounded-full flex items-center justify-center overflow-hidden" style={{ background: form.iconUrl ? (contain ? badge : "transparent") : brand, boxShadow: "0 6px 20px rgba(15,23,42,.18), 0 0 0 1px rgba(15,23,42,.06)" }}>
                     {form.iconUrl ? <img src={form.iconUrl} alt="" style={contain ? { width: `${scale}%`, height: `${scale}%`, objectFit: "contain", flexShrink: 0, maxWidth: "none", maxHeight: "none" } : { width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} /> : <MessageSquare className="w-6 h-6 text-white" />}
                   </span>
                 </div>
-                <p className="text-[10px] text-slate-400 mt-2 text-right">{form.position === "left" ? "bottom-left" : "bottom-right"} · gap {form.offsetBottom || "20"}px &uarr; {form.offsetSide || "20"}px &rarr;</p>
+                <p className="text-[11px] text-slate-400 mt-2 text-right">{form.position === "left" ? "bottom-left" : "bottom-right"} · gap {form.offsetBottom || "20"}px &uarr; {form.offsetSide || "20"}px &rarr;</p>
               </div>
             );
           })()}
@@ -2271,6 +2283,7 @@ function SettingsSectionBar({ section, onPick, isAdmin }: { section: SettingsSec
 
 function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const ask = useConfirm();
+  const [askText, textDialog] = usePromptDialog();
   const [welcome, setWelcome] = useState<WelcomeS | null>(null);
   const [away, setAway] = useState<AwayS | null>(null);
   const [aiOn, setAiOn] = useState<boolean | null>(null);
@@ -2400,10 +2413,54 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
     await persistCrm({ crmPaused: { enabled: next } }, () => setCrmPaused(prev));
   }
 
+  async function postQr(shortcut: string, body: string): Promise<boolean> {
+    const r = await fetch("/api/admin/quick-replies", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shortcut, body }) }).catch(() => null);
+    if (!r?.ok) { const d = await r?.json().catch(() => ({})); toast({ text: d?.error || "Couldn't save the quick reply. Please try again.", tone: "error" }); return false; }
+    return true;
+  }
   async function addQr() {
     if (!qrShortcut.trim() || !qrBody.trim()) return;
-    await fetch("/api/admin/quick-replies", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shortcut: qrShortcut, body: qrBody }) });
+    if (!(await postQr(qrShortcut, qrBody))) return;
+    toast(`Quick reply /${qrShortcut.trim()} added`);
     setQrShortcut(""); setQrBody(""); loadQr();
+  }
+  // Removing one is undoable: the shortcut and text are re-added as they were.
+  async function removeQr(q: { id: string; shortcut: string; body: string }) {
+    const r = await fetch("/api/admin/quick-replies", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: q.id }) }).catch(() => null);
+    loadQr();
+    if (!r?.ok) { toast({ text: "Couldn't remove the quick reply. Please try again.", tone: "error" }); return; }
+    toast({ text: `Quick reply /${q.shortcut} removed`, action: { label: "Undo", onClick: () => { void postQr(q.shortcut, q.body).then(ok => { if (ok) { toast(`/${q.shortcut} restored`); loadQr(); } }); } } });
+  }
+  const qrMissing = !qrShortcut.trim() && !qrBody.trim() ? "Type a shortcut and the reply text first." : !qrShortcut.trim() ? "Type a shortcut first (e.g. fees)." : !qrBody.trim() ? "Type the reply text first." : null;
+
+  async function exportOne() {
+    const who = await askText({
+      title: "Download one person's data",
+      message: "For when a customer asks what you hold about them. You get one file with everything about that person.",
+      label: "Their phone number, or their Instagram / Messenger / website-chat id",
+      placeholder: "e.g. 91 98765 43210", required: true, confirmLabel: "Download",
+    });
+    if (who?.trim()) window.location.href = `/api/admin/gdpr/export?contact=${encodeURIComponent(who.trim())}`;
+  }
+  async function eraseOne() {
+    const phone = await askText({
+      title: "Erase a contact",
+      message: "For when a customer asks you to delete their data. This permanently deletes the contact and everything about them.",
+      label: "Their phone number, or their Instagram / Messenger / website-chat id",
+      placeholder: "e.g. 91 98765 43210", required: true, confirmLabel: "Next", tone: "danger",
+    });
+    if (!phone?.trim()) return;
+    if (!(await ask({
+      title: "Permanently erase this person's data?", tone: "danger", confirmLabel: "Erase everything", typeToConfirm: "ERASE",
+      message: "Their contact record, conversations, messages, notes, media and logs are deleted outright. Their orders are kept for your tax records with their number removed. There is no backup to restore from and no way to reverse this.",
+      facts: [{ label: "Number or id", value: phone }],
+    }))) return;
+    const r = await fetch("/api/admin/gdpr/erase", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone }) }).then(x => x.json()).catch(() => ({ error: "Couldn't reach the server" }));
+    if (r.error) { toast({ text: `Nothing was erased: ${r.error}`, tone: "error" }); return; }
+    const rows = Object.values((r.deleted ?? {}) as Record<string, number>).reduce((a, b) => a + b, 0);
+    const base = `Erased data for ${r.phone}: ${rows} records deleted${r.anonymised?.wa_orders ? `, ${r.anonymised.wa_orders} orders kept without their number` : ""}.`;
+    if (r.errors?.length) toast({ text: `${base} Some parts failed — run it again: ${r.errors.join("; ")}`, tone: "error", ms: 15000 });
+    else toast({ text: base, ms: 8000 });
   }
 
   return (
@@ -2585,7 +2642,7 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
               <div className="flex items-center gap-1 pt-1 shrink-0" title={i === 0 ? "Minutes after the person goes quiet" : "Minutes after the previous nudge"}>
                 <input type="number" min={1} max={4320} className={`${inp} w-20 text-xs`} value={s.minutes}
                   onChange={e => setRemSteps(a => a.map((x, j) => (j === i ? { ...x, minutes: parseInt(e.target.value) || 0 } : x)))} />
-                <span className="text-[10px] text-ink-400">min</span>
+                <span className="text-[11px] text-ink-400">min</span>
               </div>
               <textarea className={`${inp} flex-1 resize-none text-xs`} rows={2} maxLength={500} placeholder="Nudge message…" value={s.text}
                 onChange={e => setRemSteps(a => a.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)))} />
@@ -2597,7 +2654,7 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
           )}
         </div>
         <div className="flex items-center justify-between gap-3">
-          <p className="text-[11px] text-ink-400">Up to 5 steps, 500 chars each (multi-line fine). Remove all to use the built-in defaults; turn OFF to send no default nudges at all. Nudges only deliver inside WhatsApp&apos;s 24h window.</p>
+          <p className="text-[11px] text-ink-400">Up to 5 steps, 500 chars each (multi-line fine). Remove all to use the built-in defaults; turn OFF to send no default nudges at all. Nudges only go out within 24 hours of the customer&apos;s last message (a WhatsApp rule).</p>
           <button onClick={() => void persistReminders(remOn !== false)} disabled={saving} className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60 shrink-0">{saving ? "Saving…" : "Save nudges"}</button>
         </div>
       </section>
@@ -2663,10 +2720,11 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
           <p className="text-xs font-bold text-slate-400 uppercase">Quick replies (canned responses)</p><p className="text-xs text-slate-500 mt-0.5">Available in the Team Inbox composer (<Zap className="w-3.5 h-3.5 inline-block align-middle" /> or type /) and the CRM chat panel.</p>
         </div>
         <div className="flex gap-2">
-          <input className={`${inp} w-32`} placeholder="shortcut" value={qrShortcut} onChange={e => setQrShortcut(e.target.value)} />
-          <input className={`${inp} flex-1`} placeholder="Reply text…" value={qrBody} onChange={e => setQrBody(e.target.value)} onKeyDown={e => { if (e.key === "Enter") addQr(); }} />
-          <button onClick={addQr} disabled={!qrShortcut.trim() || !qrBody.trim()} className="px-3 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold disabled:opacity-50"><Plus className="w-4 h-4" /></button>
+          <input className={`${inp} w-32`} placeholder="shortcut" aria-label="Shortcut" value={qrShortcut} onChange={e => setQrShortcut(e.target.value)} />
+          <input className={`${inp} flex-1`} placeholder="Reply text…" aria-label="Reply text" value={qrBody} onChange={e => setQrBody(e.target.value)} onKeyDown={e => { if (e.key === "Enter") addQr(); }} />
+          <button onClick={addQr} disabled={!!qrMissing} title={qrMissing ?? "Add quick reply"} aria-label="Add quick reply" aria-describedby={qrMissing && (qrShortcut || qrBody) ? "qr-missing" : undefined} className="min-h-10 min-w-10 px-3 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold disabled:opacity-50"><Plus className="w-4 h-4" /></button>
         </div>
+        {qrMissing && (qrShortcut || qrBody) && <p id="qr-missing" className="text-[12px] text-ink-500">{qrMissing}</p>}
         <div className="divide-y divide-slate-100">
           {quickReplies.map(q => (
             <div key={q.id} className="flex items-center justify-between py-2 gap-3">
@@ -2674,10 +2732,10 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
                 <span className="text-xs font-bold text-brand-dark">/{q.shortcut}</span>
                 <p className="text-xs text-slate-500 truncate">{q.body}</p>
               </div>
-              <button onClick={() => fetch("/api/admin/quick-replies", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: q.id }) }).then(loadQr)} className="p-1.5 text-red-400 hover:text-red-600 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
+              <button onClick={() => void removeQr(q)} aria-label={`Remove quick reply /${q.shortcut}`} className="grid place-items-center w-9 h-9 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
             </div>
           ))}
-          {quickReplies.length === 0 && <p className="text-center text-slate-400 text-sm py-4">No quick replies yet — add shortcuts like “fees”, “location”, “demo”.</p>}
+          {quickReplies.length === 0 && <p className="text-center text-slate-500 text-sm py-4">No quick replies yet. Save answers you type often — like “fees”, “location” or “timings” — then type / in a chat to send one in a tap.</p>}
         </div>
       </section>
       </>)}
@@ -2685,34 +2743,24 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
       {section === "privacy" && (<>
       {isAdmin && (
         <section className="bg-white rounded-card border border-line p-5 space-y-3">
-          <p className="text-xs font-bold text-slate-400 uppercase">Data &amp; privacy (GDPR)</p>
+          <p className="text-xs font-bold text-slate-400 uppercase">Data &amp; privacy</p>
+          <p className="text-xs text-slate-500">Download a copy of your data, or answer a customer who asks what you hold about them or wants it deleted.</p>
           <div className="flex flex-wrap gap-2">
-            <a href="/api/admin/gdpr/export" className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-800 hover:bg-canvas">Export workspace data (JSON)</a>
-            <button onClick={() => {
-              const who = prompt("Export one person's data — enter their phone number, or their Instagram / Messenger / web‑chat id.");
-              if (who?.trim()) window.location.href = `/api/admin/gdpr/export?contact=${encodeURIComponent(who.trim())}`;
-            }} className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-800 hover:bg-canvas">Export one person…</button>
-            <button onClick={async () => {
-              const phone = prompt("Erase a contact — enter their phone number, or their Instagram / Messenger / web‑chat id.\nThis permanently deletes the contact and ALL their data.");
-              if (!phone?.trim()) return;
-              if (!(await ask({
-                title: "Permanently erase this person's data?", tone: "danger", confirmLabel: "Erase everything", typeToConfirm: "ERASE",
-                message: "Their contact record, conversations, messages, notes, media and logs are deleted outright. Their orders are kept for your tax records with their number removed. There is no backup to restore from and no way to reverse this.",
-                facts: [{ label: "Number or id", value: phone }],
-              }))) return;
-              const r = await fetch("/api/admin/gdpr/erase", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone }) }).then(x => x.json()).catch(() => ({ error: "request failed" }));
-              const rows = Object.values((r.deleted ?? {}) as Record<string, number>).reduce((a, b) => a + b, 0);
-              alert(r.error ? `Error: ${r.error}`
-                : `Erased data for ${r.phone}: ${rows} records deleted${r.anonymised?.wa_orders ? `, ${r.anonymised.wa_orders} orders kept without their number` : ""}.`
-                  + (r.errors?.length ? `\nSome parts failed — run it again: ${r.errors.join("; ")}` : ""));
-            }} className="px-3 py-1.5 rounded-control border border-red-200 text-xs font-bold text-red-600 hover:bg-red-50">Erase a contact…</button>
+            <a href="/api/admin/gdpr/export" className="inline-flex items-center min-h-10 px-3 rounded-control border border-line text-xs font-bold text-ink-800 hover:bg-canvas">Download all workspace data</a>
+            <button onClick={() => void exportOne()} className="min-h-10 px-3 rounded-control border border-line text-xs font-bold text-ink-800 hover:bg-canvas">Download one person&apos;s data…</button>
+            <button onClick={() => void eraseOne()} className="min-h-10 px-3 rounded-control border border-red-200 text-xs font-bold text-red-600 hover:bg-red-50">Erase a contact…</button>
           </div>
-          <p className="text-[11px] text-ink-400">Workspace export includes contacts, conversations, message text (media as links), team notes, form responses, opt‑outs and orders — not media files, AI settings, knowledge base, flows or send logs. A very large workspace is cut off at the size or time limit, and the file says which parts were. Export one person gives everything held about them, for an access request. Erase fulfils a right‑to‑be‑forgotten request for one person (removes the contact, conversations, messages, notes, media they sent, form responses, opt‑outs, queue/log and more; orders are kept with their number removed).</p>
+          <ul className="text-[12px] text-ink-500 list-disc pl-4 space-y-1">
+            <li><b>All workspace data</b> — contacts, conversations, message text (photos and files as links), team notes, form answers, do-not-contact list and orders. It doesn&apos;t include the photos and files themselves, AI settings, your knowledge base or flows. A very large workspace is cut off at a size limit, and the file says what was left out.</li>
+            <li><b>One person&apos;s data</b> — everything held about one customer, for when they ask to see it.</li>
+            <li><b>Erase a contact</b> — for when a customer asks to be forgotten: removes their contact, conversations, messages, notes, files they sent, form answers and do-not-contact entry. Orders are kept for your tax records with their number removed.</li>
+          </ul>
         </section>
       )}
       </>)}
     </div>
     <SettingsRail goTo={goTo} />
+    {textDialog}
     </div>
   );
 }

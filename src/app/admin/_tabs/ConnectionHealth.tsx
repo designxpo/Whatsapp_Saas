@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, ShieldAlert } from "lucide-react";
 import type { Tab } from "../_shared";
+import { toast } from "@/components/toast";
 
 type Problem = { key: string; area: string; severity: "critical" | "warning"; title: string; detail: string; since: string; fix: { label: string; tab: Tab } };
 type Payment = { id: string; provider: string; paymentKey: string; amountCents: number | null; reason: "no_order" | "short_payment"; orderId: string | null; createdAt: string; candidates: { id: string; phone: string; totalCents: number; createdAt: string }[] };
@@ -18,25 +19,24 @@ export function ConnectionHealth({ goTo }: { goTo: (t: Tab) => void }) {
   const [r, setR] = useState<Report | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [note, setNote] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/integration-health", { cache: "no-store" });
       const j = await res.json();
-      if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`);
+      if (!res.ok) throw new Error(j.error || "Couldn't check your connections. Please try again.");
       setR(j); setErr(null);
     } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
   }, []);
   useEffect(() => { void load(); }, [load]);
 
   async function act(body: Record<string, unknown>, key: string, done: string) {
-    setBusy(key); setNote(null); setErr(null);
+    setBusy(key); setErr(null);
     try {
       const res = await fetch("/api/admin/integration-health", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error || "That didn't work.");
-      setNote(typeof j.retried === "number" ? `${j.retried} update${j.retried === 1 ? "" : "s"} queued to send again.` : done);
+      toast(typeof j.retried === "number" ? `${j.retried} update${j.retried === 1 ? "" : "s"} will be sent again` : done);
       await load();
     } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
     setBusy(null);
@@ -53,11 +53,10 @@ export function ConnectionHealth({ goTo }: { goTo: (t: Tab) => void }) {
           {problems.length ? <ShieldAlert className="h-4 w-4 text-amber-600" /> : <CheckCircle2 className="h-4 w-4 text-emerald-600" />}
           {problems.length ? `${problems.length} connection${problems.length === 1 ? "" : "s"} need${problems.length === 1 ? "s" : ""} attention` : "All connections are working"}
         </p>
-        <button onClick={() => void load()} className="inline-flex items-center gap-1 text-[11px] font-semibold text-ink-500 hover:text-ink-900"><RefreshCw className="h-3 w-3" /> Check again</button>
+        <button onClick={() => void load()} className="inline-flex min-h-8 items-center gap-1 rounded-control px-2 text-[12px] font-semibold text-ink-600 hover:bg-canvas hover:text-ink-900"><RefreshCw className="h-3 w-3" aria-hidden /> Check again</button>
       </div>
       {r && <p className="text-[11px] text-ink-500">{okCount} of {r.checked.length} connected accounts and tools look healthy. Based on what Meta, Google and your tools last reported.</p>}
       {err && <p role="alert" className="rounded-control border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">{err}</p>}
-      {note && <p className="text-[12px] font-medium text-emerald-700">{note}</p>}
 
       {problems.length > 0 && (
         <ul className="divide-y divide-line rounded-control border border-line">
@@ -69,8 +68,8 @@ export function ConnectionHealth({ goTo }: { goTo: (t: Tab) => void }) {
                 <p className="text-[12px] text-ink-600">{p.detail}</p>
               </div>
               {p.area === "deliveries"
-                ? <button onClick={() => void act({ action: "retry_deliveries" }, p.key, "")} disabled={busy === p.key} className="shrink-0 rounded-control bg-brand-700 px-2.5 py-1 text-[11px] font-bold text-white disabled:opacity-50">{busy === p.key ? "Retrying…" : "Retry them"}</button>
-                : <button onClick={() => goTo(p.fix.tab)} className="shrink-0 rounded-control border border-line px-2.5 py-1 text-[11px] font-bold text-ink-900 hover:bg-canvas">{p.fix.label}</button>}
+                ? <button onClick={() => void act({ action: "retry_deliveries" }, p.key, "")} disabled={busy === p.key} className="min-h-8 shrink-0 rounded-control bg-brand-700 px-2.5 py-1 text-[12px] font-bold text-white disabled:opacity-50">{busy === p.key ? "Retrying…" : "Retry them"}</button>
+                : <button onClick={() => goTo(p.fix.tab)} className="min-h-8 shrink-0 rounded-control border border-line px-2.5 py-1 text-[12px] font-bold text-ink-900 hover:bg-canvas">{p.fix.label}</button>}
             </li>
           ))}
         </ul>
@@ -84,13 +83,13 @@ export function ConnectionHealth({ goTo }: { goTo: (t: Tab) => void }) {
               <p><b>{rupees(p.amountCents)}</b> via {p.provider} ({p.paymentKey}) — {p.reason === "short_payment" ? `less than the total of order ${p.orderId?.slice(0, 8)}. Sort it out with the customer, then dismiss.` : "no order matched it."}</p>
               <div className="flex flex-wrap gap-1.5">
                 {p.candidates.map(c => (
-                  <button key={c.id} disabled={!!busy} onClick={() => void act({ action: "resolve_payment", id: p.id, orderId: c.id }, p.id, "Order marked paid.")}
-                    className="rounded-control bg-white px-2 py-1 text-[11px] font-bold text-ink-900 border border-line hover:bg-canvas disabled:opacity-50">
+                  <button key={c.id} disabled={!!busy} onClick={() => void act({ action: "resolve_payment", id: p.id, orderId: c.id }, p.id, "Order marked paid")}
+                    className="min-h-8 rounded-control bg-white px-2 py-1 text-[12px] font-bold text-ink-900 border border-line hover:bg-canvas disabled:opacity-50">
                     Mark order {c.id.slice(0, 8)} (+{c.phone}) paid
                   </button>
                 ))}
                 {p.reason === "no_order" && !p.candidates.length && <span className="text-[11px]">No unpaid order of the same amount from the last 7 days.</span>}
-                <button disabled={!!busy} onClick={() => void act({ action: "resolve_payment", id: p.id, dismiss: true }, p.id, "Dismissed.")} className="px-2 py-1 text-[11px] font-semibold text-amber-900 hover:underline disabled:opacity-50">Dismiss</button>
+                <button disabled={!!busy} onClick={() => void act({ action: "resolve_payment", id: p.id, dismiss: true }, p.id, "Payment dismissed")} className="min-h-8 px-2 py-1 text-[12px] font-semibold text-amber-900 hover:underline disabled:opacity-50">Dismiss</button>
               </div>
             </div>
           ))}

@@ -80,14 +80,14 @@ export function CustomerAutomations({ conversationId }: { conversationId: string
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <p className="text-[12.5px] font-semibold text-ink-900 break-words">{a.title}</p>
-                      <span className={`rounded-full border px-1.5 py-px text-[10px] font-bold ${STATE[a.state].cls}`}>{STATE[a.state].label}</span>
+                      <span className={`rounded-full border px-2 py-0.5 text-[12px] font-bold ${STATE[a.state].cls}`}>{STATE[a.state].label}</span>
                     </div>
                     {a.next && <p className="text-[11.5px] text-ink-800">Next: {a.next.what}{a.next.at ? ` — ${when(a.next.at)}` : ""}</p>}
                     <p className="text-[11px] text-ink-500">{a.why}{a.stoppedAt && a.state === "stopped" ? ` · ${new Date(a.stoppedAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })}` : ""}</p>
                   </div>
                   {a.canStop && (
                     <button onClick={() => void stop(a)} disabled={busy === a.key} aria-label={`Stop ${a.title}`}
-                      className="shrink-0 inline-flex items-center gap-1 rounded-control border border-line px-1.5 py-0.5 text-[10.5px] font-bold text-ink-700 hover:bg-canvas disabled:opacity-50">
+                      className="shrink-0 inline-flex items-center gap-1 min-h-8 rounded-control border border-line px-2 text-[12px] font-bold text-ink-700 hover:bg-canvas disabled:opacity-50">
                       {busy === a.key ? <Loader2 className="h-3 w-3 animate-spin" /> : <Square className="h-2.5 w-2.5" />} Stop
                     </button>
                   )}

@@ -14,6 +14,7 @@ import { useState, useEffect, useCallback } from "react";
 import { startRegistration, browserSupportsWebAuthn } from "@simplewebauthn/browser";
 import { Loader2, Plus, Trash2, KeyRound, ShieldCheck, Copy, Check } from "lucide-react";
 import { useConfirm } from "@/components/confirm-dialog";
+import { toast } from "@/components/toast";
 
 type PasskeyRow = { id: string; deviceName: string; backedUp: boolean; createdAt: string; lastUsedAt: string | null };
 type TwoFa = { available: boolean; enrolled: boolean; backupRemaining: number };
@@ -64,14 +65,15 @@ export default function SecurityTab() {
         body: JSON.stringify({ response, label: deviceLabel() }),
       });
       const d = await res.json();
-      if (!res.ok) { setMsg(d.error || "Could not add that passkey"); return; }
+      if (!res.ok) { setMsg(d.error || "Couldn't add that passkey. Please try again."); return; }
       // A device-bound passkey disappears with the device, and this is the only
       // moment anyone is thinking about it.
       if (!d.backedUp) setMsg("Added — but this one lives only on this device. If you lose it, you'll sign in with your password instead.", "warn");
+      else toast("Passkey added — next time, sign in with your fingerprint, face or PIN");
       load();
     } catch (err) {
       const name = err instanceof Error ? err.name : "";
-      if (name !== "NotAllowedError" && name !== "AbortError") setMsg(err instanceof Error ? err.message : "Could not add that passkey");
+      if (name !== "NotAllowedError" && name !== "AbortError") setMsg(err instanceof Error ? err.message : "Couldn't add that passkey. Please try again.");
     } finally { setBusy(false); }
   }
 
@@ -81,7 +83,8 @@ export default function SecurityTab() {
       message: "You can still sign in with your password. Add it again any time from this device.",
       facts: [{ label: "Passkey", value: p.deviceName }],
     }))) return;
-    await fetch("/api/admin/passkeys", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: p.id }) });
+    const r = await fetch("/api/admin/passkeys", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: p.id }) }).catch(() => null);
+    if (r?.ok) toast(`Passkey for ${p.deviceName} removed`); else toast({ text: "Couldn't remove the passkey. Please try again.", tone: "error" });
     load();
   }
 
@@ -90,7 +93,7 @@ export default function SecurityTab() {
     try {
       const res = await fetch("/api/admin/2fa/setup", { method: "POST" });
       const d = await res.json();
-      if (!res.ok) { setMsg(d.error || "Could not start setup"); return; }
+      if (!res.ok) { setMsg(d.error || "Couldn't start setup. Please try again."); return; }
       setQr(d.qr); setSecret(d.secret);
     } finally { setBusy(false); }
   }
@@ -100,8 +103,9 @@ export default function SecurityTab() {
     try {
       const res = await fetch("/api/admin/2fa/confirm", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code }) });
       const d = await res.json();
-      if (!res.ok) { setMsg(d.error || "That code is not right"); return; }
+      if (!res.ok) { setMsg(d.error || "That code isn't right — check the app and try the newest code."); return; }
       setBackupCodes(d.backupCodes ?? []); setQr(""); setSecret(""); setCode("");
+      toast("Authenticator app turned on — save your backup codes below");
       load();
     } finally { setBusy(false); }
   }
@@ -111,17 +115,22 @@ export default function SecurityTab() {
       title: "Turn off your authenticator?", tone: "danger", confirmLabel: "Turn it off",
       message: "Sign-in goes back to emailing you a code when you use a new device. Your backup codes stop working.",
     }))) return;
-    await fetch("/api/admin/2fa", { method: "DELETE" });
+    const r = await fetch("/api/admin/2fa", { method: "DELETE" }).catch(() => null);
+    if (r?.ok) toast("Authenticator app turned off"); else toast({ text: "Couldn't turn it off. Please try again.", tone: "error" });
     setBackupCodes([]);
     load();
   }
 
   async function copyCodes() {
-    try { await navigator.clipboard.writeText(backupCodes.join("\n")); setCopied(true); } catch { /* clipboard blocked */ }
+    try { await navigator.clipboard.writeText(backupCodes.join("\n")); setCopied(true); toast("Backup codes copied — keep them somewhere safe"); } catch { toast({ text: "Couldn't copy — write the codes down instead.", tone: "error" }); }
   }
 
   return (
     <div className="space-y-4">
+      <div>
+        <h2 className="text-xl font-extrabold text-brand-dark">Sign-in security</h2>
+        <p className="text-sm text-slate-500">Make your own sign-in safer and quicker. These settings are just for you, not your whole team.</p>
+      </div>
       {/* ── Passkeys ── */}
       <section className="bg-white rounded-card border border-line p-5 space-y-3">
         <div className="flex items-start justify-between gap-3">
@@ -130,16 +139,16 @@ export default function SecurityTab() {
           </div>
           {canPasskey && pkAvailable && (
             <button onClick={addPasskey} disabled={busy}
-              className="shrink-0 px-3 py-1.5 rounded-control bg-gradient-to-br from-brand-600 to-brand-900 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
+              className="shrink-0 min-h-9 px-3 py-1.5 rounded-control bg-gradient-to-br from-brand-600 to-brand-900 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
               {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />} Add a passkey
             </button>
           )}
         </div>
 
-        {!pkAvailable && <p className="text-xs text-amber-700 bg-amber-50 rounded-control px-3 py-2">Not set up on this deployment — apply migration <code className="font-mono">0117_signin_security.sql</code>.</p>}
-        {!canPasskey && <p className="text-xs text-ink-400">This browser doesn&apos;t support passkeys.</p>}
+        {!pkAvailable && <p className="text-xs text-amber-800 bg-amber-50 rounded-control px-3 py-2">This isn&apos;t available on your workspace yet. If you need it, contact support.</p>}
+        {!canPasskey && <p className="text-xs text-ink-500">This browser doesn&apos;t support passkeys. Try the latest Chrome, Safari or Edge.</p>}
         {canPasskey && pkAvailable && passkeys.length === 0 && (
-          <p className="text-xs text-ink-400">No passkeys yet. Add one and you won&apos;t need your password on this device again.</p>
+          <p className="text-xs text-ink-500">No passkeys yet. Press <b>Add a passkey</b> and you won&apos;t need your password on this device again.</p>
         )}
 
         {passkeys.map(p => (
@@ -148,14 +157,14 @@ export default function SecurityTab() {
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold text-ink-900 truncate">
                 {p.deviceName}
-                <span className="ml-2 text-[10px] font-bold text-ink-400">{p.backedUp ? "· SYNCED" : "· THIS DEVICE ONLY"}</span>
+                <span className="ml-2 text-[11px] font-bold text-ink-500">{p.backedUp ? "· Synced to your other devices" : "· This device only"}</span>
               </p>
-              <p className="text-[11px] text-ink-400">
+              <p className="text-[11px] text-ink-500">
                 Added {new Date(p.createdAt).toLocaleDateString()}
                 {p.lastUsedAt ? ` · last used ${new Date(p.lastUsedAt).toLocaleDateString()}` : " · not used yet"}
               </p>
             </div>
-            <button onClick={() => removePasskey(p)} className="shrink-0 p-1.5 rounded-control text-ink-400 hover:text-red-600 hover:bg-red-50"><Trash2 className="w-4 h-4" /></button>
+            <button onClick={() => removePasskey(p)} aria-label={`Remove passkey for ${p.deviceName}`} title="Remove" className="shrink-0 grid h-9 w-9 place-items-center rounded-control text-ink-400 hover:text-red-600 hover:bg-red-50"><Trash2 className="w-4 h-4" /></button>
           </div>
         ))}
       </section>
@@ -174,11 +183,11 @@ export default function SecurityTab() {
           )}
         </div>
 
-        {twoFa && !twoFa.available && <p className="text-xs text-amber-700 bg-amber-50 rounded-control px-3 py-2">Not set up on this deployment — apply migration <code className="font-mono">0117_signin_security.sql</code>.</p>}
+        {twoFa && !twoFa.available && <p className="text-xs text-amber-800 bg-amber-50 rounded-control px-3 py-2">This isn&apos;t available on your workspace yet. If you need it, contact support.</p>}
 
         {twoFa?.available && !twoFa.enrolled && !qr && backupCodes.length === 0 && (
           <button onClick={startTotp} disabled={busy}
-            className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-900 hover:bg-canvas disabled:opacity-60">Set up an authenticator</button>
+            className="min-h-9 px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-900 hover:bg-canvas disabled:opacity-60">Set up an authenticator app</button>
         )}
 
         {qr && (
@@ -187,14 +196,14 @@ export default function SecurityTab() {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={qr} alt="Authenticator setup QR code" className="rounded-control border border-line" width={200} height={200} />
             <details className="text-xs">
-              <summary className="cursor-pointer text-ink-400">Can&apos;t scan it?</summary>
+              <summary className="cursor-pointer text-ink-500">Can&apos;t scan it? Type this key into the app instead</summary>
               <code className="mt-1 block break-all rounded-control bg-canvas border border-line px-3 py-2 text-ink-900">{secret}</code>
             </details>
             <div className="flex gap-2">
-              <input value={code} onChange={e => setCode(e.target.value)} placeholder="000000" inputMode="numeric" maxLength={6}
+              <input value={code} onChange={e => setCode(e.target.value)} placeholder="000000" inputMode="numeric" maxLength={6} aria-label="6-digit code from the app" autoComplete="one-time-code"
                 className="flex-1 border border-line rounded-control px-3 py-2 text-sm bg-white text-ink-900 placeholder:text-ink-400" />
-              <button onClick={confirmTotp} disabled={busy || !code.trim()}
-                className="shrink-0 px-3 py-2 rounded-control bg-gradient-to-br from-brand-600 to-brand-900 text-white text-xs font-bold disabled:opacity-60">Turn it on</button>
+              <button onClick={confirmTotp} disabled={busy || !code.trim()} title={!code.trim() ? "Enter the 6-digit code first" : undefined}
+                className="shrink-0 min-h-10 px-3 py-2 rounded-control bg-gradient-to-br from-brand-600 to-brand-900 text-white text-xs font-bold disabled:opacity-60">Turn it on</button>
             </div>
           </div>
         )}
@@ -215,8 +224,8 @@ export default function SecurityTab() {
 
         {twoFa?.enrolled && backupCodes.length === 0 && (
           <div className="flex items-center justify-between gap-3 text-xs">
-            <span className="text-ink-400">{twoFa.backupRemaining} backup code{twoFa.backupRemaining === 1 ? "" : "s"} left</span>
-            <button onClick={disableTotp} className="text-ink-400 hover:text-red-600 font-semibold">Turn off</button>
+            <span className="text-ink-500">{twoFa.backupRemaining} backup code{twoFa.backupRemaining === 1 ? "" : "s"} left</span>
+            <button onClick={disableTotp} className="min-h-8 px-2 rounded-control text-ink-600 hover:text-red-600 hover:bg-red-50 font-semibold">Turn off</button>
           </div>
         )}
 

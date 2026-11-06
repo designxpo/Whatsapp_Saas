@@ -9,6 +9,7 @@ import { Loader2 } from "lucide-react";
 import { inp } from "../_shared";
 import { VOCAB_KEYS, type Vocab, type VocabKey, type VocabOverrides } from "@/lib/vocab";
 import { useVocab } from "@/lib/vocab-client";
+import { toast } from "@/components/toast";
 
 interface Pack { id: string; label: string; vocab: Vocab }
 interface State { industry: string; overrides: VocabOverrides; vocab: Vocab; industries: Pack[] }
@@ -63,10 +64,10 @@ export function TerminologyCard() {
     try {
       const r = await fetch("/api/admin/vocab", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ industry, overrides }) });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error || "Could not save");
-      setSt(s => (s ? { ...s, ...d } : s)); setDraft(d.overrides); setMsg("Saved — your dashboard now uses these words.", "ok");
+      if (!r.ok) throw new Error(d.error || "Couldn't save. Please try again.");
+      setSt(s => (s ? { ...s, ...d } : s)); setDraft(d.overrides); setMsg(null); toast("Saved — your dashboard now uses these words");
       reload();
-    } catch (e) { setMsg(e instanceof Error ? e.message : "Could not save"); }
+    } catch (e) { setMsg(e instanceof Error ? e.message : "Couldn't save. Please try again."); }
     finally { setBusy(false); }
   }
 
@@ -79,7 +80,7 @@ export function TerminologyCard() {
         {st.industries.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
       </select>
       <div className="space-y-2">
-        <div className="grid grid-cols-[1fr_1fr_1fr] gap-2 text-[10px] font-bold uppercase text-slate-400"><span>Used for</span><span>Singular</span><span>Plural</span></div>
+        <div className="grid grid-cols-[1fr_1fr_1fr] gap-2 text-[11px] font-bold uppercase text-slate-500"><span>Used for</span><span>Singular</span><span>Plural</span></div>
         {VOCAB_KEYS.map(k => (
           <div key={k} className="grid grid-cols-[1fr_1fr_1fr] gap-2 items-center">
             <span className="text-xs text-slate-500">{ROW_LABEL[k]}</span>
@@ -89,8 +90,8 @@ export function TerminologyCard() {
         ))}
       </div>
       <div className="flex items-center gap-3">
-        <button onClick={save} disabled={busy} className="px-4 py-2 rounded-full text-xs font-bold bg-brand-700 text-white disabled:opacity-60">{busy ? "Saving…" : "Save terminology"}</button>
-        {draft && Object.keys(draft).length > 0 && <button onClick={() => setDraft({})} className="text-xs text-slate-500 underline">Reset to {pack.label} defaults</button>}
+        <button onClick={save} disabled={busy} className="min-h-10 px-4 py-2 rounded-full text-xs font-bold bg-brand-700 text-white disabled:opacity-60">{busy ? "Saving…" : "Save terminology"}</button>
+        {draft && Object.keys(draft).length > 0 && <button onClick={() => setDraft({})} className="min-h-8 text-xs text-slate-600 underline">Reset to {pack.label} defaults</button>}
         <Notice notice={note} />
       </div>
     </section>

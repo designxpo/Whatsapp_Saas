@@ -7,6 +7,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { CalendarClock, CheckCircle2, Loader2, Play, Plus, Trash2, XCircle } from "lucide-react";
 import { inp } from "../_shared";
+import { toast } from "@/components/toast";
+import { useConfirm } from "@/components/confirm-dialog";
 
 type Test = { id: string; question: string; mustInclude: string[]; mustAvoid: string[]; expectHandoff: boolean; lastRunAt: string | null; lastPassed: boolean | null; lastReply: string | null; lastDetail: string | null };
 type Doc = { id: string; title: string; reviewBy: string | null; why: string };
@@ -22,6 +24,7 @@ export function KbChecksCard() {
   const [q, setQ] = useState(""); const [inc, setInc] = useState(""); const [avoid, setAvoid] = useState(""); const [handoff, setHandoff] = useState(false);
   const [adding, setAdding] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const ask = useConfirm();
 
   const load = useCallback(async () => {
     const [t, r] = await Promise.all([fetch("/api/admin/kb/tests"), fetch("/api/admin/kb/review")]);
@@ -39,17 +42,25 @@ export function KbChecksCard() {
   }
   async function runAll() {
     setRunning(true); setErr(null);
-    try { await post({ action: "run" }); await load(); } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+    try { await post({ action: "run" }); await load(); toast("Checks finished — results below"); } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
     setRunning(false);
   }
   async function add(e: React.FormEvent) {
     e.preventDefault(); setErr(null);
-    try { await post({ action: "add", question: q, mustInclude: list(inc), mustAvoid: list(avoid), expectHandoff: handoff }); setQ(""); setInc(""); setAvoid(""); setHandoff(false); setAdding(false); await load(); }
+    try { await post({ action: "add", question: q, mustInclude: list(inc), mustAvoid: list(avoid), expectHandoff: handoff }); setQ(""); setInc(""); setAvoid(""); setHandoff(false); setAdding(false); toast("Check saved"); await load(); }
     catch (e2) { setErr(e2 instanceof Error ? e2.message : String(e2)); }
   }
-  async function remove(id: string) { await fetch(`/api/admin/kb/tests?id=${encodeURIComponent(id)}`, { method: "DELETE" }); await load(); }
+  async function remove(t: Test) {
+    if (!(await ask({ title: "Delete this check?", tone: "danger", confirmLabel: "Delete check", facts: [{ label: "Question", value: t.question }] }))) return;
+    const r = await fetch(`/api/admin/kb/tests?id=${encodeURIComponent(t.id)}`, { method: "DELETE" }).catch(() => null);
+    if (!r?.ok) { toast({ text: "Couldn't delete the check. Please try again.", tone: "error" }); return; }
+    // Undo re-adds the same check (its past results start fresh).
+    toast({ text: "Check deleted", action: { label: "Undo", onClick: () => { void post({ action: "add", question: t.question, mustInclude: t.mustInclude, mustAvoid: t.mustAvoid, expectHandoff: t.expectHandoff }).then(() => { toast("Check restored"); return load(); }).catch(() => toast({ text: "Couldn't restore it.", tone: "error" })); } } });
+    await load();
+  }
   async function reviewed(id: string, months: number) {
-    await fetch("/api/admin/kb/review", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ docId: id, reviewBy: inMonths(months) }) });
+    const r = await fetch("/api/admin/kb/review", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ docId: id, reviewBy: inMonths(months) }) }).catch(() => null);
+    if (r?.ok) toast(`Marked as still right — we'll ask again in ${months} months`); else toast({ text: "Couldn't save. Please try again.", tone: "error" });
     await load();
   }
 
@@ -65,8 +76,8 @@ export function KbChecksCard() {
           <p className="text-[12px] text-ink-600">Questions your AI should get right. Run them after changing your documents — nothing is sent to customers.</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => setAdding(a => !a)} className="inline-flex items-center gap-1 rounded-control border border-line px-2.5 py-1.5 text-xs font-bold text-ink-700 hover:bg-canvas"><Plus className="h-3.5 w-3.5" /> Add</button>
-          <button onClick={() => void runAll()} disabled={running || !tests.length} className="inline-flex items-center gap-1 rounded-control bg-brand-700 px-2.5 py-1.5 text-xs font-bold text-white disabled:opacity-50">
+          <button onClick={() => setAdding(a => !a)} aria-expanded={adding} className="inline-flex min-h-9 items-center gap-1 rounded-control border border-line px-2.5 py-1.5 text-xs font-bold text-ink-700 hover:bg-canvas"><Plus className="h-3.5 w-3.5" /> Add</button>
+          <button onClick={() => void runAll()} disabled={running || !tests.length} title={!tests.length ? "Add a check first" : undefined} className="inline-flex min-h-9 items-center gap-1 rounded-control bg-brand-700 px-2.5 py-1.5 text-xs font-bold text-white disabled:opacity-50">
             {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />} {running ? "Running…" : "Run all"}
           </button>
         </div>
@@ -80,7 +91,7 @@ export function KbChecksCard() {
           <input value={inc} onChange={e => setInc(e.target.value)} placeholder="The answer must mention (comma-separated), e.g. Sunday, 10 am" className={`${inp} w-full`} aria-label="Must mention" />
           <input value={avoid} onChange={e => setAvoid(e.target.value)} placeholder="The answer must never say (comma-separated), e.g. free delivery" className={`${inp} w-full`} aria-label="Must not say" />
           <label className="flex items-center gap-2 text-[12px] text-ink-700"><input type="checkbox" checked={handoff} onChange={e => setHandoff(e.target.checked)} /> The AI should hand this to a person instead of answering</label>
-          <div className="flex justify-end"><button disabled={!q.trim()} className="rounded-control bg-brand-700 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50">Save check</button></div>
+          <div className="flex items-center justify-end gap-2">{!q.trim() && <span className="text-[12px] text-ink-500">Type the customer&apos;s question first.</span>}<button disabled={!q.trim()} className="min-h-9 rounded-control bg-brand-700 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50">Save check</button></div>
         </form>
       )}
 
@@ -97,7 +108,7 @@ export function KbChecksCard() {
                 {t.lastDetail && <p className={t.lastPassed ? "text-emerald-700" : "text-red-700"}>{t.lastDetail}</p>}
                 {t.lastReply && <details className="text-ink-600"><summary className="cursor-pointer">The answer</summary><p className="whitespace-pre-wrap">{t.lastReply}</p></details>}
               </div>
-              <button onClick={() => void remove(t.id)} aria-label={`Delete “${t.question}”`} className="shrink-0 text-ink-400 hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
+              <button onClick={() => void remove(t)} aria-label={`Delete “${t.question}”`} className="-my-1 grid h-8 w-8 shrink-0 place-items-center rounded-control text-ink-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
             </li>
           ))}
         </ul>
@@ -110,7 +121,7 @@ export function KbChecksCard() {
             <div key={d.id} className="flex flex-wrap items-center justify-between gap-2 text-[12px] text-amber-950">
               <span><b>{d.title}</b> — {d.why}</span>
               <span className="flex gap-1">
-                <button onClick={() => void reviewed(d.id, 3)} className="rounded-control border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-bold">Still right — check again in 3 months</button>
+                <button onClick={() => void reviewed(d.id, 3)} className="min-h-8 rounded-control border border-amber-300 bg-white px-2 py-0.5 text-[12px] font-bold">Still right — check again in 3 months</button>
               </span>
             </div>
           ))}

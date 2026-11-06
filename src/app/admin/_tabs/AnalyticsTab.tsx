@@ -1,103 +1,27 @@
 "use client";
-import { PageInfo } from "@/components/PageInfo";
 import TrackedLinkAnalytics from "./TrackedLinkAnalytics";
-import { RANGES, DEFAULT_RANGE, type RangeKey } from "@/lib/analytics-range";
+import { DEFAULT_RANGE, bucketLabel, presetOptions, previousWindow, type PresetKey, type RangeKey } from "@/lib/analytics-range";
 
-// Analytics tab (lightweight SVG charts + exec brief) — extracted from the
-// monolithic admin/page.tsx and lazy-loaded as its own chunk. Logic unchanged.
+// Analytics: messages, chats, automations and audience over one chosen window.
+// Lazy-loaded as its own chunk. Charts come from components/charts.tsx so every
+// figure can be hovered, read with the keyboard, or shown as a table.
 
 import { useState, useEffect } from "react";
 import { useVocab } from "@/lib/vocab-client";
 import { AlertTriangle, CircleCheck, Database, Loader2, MessageSquare, Send, Sparkles, TrendingUp, Users, Zap } from "lucide-react";
-import { type AnalyticsData, type Conversation, inp } from "../_shared";
+import { type AnalyticsData, type GoTo, EmptyState, inp } from "../_shared";
+import { DataPageHeader, DateRange, ExportCsvButton, LoadStatus } from "@/components/date-range";
+import { ChartCard, Delta, HBars, SERIES_COLORS, ShowAsTable, TimeChart, tableRows, type ChartPoint, type ChartSeries } from "@/components/charts";
+import { csvDate, csvFileName, downloadCsv, toCsv } from "@/lib/csv-export";
+import { fmtNum, fmtPct } from "@/lib/format";
+import { openTab } from "@/lib/open-tab";
 
-// ── Lightweight SVG charts (no chart library) ────────────────────────────────
-function buildArea(values: number[], w: number, h: number, pad: number) {
-  const max = Math.max(1, ...values);
-  const n = values.length;
-  const pts = values.map((v, i) => ({
-    x: n <= 1 ? w / 2 : (i / (n - 1)) * w,
-    y: h - pad - (v / max) * (h - pad * 2),
-  }));
-  let line = pts.length ? `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}` : "";
-  for (let i = 0; i < pts.length - 1; i++) {
-    const cx = (pts[i].x + pts[i + 1].x) / 2;
-    line += ` C ${cx.toFixed(1)} ${pts[i].y.toFixed(1)} ${cx.toFixed(1)} ${pts[i + 1].y.toFixed(1)} ${pts[i + 1].x.toFixed(1)} ${pts[i + 1].y.toFixed(1)}`;
-  }
-  return { pts, line, area: pts.length ? `${line} L ${w} ${h} L 0 ${h} Z` : "", max };
-}
+// The API also counts Messenger and website-chat conversations; older payloads
+// (and the shared type, for now) may not carry them.
+type Data = AnalyticsData & { conversations: AnalyticsData["conversations"] & { messenger?: number; webchat?: number } };
 
-// Smooth area/line chart with a highlighted peak (HTML overlay keeps the dot +
-// tooltip crisp while the line stretches to full width).
-function AreaChart({ daily }: { daily: AnalyticsData["daily"] }) {
-  const W = 720, H = 200, PAD = 18;
-  const values = daily.map(d => d.sent);
-  const { pts, line, area, max } = buildArea(values, W, H, PAD);
-  const peakIdx = values.length ? values.indexOf(Math.max(...values)) : -1;
-  const peak = peakIdx >= 0 ? pts[peakIdx] : null;
-  const grid = [0, 0.5, 1].map(f => H - PAD - f * (H - PAD * 2));
-  return (
-    <div className="relative">
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="w-full" style={{ height: H }}>
-        <defs>
-          <linearGradient id="waArea" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#0783FD" stopOpacity="0.22" />
-            <stop offset="100%" stopColor="#0783FD" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        {grid.map((y, i) => <line key={i} x1="0" y1={y} x2={W} y2={y} stroke="#EEF2F7" strokeWidth="1" vectorEffect="non-scaling-stroke" />)}
-        {area && <path d={area} fill="url(#waArea)" />}
-        {line && <path d={line} fill="none" stroke="#0783FD" strokeWidth="2.5" strokeLinecap="round" vectorEffect="non-scaling-stroke" />}
-        {peak && max > 1 && <line x1={peak.x} y1={peak.y} x2={peak.x} y2={H} stroke="#0783FD" strokeWidth="1" strokeDasharray="3 3" opacity="0.4" vectorEffect="non-scaling-stroke" />}
-      </svg>
-      {peak && max > 1 && (
-        <>
-          <span className="absolute z-10 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-brand-700 shadow" style={{ left: `${(peak.x / W) * 100}%`, top: peak.y }} />
-          <span className="absolute z-10 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-lg bg-ink-900 px-2 py-1 text-[10px] font-bold text-white shadow-lg" style={{ left: `${(peak.x / W) * 100}%`, top: peak.y - 8 }}>
-            {values[peakIdx].toLocaleString()} · {daily[peakIdx]?.date.slice(5)}
-          </span>
-        </>
-      )}
-      <div className="mt-2 flex justify-between text-[9px] text-ink-400">
-        {daily.filter((_, i) => i % 2 === 0 || i === daily.length - 1).map(d => <span key={d.date}>{d.date.slice(5)}</span>)}
-      </div>
-    </div>
-  );
-}
-
-// Donut with center label + legend (delivery breakdown of the last 14 days).
-function DeliveryDonut({ segments, centerValue, centerLabel }: { segments: { label: string; value: number; color: string }[]; centerValue: string; centerLabel: string }) {
-  const total = Math.max(1, segments.reduce((s, x) => s + x.value, 0));
-  const R = 56, C = 2 * Math.PI * R;
-  let offset = 0;
-  return (
-    <div className="flex items-center gap-6">
-      <div className="relative shrink-0" style={{ width: 140, height: 140 }}>
-        <svg width="140" height="140" viewBox="0 0 140 140" className="-rotate-90">
-          <circle cx="70" cy="70" r={R} fill="none" stroke="#F1F5F9" strokeWidth="16" />
-          {segments.map((s, i) => {
-            const len = (s.value / total) * C;
-            const el = <circle key={i} cx="70" cy="70" r={R} fill="none" stroke={s.color} strokeWidth="16" strokeDasharray={`${len.toFixed(2)} ${(C - len).toFixed(2)}`} strokeDashoffset={(-offset).toFixed(2)} />;
-            offset += len;
-            return el;
-          })}
-        </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-          <span className="text-2xl font-bold text-ink-900 tnum leading-none">{centerValue}</span>
-          <span className="text-[10px] text-ink-400 mt-1">{centerLabel}</span>
-        </div>
-      </div>
-      <ul className="flex-1 space-y-2.5">
-        {segments.map(s => (
-          <li key={s.label} className="flex items-center justify-between text-[12px]">
-            <span className="flex items-center gap-2 text-ink-600"><span className="h-2.5 w-2.5 rounded-full" style={{ background: s.color }} />{s.label}</span>
-            <span className="font-bold text-ink-900 tnum">{Math.round((s.value / total) * 100)}%</span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
+/** The windows this screen offers — all of them answerable by /api/admin/analytics. */
+const RANGE_OPTIONS = presetOptions(["7d", "30d", "90d", "all"]);
 
 type ExecBrief = { health: "strong" | "steady" | "at-risk"; headline: string; working: string[]; lacking: string[]; steps: { action: string; why: string }[] };
 
@@ -121,37 +45,38 @@ function AskDataCard() {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question }),
       }).then(r => r.json());
       if (d.error) { setErr(d.error); setRes(null); } else setRes(d);
-    } catch { setErr("Connection error."); }
+    } catch { setErr("Couldn't reach Talko — check your connection and try again."); }
     finally { setBusy(false); }
   }
 
   return (
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
       <div>
-        <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><Sparkles className="w-4 h-4 text-brand-700" /> Ask your data</p><p className="text-xs text-slate-500 mt-0.5">Ask about leads, chats, messages, broadcasts or drips. Every answer shows exactly what was counted.</p>
+        <h2 className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><Sparkles className="w-4 h-4 text-brand-700" aria-hidden /> Ask your data</h2>
+        <p className="text-xs text-ink-500 mt-0.5">Ask about leads, chats, messages, broadcasts or follow-ups. Every answer shows exactly what was counted.</p>
       </div>
       <form onSubmit={e => { e.preventDefault(); void ask(); }} className="flex gap-2">
         <input value={q} onChange={e => setQ(e.target.value)} maxLength={500} placeholder="e.g. How many leads from Instagram last week?"
-          className={`${inp} flex-1 text-sm`} />
+          aria-label="Your question" className={`${inp} flex-1 min-w-0 text-sm`} />
         <button type="submit" disabled={busy || !q.trim()}
-          className="shrink-0 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50">
-          {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} Ask
+          className="shrink-0 min-h-9 px-3 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50">
+          {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden /> : <Sparkles className="w-3.5 h-3.5" aria-hidden />} Ask
         </button>
       </form>
       {!res && !err && !busy && (
         <div className="flex flex-wrap gap-1.5">
           {ASK_EXAMPLES.map(x => (
-            <button key={x} onClick={() => void ask(x)} className="px-2.5 py-1 rounded-full border border-line text-[11px] text-ink-500 hover:bg-canvas">{x}</button>
+            <button key={x} type="button" onClick={() => void ask(x)} className="min-h-8 px-3 rounded-full border border-line text-[12px] text-ink-600 hover:bg-canvas">{x}</button>
           ))}
         </div>
       )}
-      {err && <p className="text-xs text-red-600">{err}</p>}
+      {err && <p className="text-xs text-red-700" role="alert">{err}</p>}
       {res && (
-        <div className="space-y-2">
+        <div className="space-y-2" aria-live="polite">
           <p className="text-sm text-ink-900">{res.answer}</p>
           {res.steps.length > 0 && (
-            <div className="text-[11px] text-ink-500 border-t border-line pt-2">
-              <p className="font-bold text-ink-400 uppercase tracking-[0.06em] mb-1">How I counted</p>
+            <div className="text-[12px] text-ink-500 border-t border-line pt-2">
+              <p className="font-bold text-ink-500 mb-1">How I counted</p>
               <ul className="space-y-0.5">{res.steps.map((st, i) => <li key={i}>{st.description}</li>)}</ul>
             </div>
           )}
@@ -161,313 +86,323 @@ function AskDataCard() {
   );
 }
 
-function AnalyticsTab({ isAdmin = false }: { isAdmin?: boolean }) {
+/** Chart points for the daily (or weekly / monthly) send series. Pure. */
+export function messagePoints(data: Pick<AnalyticsData, "daily" | "range">): ChartPoint[] {
+  const g = data.range.granularity;
+  return data.daily.map(d => ({
+    key: d.date,
+    label: bucketLabel(d.date, g).replace(/^Week of /, ""),
+    title: bucketLabel(d.date, g),
+    values: { sent: d.sent, delivered: d.delivered, read: d.read, failed: d.failed },
+  }));
+}
+
+const MESSAGE_SERIES: ChartSeries[] = [
+  { key: "sent", label: "Sent", color: SERIES_COLORS.primary, mark: "area" },
+  { key: "read", label: "Read", color: SERIES_COLORS.secondary, mark: "dashed" },
+  { key: "delivered", label: "Delivered", mark: "none" },
+  { key: "failed", label: "Failed", mark: "none" },
+];
+
+/** The four channels a chat can start on, in a fixed order. Missing counts (older data) are left out. Pure. */
+export function channelSplit(c: Data["conversations"]): { label: string; value: number }[] {
+  const rows: { label: string; value: number | undefined }[] = [
+    { label: "WhatsApp", value: c.whatsapp },
+    { label: "Instagram", value: c.instagram },
+    { label: "Messenger", value: c.messenger },
+    { label: "Website chat", value: c.webchat },
+  ];
+  return rows.filter((r): r is { label: string; value: number } => typeof r.value === "number");
+}
+
+const STATUS_WORDS: Record<string, string> = { done: "Sent", completed: "Sent", sending: "Sending", running: "Sending", scheduled: "Scheduled", draft: "Draft", failed: "Failed", paused: "Paused", cancelled: "Cancelled" };
+
+function AnalyticsTab({ isAdmin = false, goTo }: { isAdmin?: boolean; goTo?: GoTo }) {
   const { vocab } = useVocab();
   const [range, setRange] = useState<RangeKey>(DEFAULT_RANGE);
-  const [data, setData] = useState<AnalyticsData | null>(null);
+  const [data, setData] = useState<Data | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [brief, setBrief] = useState<ExecBrief | null>(null);
   const [briefBusy, setBriefBusy] = useState(false);
   const [briefErr, setBriefErr] = useState<string | null>(null);
   useEffect(() => {
-    // Cleared on range change so a stale window's figures never sit under a new
-    // period's heading.
-    setData(null);
-    fetch(`/api/admin/analytics?range=${range}`).then(r => r.json()).then(d => { setData(d.analytics ?? null); setNotice(d.notice ?? null); }).catch(() => {});
+    // The previous window's figures stay on screen, dimmed, until the new ones
+    // arrive — and their headings are written from data.range, so a heading and
+    // its numbers can't disagree while it loads.
+    let active = true;
+    setLoading(true);
+    fetch(`/api/admin/analytics?range=${range}`).then(r => r.json())
+      .then(d => { if (!active) return; setData(d.analytics ?? null); setNotice(d.notice ?? null); setUpdatedAt(Date.now()); })
+      .catch(() => { if (active) setNotice("Couldn't reach Talko — check your connection and try again."); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, [range]);
 
   async function genBrief() {
     setBriefBusy(true); setBriefErr(null);
     try {
       const d = await fetch("/api/admin/analytics/brief", { method: "POST" }).then(r => r.json());
-      if (d.brief) setBrief(d.brief); else setBriefErr(d.error || "Could not generate the brief.");
-    } catch { setBriefErr("Connection error."); }
+      if (d.brief) setBrief(d.brief); else setBriefErr(d.error || "Could not write the summary.");
+    } catch { setBriefErr("Couldn't reach Talko — check your connection and try again."); }
     finally { setBriefBusy(false); }
   }
 
-  const pct = (n: number, d: number) => (d > 0 ? `${Math.round((n / d) * 100)}%` : "—");
+  function exportCsv() {
+    if (!data) return;
+    const g = data.range.granularity;
+    const first = g === "month" ? "Month" : g === "week" ? "Week starting" : "Date";
+    const rows = data.daily.map(d => [g === "month" ? bucketLabel(d.date, "month") : csvDate(d.date), d.sent, d.delivered, d.read, d.failed]);
+    downloadCsv(csvFileName(["analytics", data.range.label]), toCsv([first, "Sent", "Delivered", "Read", "Failed"], rows));
+  }
+
+  const pct = (n: number, d: number) => (d > 0 ? fmtPct(n / d) : "—");
+  const r0 = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 100) : 0);
   const sumWeek = (rows: { sent: number; delivered: number; read: number; failed: number }[]) =>
     rows.reduce((a, x) => ({ sent: a.sent + x.sent, delivered: a.delivered + x.delivered, read: a.read + x.read, failed: a.failed + x.failed }), { sent: 0, delivered: 0, read: 0, failed: 0 });
-  // Recent half vs the half before it. This used to hard-code slice(0,7) and
-  // slice(7), which only meant anything while the series was always exactly 14
-  // daily buckets — on a 90-day or all-time range it silently compared two
-  // arbitrary weeks. Splitting down the middle holds for any length, and an odd
+  // Recent half vs the half before it — holds for any range length; an odd
   // bucket count drops the middle one rather than double-counting it.
   const wow = data && data.daily.length >= 2 ? (() => {
     const half = Math.floor(data.daily.length / 2);
     const prev = sumWeek(data.daily.slice(0, half)), cur = sumWeek(data.daily.slice(-half));
     const dpct = prev.sent > 0 ? Math.round(((cur.sent - prev.sent) / prev.sent) * 100) : (cur.sent > 0 ? 100 : 0);
-    // Name the halves from the real bucket size instead of always saying "week".
-    const unit = data.range.granularity === "month" ? "months" : data.range.granularity === "week" ? "weeks" : "days";
-    return { prev, cur, dpct, unit, half, label: `Latest ${half} ${unit} vs the ${half} before` };
+    const g = data.range.granularity;
+    const unit = g === "month" ? "months" : g === "week" ? "weeks" : "days";
+    return { prev, cur, dpct, half, unit, comparison: previousWindow(half, g) };
   })() : null;
-  const r0 = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 100) : 0);
-  const healthStyle = (h: string) => h === "strong" ? "bg-brand-100 text-brand-700" : h === "at-risk" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700";
+  const healthStyle = (h: string) => h === "strong" ? "bg-emerald-100 text-emerald-800" : h === "at-risk" ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800";
 
-  // Secondary KPIs (the first metric is the green hero card below).
-  const cards: { label: string; value: string; sub?: string; icon: React.ReactNode }[] = data ? [
-    { label: "Sent today", value: data.messaging.sentToday.toLocaleString(), sub: `cap ${process.env.NEXT_PUBLIC_WA_DAILY_LIMIT ?? "900"}`, icon: <Send className="w-[18px] h-[18px]" /> },
-    { label: "Delivery rate", value: pct(data.messaging.totals.delivered, data.messaging.totals.sent), sub: `${data.messaging.totals.delivered.toLocaleString()} delivered · ${data.range.short}`, icon: <CircleCheck className="w-[18px] h-[18px]" /> },
-    { label: "Read rate", value: pct(data.messaging.totals.read, data.messaging.totals.sent), sub: `${data.messaging.totals.read.toLocaleString()} read · ${data.range.short}`, icon: <MessageSquare className="w-[18px] h-[18px]" /> },
-    { label: "Campaigns", value: data.campaigns.total.toLocaleString(), sub: `${data.campaigns.automations} automations`, icon: <Send className="w-[18px] h-[18px]" /> },
-    { label: "Conversations", value: data.conversations.total.toLocaleString(), sub: `${data.conversations.escalated} escalated · ${data.conversations.needsReply} awaiting`, icon: <MessageSquare className="w-[18px] h-[18px]" /> },
-    { label: `Failed (${data.range.short})`, value: data.messaging.totals.failed.toLocaleString(), icon: <AlertTriangle className="w-[18px] h-[18px]" /> },
-    { label: "KB documents", value: data.kb.documents.toLocaleString(), sub: `${data.kb.ready} ready`, icon: <Database className="w-[18px] h-[18px]" /> },
+  // Secondary KPIs (the first metric is the hero card below).
+  const t = data?.messaging.totals;
+  const cards: { label: string; value: string; sub?: string; icon: React.ReactNode }[] = data && t ? [
+    { label: "Sent today", value: fmtNum(data.messaging.sentToday), sub: `Daily limit ${fmtNum(Number(process.env.NEXT_PUBLIC_WA_DAILY_LIMIT ?? 900))}`, icon: <Send className="w-[18px] h-[18px]" /> },
+    { label: "Delivered", value: pct(t.delivered, t.sent), sub: `${fmtNum(t.delivered)} messages · ${data.range.short}`, icon: <CircleCheck className="w-[18px] h-[18px]" /> },
+    { label: "Read", value: pct(t.read, t.sent), sub: `${fmtNum(t.read)} messages · ${data.range.short}`, icon: <MessageSquare className="w-[18px] h-[18px]" /> },
+    { label: "Broadcasts", value: fmtNum(data.campaigns.total), sub: `${fmtNum(data.campaigns.automations)} sent automatically`, icon: <Send className="w-[18px] h-[18px]" /> },
+    { label: "Chats", value: fmtNum(data.conversations.total), sub: `${fmtNum(data.conversations.escalated)} handed to your team · ${fmtNum(data.conversations.needsReply)} waiting`, icon: <MessageSquare className="w-[18px] h-[18px]" /> },
+    { label: `Failed to send (${data.range.short})`, value: fmtNum(t.failed), icon: <AlertTriangle className="w-[18px] h-[18px]" /> },
+    { label: "Business info the AI uses", value: fmtNum(data.kb.documents), sub: `${fmtNum(data.kb.ready)} ready to use`, icon: <Database className="w-[18px] h-[18px]" /> },
   ] : [];
+
+  const points = data ? messagePoints(data) : [];
+  const channels = data ? channelSplit(data.conversations) : [];
+  const channelTotal = channels.reduce((s, c) => s + c.value, 0);
 
   return (
     <div className="max-w-6xl space-y-5">
-      <div className="flex items-end justify-between gap-3 flex-wrap">
-        <div>
-          <h2 className="text-xl font-semibold text-ink-900">Analytics overview</h2><p className="text-sm text-slate-500">Messaging performance across WhatsApp &amp; Instagram</p>
-        </div>
-        {/* The window every figure below is computed over — and the one its labels
-            are written from, so a heading and its numbers cannot disagree. */}
-        <div role="group" aria-label="Date range" className="inline-flex rounded-control border border-line bg-white p-0.5">
-          {RANGES.map(r => (
-            <button key={r.key} onClick={() => setRange(r.key)} aria-pressed={range === r.key}
-              className={`px-3 py-1.5 rounded-[7px] text-xs font-bold ${range === r.key ? "bg-ink-950 text-white" : "text-ink-500 hover:text-ink-900"}`}>{r.short}</button>
-          ))}
-        </div>
-      </div>
-      {notice && <div className="bg-amber-50 border border-amber-200 rounded-control px-4 py-3 text-sm text-amber-800">{notice}</div>}
+      <DataPageHeader
+        title="Analytics"
+        subtitle="Messages and chats across WhatsApp, Instagram, Messenger and your website chat."
+        status={<LoadStatus loading={loading && !!data} updatedAt={updatedAt} className="mt-1" />}
+        controls={<>
+          {/* The window every figure below is computed over. */}
+          <DateRange options={RANGE_OPTIONS} value={range as PresetKey} onChange={k => setRange(k as RangeKey)} />
+          <ExportCsvButton onClick={exportCsv} disabled={!data || !data.daily.length} label="Download daily numbers (CSV)" />
+        </>}
+      />
+      {notice && <div role="alert" className="bg-amber-50 border border-amber-200 rounded-control px-4 py-3 text-sm text-amber-900">{notice}</div>}
       {isAdmin && <AskDataCard />}
-      {/* Where chats came from — follows the range picker above. Lives here, not in
-          Links & QR Codes, which is for creating links, not reading results. */}
+      {/* Where chats came from — follows the range picker above. */}
       <TrackedLinkAnalytics range={range} />
-      {data && (
-        <>
-          {/* ── CEO executive overview: week-over-week + AI brief ── */}
+      {!data && loading && <p className="flex items-center justify-center gap-2 text-ink-500 text-sm py-8"><Loader2 className="w-4 h-4 animate-spin" aria-hidden /> Loading your numbers…</p>}
+      {data && t && (
+        <div aria-busy={loading} className={`space-y-5 transition-opacity ${loading ? "opacity-60" : ""}`}>
+          {/* ── Owner's overview: latest half of the window vs the half before + AI summary ── */}
           <section className="rounded-card border border-brand-100 bg-gradient-to-br from-brand-50/60 to-white p-5 space-y-4">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex items-start justify-between gap-3 flex-wrap">
               <div>
-                <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><TrendingUp className="w-4 h-4 text-brand-700" /> Executive overview</p>
-                <p className="text-[11px] text-ink-400">{wow ? wow.label : "Latest period vs the one before"} — the AI brief always reads the last 14 days.</p>
+                <h2 className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><TrendingUp className="w-4 h-4 text-brand-700" aria-hidden /> How you&apos;re doing</h2>
+                <p className="text-[12px] text-ink-500">{wow ? `Latest ${wow.half} ${wow.unit} compared with the ${wow.comparison}.` : "Latest period compared with the one before."} The AI summary always reads the last 14 days.</p>
               </div>
-              <button onClick={genBrief} disabled={briefBusy} className="shrink-0 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50">
-                {briefBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} {brief ? "Refresh brief" : "Generate brief"}
+              <button onClick={genBrief} disabled={briefBusy} className="shrink-0 min-h-9 px-3 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50">
+                {briefBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden /> : <Sparkles className="w-3.5 h-3.5" aria-hidden />} {brief ? "Refresh AI summary" : "Write AI summary"}
               </button>
             </div>
 
             {wow && (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {[
-                  { label: `Sent (latest ${wow.half} ${wow.unit})`, value: wow.cur.sent.toLocaleString(), delta: wow.dpct },
-                  { label: "Read rate", value: `${r0(wow.cur.read, wow.cur.sent)}%`, delta: r0(wow.cur.read, wow.cur.sent) - r0(wow.prev.read, wow.prev.sent) },
-                  { label: "Delivery rate", value: `${r0(wow.cur.delivered, wow.cur.sent)}%`, delta: r0(wow.cur.delivered, wow.cur.sent) - r0(wow.prev.delivered, wow.prev.sent) },
-                  { label: "Failures", value: wow.cur.failed.toLocaleString(), delta: wow.cur.failed - wow.prev.failed, invert: true },
-                ].map(k => {
-                  const up = k.delta > 0, flat = k.delta === 0;
-                  const good = k.invert ? !up : up;
-                  return (
-                    <div key={k.label} className="bg-white rounded-control border border-line p-3">
-                      <p className="text-[19px] font-bold text-ink-900 tnum leading-none">{k.value}</p>
-                      <p className="text-[11px] text-ink-500 font-medium mt-1">{k.label}</p>
-                      <p className={`text-[10px] font-bold mt-0.5 ${flat ? "text-ink-400" : good ? "text-brand-700" : "text-red-600"}`}>
-                        {flat ? "no change" : `${up ? "▲" : "▼"} ${Math.abs(k.delta)}${k.label.includes("rate") ? "pp" : ""} vs the ${wow.half} before`}
-                      </p>
-                    </div>
-                  );
-                })}
+                  { label: `Messages sent, latest ${wow.half} ${wow.unit}`, value: fmtNum(wow.cur.sent), change: wow.dpct, unit: "%" as const, goodWhen: "up" as const },
+                  { label: "Read", value: `${r0(wow.cur.read, wow.cur.sent)}%`, change: r0(wow.cur.read, wow.cur.sent) - r0(wow.prev.read, wow.prev.sent), unit: "points" as const, goodWhen: "up" as const },
+                  { label: "Delivered", value: `${r0(wow.cur.delivered, wow.cur.sent)}%`, change: r0(wow.cur.delivered, wow.cur.sent) - r0(wow.prev.delivered, wow.prev.sent), unit: "points" as const, goodWhen: "up" as const },
+                  { label: "Failed to send", value: fmtNum(wow.cur.failed), change: wow.cur.failed - wow.prev.failed, unit: "" as const, goodWhen: "down" as const },
+                ].map(k => (
+                  <div key={k.label} className="bg-white rounded-control border border-line p-3">
+                    <p className="text-[20px] font-bold text-ink-900 tnum leading-none">{k.value}</p>
+                    <p className="text-[12px] text-ink-600 font-medium mt-1">{k.label}</p>
+                    <Delta change={k.change} unit={k.unit} comparison={wow.comparison} goodWhen={k.goodWhen} />
+                  </div>
+                ))}
               </div>
             )}
 
-            {briefErr && <p className="text-xs text-red-600">{briefErr}</p>}
-            {!brief && !briefBusy && !briefErr && <p className="text-xs text-ink-500">Tap <b>Generate brief</b> for an AI read of the whole platform — what&apos;s working, what&apos;s lacking, and the highest-impact next steps.</p>}
-            {briefBusy && !brief && <p className="text-xs text-ink-500 flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Analysing this week&apos;s performance…</p>}
+            {briefErr && <p className="text-xs text-red-700" role="alert">{briefErr}</p>}
+            {!brief && !briefBusy && !briefErr && <p className="text-xs text-ink-600">Tap <b>Write AI summary</b> for a short read of your whole account — what&apos;s working, what&apos;s missing, and what to do next.</p>}
+            {briefBusy && !brief && <p className="text-xs text-ink-600 flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden /> Reading the last 14 days…</p>}
             {brief && (
               <div className="space-y-3">
                 <div className="flex items-start gap-2">
-                  <span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${healthStyle(brief.health)}`}>{brief.health === "strong" ? "Strong" : brief.health === "at-risk" ? "At risk" : "Steady"}</span>
+                  <span className={`shrink-0 px-2 py-0.5 rounded-full text-[11px] font-bold ${healthStyle(brief.health)}`}>{brief.health === "strong" ? "Strong" : brief.health === "at-risk" ? "Needs attention" : "Steady"}</span>
                   <p className="text-sm font-semibold text-ink-900">{brief.headline}</p>
                 </div>
                 <div className="grid md:grid-cols-2 gap-3">
                   <div className="bg-white rounded-control border border-line p-3">
-                    <p className="text-[11px] font-bold text-brand-700 uppercase mb-1.5">What&apos;s working</p>
-                    <ul className="list-disc pl-4 space-y-1 text-xs text-ink-700">{brief.working.map((w, i) => <li key={i}>{w}</li>)}{!brief.working.length && <li className="list-none text-ink-400">—</li>}</ul>
+                    <p className="text-[12px] font-bold text-emerald-800 mb-1.5">What&apos;s working</p>
+                    <ul className="list-disc pl-4 space-y-1 text-xs text-ink-700">{brief.working.map((w, i) => <li key={i}>{w}</li>)}{!brief.working.length && <li className="list-none text-ink-500">—</li>}</ul>
                   </div>
                   <div className="bg-white rounded-control border border-line p-3">
-                    <p className="text-[11px] font-bold text-red-600 uppercase mb-1.5">What&apos;s lacking</p>
-                    <ul className="list-disc pl-4 space-y-1 text-xs text-ink-700">{brief.lacking.map((w, i) => <li key={i}>{w}</li>)}{!brief.lacking.length && <li className="list-none text-ink-400">—</li>}</ul>
+                    <p className="text-[12px] font-bold text-red-700 mb-1.5">What&apos;s missing</p>
+                    <ul className="list-disc pl-4 space-y-1 text-xs text-ink-700">{brief.lacking.map((w, i) => <li key={i}>{w}</li>)}{!brief.lacking.length && <li className="list-none text-ink-500">—</li>}</ul>
                   </div>
                 </div>
                 {brief.steps.length > 0 && (
                   <div className="bg-white rounded-control border border-line p-3">
-                    <p className="text-[11px] font-bold text-ink-500 uppercase mb-1.5">Do next — in priority order</p>
+                    <p className="text-[12px] font-bold text-ink-600 mb-1.5">Do next, most useful first</p>
                     <ol className="space-y-2">
                       {brief.steps.map((s, i) => (
                         <li key={i} className="flex gap-2 text-xs">
-                          <span className="shrink-0 w-5 h-5 rounded-full bg-brand-700 text-white font-bold flex items-center justify-center text-[10px]">{i + 1}</span>
-                          <span><span className="font-semibold text-ink-900">{s.action}</span>{s.why ? <span className="text-ink-500"> — {s.why}</span> : null}</span>
+                          <span className="shrink-0 w-5 h-5 rounded-full bg-brand-700 text-white font-bold flex items-center justify-center text-[11px]" aria-hidden>{i + 1}</span>
+                          <span><span className="font-semibold text-ink-900">{s.action}</span>{s.why ? <span className="text-ink-600"> — {s.why}</span> : null}</span>
                         </li>
                       ))}
                     </ol>
                   </div>
                 )}
-                <p className="text-[10px] text-ink-400">AI-generated from your metrics — sanity-check before acting.</p>
+                <p className="text-[11px] text-ink-500">Written by AI from your numbers — check before acting on it.</p>
               </div>
             )}
           </section>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {/* Green hero card — the one signature green surface per the brief. */}
             <div className="relative overflow-hidden rounded-card p-5 bg-gradient-to-br from-brand-600 to-brand-900 text-white">
-              <div className="flex items-center justify-between">
-                <div className="w-9 h-9 rounded-control bg-white/15 flex items-center justify-center"><Users className="w-[18px] h-[18px]" /></div>
-              </div>
-              <p className="text-[28px] font-bold mt-3 leading-none tnum">{data.contacts.active.toLocaleString()}</p>
-              <p className="text-[13px] font-medium text-white/80 mt-1.5">Active {vocab.contact.many.toLowerCase()}</p>
-              <p className="text-[11px] text-white/60 mt-0.5">{data.contacts.optedOut.toLocaleString()} opted out</p>
+              <div className="w-9 h-9 rounded-control bg-white/15 flex items-center justify-center"><Users className="w-[18px] h-[18px]" aria-hidden /></div>
+              <p className="text-[28px] font-bold mt-3 leading-none tnum">{fmtNum(data.contacts.active)}</p>
+              <p className="text-[13px] font-medium text-white/90 mt-1.5">Active {vocab.contact.many.toLowerCase()}</p>
+              <p className="text-[12px] text-white/80 mt-0.5">{fmtNum(data.contacts.optedOut)} asked to stop messages</p>
             </div>
             {cards.map(c => (
               <div key={c.label} className="bg-white rounded-card border border-line p-5 transition-colors hover:border-[#D4D4D8]">
-                <div className="w-9 h-9 rounded-control bg-brand-50 text-brand-700 flex items-center justify-center">{c.icon}</div>
+                <div className="w-9 h-9 rounded-control bg-brand-50 text-brand-700 flex items-center justify-center" aria-hidden>{c.icon}</div>
                 <p className="text-[28px] font-bold text-ink-900 mt-3 leading-none tnum tracking-[-0.02em]">{c.value}</p>
                 <p className="text-[13px] font-medium text-ink-600 mt-1.5">{c.label}</p>
-                {c.sub && <p className="text-[11px] text-ink-400 mt-0.5">{c.sub}</p>}
+                {c.sub && <p className="text-[12px] text-ink-500 mt-0.5">{c.sub}</p>}
               </div>
             ))}
           </div>
 
           <div className="grid gap-5 lg:grid-cols-3">
-            {/* Messages trend — smooth area chart with peak callout */}
-            <section className="lg:col-span-2 bg-white rounded-card border border-line p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <p className="text-sm font-semibold text-ink-900">Messages sent</p>
-                  <p className="text-[12px] text-ink-400">{data.range.label} · {data.messaging.totals.sent.toLocaleString()} total</p>
-                </div>
-                <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2.5 py-1 text-[11px] font-bold text-brand-700">{pct(data.messaging.totals.delivered, data.messaging.totals.sent)} delivered</span>
-              </div>
-              <AreaChart daily={data.daily} />
-            </section>
+            <ChartCard className="lg:col-span-2 min-w-0" title="Messages sent" sub={`${data.range.label} · ${fmtNum(t.sent)} in all`}
+              aside={<span className="inline-flex items-center rounded-full bg-brand-50 px-2.5 py-1 text-[12px] font-bold text-brand-800">{pct(t.delivered, t.sent)} delivered</span>}>
+              <TimeChart points={points} series={MESSAGE_SERIES} label={`Messages sent and read, ${data.range.label.toLowerCase()}`} />
+              <ShowAsTable caption={`Messages by ${data.range.granularity}, ${data.range.label.toLowerCase()}`}
+                columns={[data.range.granularity === "month" ? "Month" : data.range.granularity === "week" ? "Week" : "Day", ...MESSAGE_SERIES.map(s => s.label)]}
+                rows={tableRows(points, MESSAGE_SERIES)} />
+            </ChartCard>
 
-            {/* Delivery breakdown — donut */}
-            <section className="bg-white rounded-card border border-line p-5">
-              <p className="text-sm font-semibold text-ink-900 mb-5">Delivery breakdown</p>
-              <DeliveryDonut
-                centerValue={pct(data.messaging.totals.delivered, data.messaging.totals.sent)}
-                centerLabel="delivered"
-                segments={[
-                  { label: "Read", value: data.messaging.totals.read, color: "#0783FD" },
-                  { label: "Delivered", value: Math.max(0, data.messaging.totals.delivered - data.messaging.totals.read), color: "#4DA3FF" },
-                  { label: "Pending", value: Math.max(0, data.messaging.totals.sent - data.messaging.totals.delivered - data.messaging.totals.failed), color: "#CFE6FF" },
-                  { label: "Failed", value: data.messaging.totals.failed, color: "#F97066" },
-                ]}
-              />
-            </section>
+            <ChartCard title="What happened to your messages" sub={`${data.range.label} · share of every message we tried to send`}>
+              <HBars label="Messages by result" format={fmtNum} items={[
+                { label: "Read", value: t.read },
+                { label: "Delivered, not read yet", value: Math.max(0, t.delivered - t.read) },
+                { label: "Sent, no delivery receipt yet", value: Math.max(0, t.sent - t.delivered), tone: "muted" },
+                { label: "Failed to send", value: t.failed, tone: "bad" },
+              ]} />
+            </ChartCard>
           </div>
 
-          {/* ── Engagement funnel: sent → delivered → read → replied ── */}
-          <section className="bg-white rounded-card border border-line p-5">
-            <p className="text-sm font-semibold text-ink-900 mb-1">Engagement funnel <span className="font-normal text-ink-400">— {data.range.label.toLowerCase()}</span></p>
-            <p className="text-[11px] text-ink-400 mb-4">How far your messages travel — and where people drop off.</p>
+          {/* ── sent → delivered → read → replied ── */}
+          <ChartCard title="How far your messages got" sub={`${data.range.label} — and where people drop off.`}>
             {(() => {
-              const t = data.messaging.totals;
               const base = Math.max(1, t.sent);
               const stages = [
-                { label: "Sent", n: t.sent, color: "bg-brand-700" },
-                { label: "Delivered", n: t.delivered, color: "bg-brand-600" },
-                { label: "Read", n: t.read, color: "bg-brand-500" },
-                { label: "Replied", n: data.messaging.repliedInRange, color: "bg-brand-400" },
+                { label: "Sent", n: t.sent },
+                { label: "Delivered", n: t.delivered },
+                { label: "Read", n: t.read },
+                { label: "Replied", n: data.messaging.repliedInRange },
               ];
               return (
-                <div className="space-y-2">
+                <ul className="space-y-2" aria-label="Messages at each step">
                   {stages.map((s, i) => (
-                    <div key={s.label} className="flex items-center gap-3">
-                      <span className="w-20 text-xs text-ink-600 shrink-0">{s.label}</span>
-                      <div className="flex-1 bg-canvas rounded-full h-5 overflow-hidden"><div className={`${s.color} h-full rounded-full transition-all`} style={{ width: `${Math.max(2, (s.n / base) * 100)}%` }} /></div>
-                      <span className="w-24 text-right text-xs tnum shrink-0">{s.n.toLocaleString()}{i > 0 && <span className="text-ink-400"> · {r0(s.n, base)}%</span>}</span>
-                    </div>
+                    <li key={s.label} className="flex items-center gap-3">
+                      <span className="w-20 text-[13px] text-ink-700 shrink-0">{s.label}</span>
+                      <div className="flex-1 bg-canvas rounded-full h-5 overflow-hidden" aria-hidden><div className="h-full rounded-full" style={{ width: `${Math.max(2, Math.min(100, (s.n / base) * 100))}%`, background: SERIES_COLORS.primary, opacity: 1 - i * 0.18 }} /></div>
+                      <span className="w-28 text-right text-[13px] tnum shrink-0">{fmtNum(s.n)}{i > 0 && <span className="text-ink-500"> · {r0(s.n, base)}%</span>}</span>
+                    </li>
                   ))}
-                </div>
+                </ul>
               );
             })()}
-          </section>
+          </ChartCard>
 
           <div className="grid md:grid-cols-2 gap-4">
-            <section className="bg-white rounded-card border border-line p-5">
-              <p className="text-sm font-semibold text-ink-900 mb-3 flex items-center gap-1.5"><MessageSquare className="w-4 h-4 text-brand-700" /> Conversation health</p>
+            <ChartCard title={<span className="flex items-center gap-1.5"><MessageSquare className="w-4 h-4 text-brand-700" aria-hidden /> Chats right now</span>} sub="Every chat, as it stands today — not limited to the date range.">
               <div className="grid grid-cols-2 gap-3 text-sm">
                 {[
-                  { l: "AI-handled", v: data.conversations.botOn, s: `of ${data.conversations.total} chats` },
-                  { l: "Human-handled", v: Math.max(0, data.conversations.total - data.conversations.botOn) },
-                  { l: "Escalated", v: data.conversations.escalated, s: `${r0(data.conversations.escalated, data.conversations.total)}%`, warn: true },
-                  { l: "Awaiting reply", v: data.conversations.needsReply, warn: data.conversations.needsReply > 0 },
+                  { l: "AI is replying", v: data.conversations.botOn, s: `of ${fmtNum(data.conversations.total)} chats` },
+                  { l: "A person is replying", v: Math.max(0, data.conversations.total - data.conversations.botOn) },
+                  { l: "Handed to your team", v: data.conversations.escalated, s: `${r0(data.conversations.escalated, data.conversations.total)}% of chats`, warn: true },
+                  { l: "Waiting for a reply", v: data.conversations.needsReply, warn: data.conversations.needsReply > 0 },
                 ].map(x => (
                   <div key={x.l} className="bg-canvas rounded-control p-3">
-                    <p className={`text-xl font-bold tnum ${x.warn && x.v > 0 ? "text-amber-700" : "text-ink-900"}`}>{x.v.toLocaleString()}</p>
-                    <p className="text-[11px] text-ink-500 font-medium">{x.l}</p>
-                    {x.s && <p className="text-[10px] text-ink-400">{x.s}</p>}
+                    <p className={`text-xl font-bold tnum ${x.warn && x.v > 0 ? "text-amber-800" : "text-ink-900"}`}>{fmtNum(x.v)}</p>
+                    <p className="text-[12px] text-ink-600 font-medium">{x.l}</p>
+                    {x.s && <p className="text-[12px] text-ink-500">{x.s}</p>}
                   </div>
                 ))}
               </div>
-            </section>
+            </ChartCard>
 
-            <section className="bg-white rounded-card border border-line p-5">
-              <p className="text-sm font-semibold text-ink-900 mb-3 flex items-center gap-1.5"><Send className="w-4 h-4 text-brand-700" /> Channels</p>
-              {(() => {
-                const wa = data.conversations.whatsapp, ig = data.conversations.instagram, tot = Math.max(1, wa + ig);
-                return (
-                  <div className="space-y-3">
-                    {[{ l: "WhatsApp", n: wa, c: "bg-brand-600" }, { l: "Instagram", n: ig, c: "bg-pink-500" }].map(x => (
-                      <div key={x.l}>
-                        <div className="flex justify-between text-xs mb-1"><span className="text-ink-600">{x.l}</span><span className="tnum text-ink-900 font-semibold">{x.n.toLocaleString()} · {r0(x.n, tot)}%</span></div>
-                        <div className="bg-canvas rounded-full h-2.5 overflow-hidden"><div className={`${x.c} h-full rounded-full`} style={{ width: `${Math.max(2, (x.n / tot) * 100)}%` }} /></div>
-                      </div>
-                    ))}
-                    <p className="text-[11px] text-ink-400">{data.messaging.aiRepliesInRange.toLocaleString()} AI replies sent · {data.range.label.toLowerCase()}.</p>
-                  </div>
-                );
-              })()}
-            </section>
+            <ChartCard title={<span className="flex items-center gap-1.5"><Send className="w-4 h-4 text-brand-700" aria-hidden /> Chats by channel</span>} sub="Where every chat so far started — not limited to the date range.">
+              {channelTotal === 0 ? <p className="text-[13px] text-ink-500">No chats yet.</p> : <HBars label="Chats by channel" items={channels} format={fmtNum} />}
+              <p className="mt-3 text-[12px] text-ink-500">{fmtNum(data.messaging.aiRepliesInRange)} AI replies sent · {data.range.label.toLowerCase()}.</p>
+            </ChartCard>
           </div>
 
-          <section className="bg-white rounded-card border border-line p-5">
-            <p className="text-sm font-semibold text-ink-900 mb-3 flex items-center gap-1.5"><Zap className="w-4 h-4 text-brand-700" /> Automation coverage</p>
+          <ChartCard title={<span className="flex items-center gap-1.5"><Zap className="w-4 h-4 text-brand-700" aria-hidden /> Automations</span>}>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
               {[
-                { l: "Chatbot flows", v: `${data.automation.flowsActive}/${data.automation.flows}`, s: "active / total" },
-                { l: `Drip ${vocab.sequence.many.toLowerCase()}`, v: `${data.automation.sequencesActive}/${data.automation.sequences}`, s: "active / total" },
-                { l: "Active drips", v: data.automation.activeEnrollments.toLocaleString(), s: "people enrolled" },
-                { l: `AI replies (${data.range.short})`, v: data.messaging.aiRepliesInRange.toLocaleString() },
+                { l: "Chatbot flows running", v: `${fmtNum(data.automation.flowsActive)} of ${fmtNum(data.automation.flows)}`, s: "switched on, of all you've made" },
+                { l: "Follow-up messages running", v: `${fmtNum(data.automation.sequencesActive)} of ${fmtNum(data.automation.sequences)}`, s: "switched on, of all you've made" },
+                { l: "People getting follow-ups", v: fmtNum(data.automation.activeEnrollments), s: "right now" },
+                { l: "AI replies sent", v: fmtNum(data.messaging.aiRepliesInRange), s: data.range.label.toLowerCase() },
               ].map(x => (
                 <div key={x.l} className="bg-canvas rounded-control p-3">
                   <p className="text-xl font-bold tnum text-ink-900">{x.v}</p>
-                  <p className="text-[11px] text-ink-500 font-medium">{x.l}</p>
-                  {x.s && <p className="text-[10px] text-ink-400">{x.s}</p>}
+                  <p className="text-[12px] text-ink-600 font-medium">{x.l}</p>
+                  {x.s && <p className="text-[12px] text-ink-500">{x.s}</p>}
                 </div>
               ))}
             </div>
-          </section>
+          </ChartCard>
 
           <div className="grid md:grid-cols-2 gap-4">
-            <section className="bg-white rounded-card border border-line p-5">
-              <p className="text-sm font-semibold text-ink-900 mb-3 flex items-center gap-1.5"><Users className="w-4 h-4 text-brand-700" /> Audience</p>
-              <div className="grid grid-cols-3 gap-3 text-sm">
-                <div className="bg-canvas rounded-control p-3"><p className="text-xl font-bold tnum text-ink-900">{data.contacts.active.toLocaleString()}</p><p className="text-[11px] text-ink-500 font-medium">Active</p></div>
-                <div className="bg-canvas rounded-control p-3"><p className="text-xl font-bold tnum text-brand-700">+{data.contacts.newInRange.toLocaleString()}</p><p className="text-[11px] text-ink-500 font-medium">New ({data.range.short})</p></div>
-                <div className="bg-canvas rounded-control p-3"><p className="text-xl font-bold tnum text-ink-900">{r0(data.contacts.optedOut, data.contacts.active + data.contacts.optedOut)}%</p><p className="text-[11px] text-ink-500 font-medium">Opt-out rate</p></div>
+            <ChartCard title={<span className="flex items-center gap-1.5"><Users className="w-4 h-4 text-brand-700" aria-hidden /> {vocab.contact.many}</span>}>
+              <div className="grid grid-cols-1 min-[420px]:grid-cols-3 gap-3 text-sm">
+                <div className="bg-canvas rounded-control p-3"><p className="text-xl font-bold tnum text-ink-900">{fmtNum(data.contacts.active)}</p><p className="text-[12px] text-ink-600 font-medium">Active</p></div>
+                <div className="bg-canvas rounded-control p-3"><p className="text-xl font-bold tnum text-ink-900">+{fmtNum(data.contacts.newInRange)}</p><p className="text-[12px] text-ink-600 font-medium">New · {data.range.short}</p></div>
+                <div className="bg-canvas rounded-control p-3"><p className="text-xl font-bold tnum text-ink-900">{r0(data.contacts.optedOut, data.contacts.active + data.contacts.optedOut)}%</p><p className="text-[12px] text-ink-600 font-medium">Asked to stop</p></div>
               </div>
-            </section>
+            </ChartCard>
 
-            <section className="bg-white rounded-card border border-line p-5">
-              <p className="text-sm font-semibold text-ink-900 mb-3 flex items-center gap-1.5"><Send className="w-4 h-4 text-brand-700" /> Recent campaigns</p>
-              {data.recentCampaigns.length === 0 ? <p className="text-xs text-ink-400">No campaigns yet.</p> : (
-                <div className="divide-y divide-line">
+            <ChartCard title={<span className="flex items-center gap-1.5"><Send className="w-4 h-4 text-brand-700" aria-hidden /> Recent broadcasts</span>}>
+              {data.recentCampaigns.length === 0 ? (
+                <EmptyState title="No broadcasts yet"
+                  body="A broadcast sends one message — an offer, a reminder, news — to many customers at once. Its delivery and reads show up here."
+                  action={<button type="button" onClick={() => openTab("broadcast", goTo)} className="min-h-9 px-4 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-[13px] font-semibold">Send your first broadcast</button>} />
+              ) : (
+                <ul className="divide-y divide-line">
                   {data.recentCampaigns.map((c, i) => (
-                    <div key={i} className="py-1.5 flex items-center justify-between gap-2">
-                      <span className="text-xs font-medium text-ink-900 truncate">{c.name}</span>
-                      <span className="text-[11px] text-ink-400 tnum shrink-0">{c.sent.toLocaleString()}/{c.total.toLocaleString()} · {c.status}</span>
-                    </div>
+                    <li key={i} className="py-2 flex items-center justify-between gap-2">
+                      <span className="text-[13px] font-medium text-ink-900 truncate">{c.name}</span>
+                      <span className="text-[12px] text-ink-500 tnum shrink-0">{fmtNum(c.sent)} of {fmtNum(c.total)} sent · {STATUS_WORDS[c.status] ?? c.status}</span>
+                    </li>
                   ))}
-                </div>
+                </ul>
               )}
-            </section>
+            </ChartCard>
           </div>
-        </>
+        </div>
       )}
-      {!data && !notice && <p className="text-center text-ink-400 text-sm py-8">Loading…</p>}
     </div>
   );
 }

@@ -5,9 +5,14 @@
 import { PageInfo } from "@/components/PageInfo";
 import { useState, useEffect, useCallback } from "react";
 import { Copy, FileText, GalleryHorizontalEnd, Loader2, MessageSquare, MousePointerClick, Phone, Plus, RefreshCw, Star, Trash2, UploadCloud, Video, Image as ImageIcon, Link2, X, Sparkles, Pencil } from "lucide-react";
-import { inp, ChannelSelect } from "../_shared";
+import { inp, ChannelSelect, EmptyState } from "../_shared";
 import { buildFestivalGreeting } from "@/lib/greetingtemplates";
 import { useConfirm } from "@/components/confirm-dialog";
+import { toast } from "@/components/toast";
+
+/** Meta's template statuses, in words an owner reads at a glance. */
+const STATUS_LABEL: Record<string, string> = { APPROVED: "Approved", PENDING: "Waiting for Meta", REJECTED: "Rejected", PAUSED: "Paused by Meta", DISABLED: "Turned off by Meta", IN_APPEAL: "Appeal in review" };
+const statusLabel = (s: string) => STATUS_LABEL[s] ?? (s.charAt(0) + s.slice(1).toLowerCase().replaceAll("_", " "));
 import { Drawer } from "@/components/overlay";
 import { templatePlaceholders, paramCount, isNamedFormat, bodyVariableError } from "@/lib/template-params";
 
@@ -118,7 +123,7 @@ function TplButtonEditor({ btns, max, onChange }: { btns: TplButton[]; max: numb
           {isDynamicUrl(b) && (
             <div className="basis-full pl-32 -mt-1">
               <input className={`${inp} w-full`} placeholder="Sample value for {{1}} — e.g. 404-0952515-9776314" value={b.example} onChange={e => set(i, { example: e.target.value })} />
-              <p className="text-[11px] text-slate-400 mt-1">Per-message link. Meta needs one sample to approve it; the real value comes from your event data (set it under Broadcast → API broadcasting).</p>
+              <p className="text-[11px] text-slate-400 mt-1">Per-message link. Meta needs one sample to approve it; the real value comes from your event data (choose it under Broadcast → API broadcasting).</p>
             </div>
           )}
         </div>
@@ -148,7 +153,7 @@ function TplPreview({ mode, headerType, headerText, headerExample, headerPreview
     <div className="bg-slate-200 h-28 flex items-center justify-center overflow-hidden">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       {format === "IMAGE" && url ? <img src={url} alt="Header image preview" className="w-full h-full object-cover" /> :
-        <span className="text-slate-400 flex flex-col items-center gap-1 text-[10px]">
+        <span className="text-slate-500 flex flex-col items-center gap-1 text-[11px]">
           {format === "VIDEO" ? <Video className="w-6 h-6" /> : format === "DOCUMENT" ? <FileText className="w-6 h-6" /> : <ImageIcon className="w-6 h-6" />}
           {name || format.toLowerCase()}
         </span>}
@@ -156,7 +161,7 @@ function TplPreview({ mode, headerType, headerText, headerExample, headerPreview
   );
   return (
     <div className="bg-[#e5ddd5] rounded-card p-4 sticky top-4">
-      <p className="text-[10px] font-bold text-slate-600 uppercase mb-2">{label}</p>
+      <p className="text-[11px] font-bold text-slate-600 uppercase mb-2">{label}</p>
       <div className="bg-white rounded-lg shadow-sm overflow-hidden max-w-[270px]">
         {mode === "standard" && headerType !== "NONE" && (
           headerType === "TEXT"
@@ -385,13 +390,14 @@ function TemplatesTab() {
     try {
       const res = await fetch("/api/admin/templates", { method: editing ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const d = await res.json();
-      if (!res.ok) setMsg(d.error || "Failed to submit");
+      if (!res.ok) setMsg(d.error || "Couldn't send it to Meta. Please try again.");
       else {
         // The panel closes and the outcome is said on the page, where the
         // template now appears in the list.
         setFlash(editing
           ? `Changes sent — Meta is re-reviewing "${editing.name}" (usually minutes). Hit Sync Status to check.`
-          : `Submitted "${name.trim()}" — status ${d.status}. Meta approval usually takes minutes to a few hours; hit Sync Status to check.`);
+          : `Sent "${name.trim()}" to Meta — ${statusLabel(String(d.status ?? "PENDING")).toLowerCase()}. Approval usually takes minutes to a few hours; press Sync Status to check.`);
+        toast(editing ? "Changes sent to Meta for review" : "Template sent to Meta for approval");
         closeBuilder();
         load();
       }
@@ -404,7 +410,8 @@ function TemplatesTab() {
       message: "Every language variant goes with it, and any broadcast or flow still pointing at this name will start failing.",
       facts: [{ label: "Template", value: n }],
     }))) return;
-    await fetch("/api/admin/templates", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: n, channelId }) });
+    const r = await fetch("/api/admin/templates", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: n, channelId }) }).catch(() => null);
+    if (r?.ok) toast(`Template “${n}” deleted`); else toast({ text: "Couldn't delete the template. Please try again.", tone: "error" });
     load();
   }
 
@@ -431,16 +438,16 @@ function TemplatesTab() {
 
   return (
     <div className="max-w-5xl space-y-5">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-extrabold text-brand-dark">Template Messages</h2><PageInfo className="text-sm text-slate-500" lead={<>Build templates per Meta&apos;s guidelines — text, media headers, buttons, or carousels.</>}>Only APPROVED templates can be broadcast.</PageInfo>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0 max-w-xl">
+          <h2 className="text-xl font-extrabold text-brand-dark">Template Messages</h2><PageInfo className="text-sm text-slate-500" lead={<>Ready-made messages that WhatsApp checks and approves in advance. You need one to message a customer who hasn&apos;t written to you in the last 24 hours — for broadcasts, reminders and follow-ups.</>}>Build one with text, a photo or video, buttons or a carousel, then send it to Meta for approval. Only approved templates can be sent.</PageInfo>
         </div>
         <div className="flex gap-2 shrink-0 items-center">
           <ChannelSelect value={channelId} onChange={setChannelId} allLabel="Number: default" className={`${inp} !py-2 text-xs`} />
-          <button onClick={load} disabled={refreshing} className="px-4 py-2 rounded-lg border border-brand-dark text-brand-dark text-sm font-bold flex items-center gap-2 disabled:opacity-60 hover:bg-brand-600/5">
+          <button onClick={load} disabled={refreshing} title="Ask Meta for the latest approval status" className="min-h-10 px-4 py-2 rounded-lg border border-brand-dark text-brand-dark text-sm font-bold flex items-center gap-2 disabled:opacity-60 hover:bg-brand-600/5">
             <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} /> Sync Status
           </button>
-          <button onClick={openNewBuilder} className="px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold flex items-center gap-2">
+          <button onClick={openNewBuilder} className="min-h-10 px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold flex items-center gap-2">
             <Plus className="w-4 h-4" /> New template
           </button>
         </div>
@@ -474,11 +481,11 @@ function TemplatesTab() {
           ? `${editing.status.toLowerCase()} · name and language can't change${editing.status === "APPROVED" ? ", nor the category" : ""}. Meta reviews the edit again.`
           : "Build it, check the preview on the right, then submit it to Meta for approval."}
         footer={<>
-          <button onClick={create} disabled={busy} className="px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold flex items-center gap-2 disabled:opacity-60">
+          <button onClick={create} disabled={busy} className="min-h-10 px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold flex items-center gap-2 disabled:opacity-60">
             {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : editing ? <Pencil className="w-4 h-4" /> : <Plus className="w-4 h-4" />} {editing ? "Submit changes to Meta" : "Submit to Meta for approval"}
           </button>
-          <button onClick={closeBuilder} className="px-3 py-2 rounded-lg text-sm font-semibold text-slate-500 hover:bg-slate-100">Cancel</button>
-          {msg && <span className="text-xs text-amber-700 font-semibold min-w-0">{msg}</span>}
+          <button onClick={closeBuilder} className="min-h-10 px-3 py-2 rounded-lg text-sm font-semibold text-slate-500 hover:bg-slate-100">Cancel</button>
+          {msg && <span role="alert" className="text-xs text-amber-800 font-semibold min-w-0">{msg}</span>}
         </>}>
       <div className="grid lg:grid-cols-[1fr_300px] gap-5 items-start">
         <section className="space-y-4">
@@ -490,9 +497,9 @@ function TemplatesTab() {
           </div>
 
           <div className="grid grid-cols-[1fr_7rem_8rem] gap-2">
-            <input className={`${inp} disabled:bg-slate-50 disabled:text-slate-500`} disabled={!!editing} placeholder="name (lowercase_underscores)" value={name} onChange={e => setName(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_"))} />
-            <input className={`${inp} disabled:bg-slate-50 disabled:text-slate-500`} disabled={!!editing} placeholder="en_US" value={language} onChange={e => setLanguage(e.target.value)} />
-            <select className={`${inp} disabled:bg-slate-50 disabled:text-slate-500`} disabled={editing?.status === "APPROVED"} value={category} onChange={e => setCategory(e.target.value as "MARKETING" | "UTILITY")}>
+            <input className={`${inp} disabled:bg-slate-50 disabled:text-slate-500`} disabled={!!editing} placeholder="name (lowercase_underscores)" aria-label="Template name (lowercase letters, numbers and underscores)" title={editing ? "A template's name can't change after it's created" : undefined} value={name} onChange={e => setName(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_"))} />
+            <input className={`${inp} disabled:bg-slate-50 disabled:text-slate-500`} disabled={!!editing} placeholder="en_US" aria-label="Language code" title={editing ? "The language can't change after it's created" : "Language code, e.g. en_US or hi"} value={language} onChange={e => setLanguage(e.target.value)} />
+            <select className={`${inp} disabled:bg-slate-50 disabled:text-slate-500`} disabled={editing?.status === "APPROVED"} aria-label="Category" title={editing?.status === "APPROVED" ? "Meta doesn't allow changing the category of an approved template" : "Marketing: offers and news. Utility: updates about an order or booking."} value={category} onChange={e => setCategory(e.target.value as "MARKETING" | "UTILITY")}>
               <option value="MARKETING">Marketing</option>
               <option value="UTILITY">Utility</option>
             </select>
@@ -615,8 +622,8 @@ function TemplatesTab() {
                 : templates.filter(t => t.status === k).length;
               return (
                 <button key={k} onClick={() => setStatusTab(k)}
-                  className={`pb-2 -mb-px border-b-2 flex items-center gap-1.5 ${statusTab === k ? "border-brand-dark text-brand-dark" : "border-transparent text-slate-400 hover:text-slate-600"}`}>
-                  {label}<span className="text-[10px] bg-slate-100 rounded-full px-1.5 py-0.5 font-bold">{count}</span>
+                  aria-pressed={statusTab === k} className={`min-h-9 pb-2 -mb-px border-b-2 flex items-center gap-1.5 ${statusTab === k ? "border-brand-dark text-brand-dark" : "border-transparent text-slate-400 hover:text-slate-600"}`}>
+                  {label}<span className="text-[11px] bg-slate-100 rounded-full px-1.5 py-0.5 font-bold">{count}</span>
                 </button>
               );
             })}
@@ -632,27 +639,29 @@ function TemplatesTab() {
                 <button type="button" onClick={e => { e.stopPropagation(); setViewing(t); }} className="block w-full text-left font-mono text-xs font-semibold text-brand-dark truncate hover:underline">{t.name}</button>
                 {t.status === "REJECTED" && t.rejected_reason && <p className="text-[11px] text-red-700 truncate">Rejected: {t.rejected_reason.replaceAll("_", " ").toLowerCase()}</p>}
               </div>
-              <span className="w-24 shrink-0 text-[11px] font-bold text-slate-400 uppercase">{t.category}</span>
-              <span className={`w-24 shrink-0 text-[11px] font-bold ${t.status === "APPROVED" ? "text-brand-600" : ACTIONABLE.includes(t.status) ? "text-red-700" : "text-amber-700"}`}>{t.status}</span>
+              <span className="w-24 shrink-0 text-[11px] font-bold text-slate-500 uppercase">{t.category}</span>
+              <span className={`w-28 shrink-0 text-[11px] font-bold ${t.status === "APPROVED" ? "text-brand-700" : ACTIONABLE.includes(t.status) ? "text-red-700" : "text-amber-700"}`}>{statusLabel(t.status)}</span>
               <span className="w-20 shrink-0 text-[11px] font-bold text-slate-500 uppercase">{tplType(t)}</span>
               <span className="w-16 shrink-0 text-[11px] text-slate-400">{t.language}</span>
               <div className="flex-1" />
               <div className="flex items-center" onClick={e => e.stopPropagation()}>
-              <button onClick={() => toggleFav(t.name)} title="Favourite" className={`p-1.5 rounded-lg hover:bg-slate-100 ${favs.includes(t.name) ? "text-amber-400" : "text-slate-300 hover:text-slate-500"}`}>
+              <button onClick={() => toggleFav(t.name)} title="Favourite" aria-label={favs.includes(t.name) ? `Remove ${t.name} from favourites` : `Add ${t.name} to favourites`} aria-pressed={favs.includes(t.name)} className={`grid place-items-center w-9 h-9 rounded-lg hover:bg-slate-100 ${favs.includes(t.name) ? "text-amber-400" : "text-slate-300 hover:text-slate-500"}`}>
                 <Star className="w-4 h-4" fill={favs.includes(t.name) ? "currentColor" : "none"} />
               </button>
               {t.id && EDITABLE_TPL_STATUSES.includes(t.status) && (
-                <button onClick={() => copyTemplate(t, true)} title="Edit this template" className="p-1.5 text-slate-400 hover:text-brand-dark hover:bg-slate-100 rounded-lg"><Pencil className="w-4 h-4" /></button>
+                <button onClick={() => copyTemplate(t, true)} title="Edit this template" aria-label={`Edit ${t.name}`} className="grid place-items-center w-9 h-9 text-slate-400 hover:text-brand-dark hover:bg-slate-100 rounded-lg"><Pencil className="w-4 h-4" /></button>
               )}
-              <button onClick={() => copyTemplate(t)} title="Duplicate into builder" className="p-1.5 text-slate-400 hover:text-brand-dark hover:bg-slate-100 rounded-lg"><Copy className="w-4 h-4" /></button>
-              <button onClick={() => remove(t.name)} title="Delete" className="p-1.5 text-slate-300 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
+              <button onClick={() => copyTemplate(t)} title="Make a copy to edit" aria-label={`Copy ${t.name}`} className="grid place-items-center w-9 h-9 text-slate-400 hover:text-brand-dark hover:bg-slate-100 rounded-lg"><Copy className="w-4 h-4" /></button>
+              <button onClick={() => remove(t.name)} title="Delete" aria-label={`Delete ${t.name}`} className="grid place-items-center w-9 h-9 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
               </div>
             </div>
           ))}
           {visibleTemplates.length === 0 && (
-            <p className="px-4 py-8 text-center text-slate-400 text-sm">
-              {templates.length === 0 ? "No templates yet — hit + New template to build your first one." : "Nothing matches this filter."}
-            </p>
+            templates.length === 0
+              ? <EmptyState mood="sleeping" title="No templates yet"
+                  body="WhatsApp only lets you message someone who hasn't written to you in the last 24 hours with a template it has approved. Make your first one — a welcome, an offer or a reminder."
+                  action={<button onClick={openNewBuilder} className="min-h-10 px-4 rounded-lg bg-brand-700 text-white text-sm font-bold inline-flex items-center gap-2"><Plus className="w-4 h-4" /> New template</button>} />
+              : <p className="px-4 py-8 text-center text-slate-500 text-sm">No templates match this filter. Try another tab or clear the search.</p>
           )}
         </div>
       </div>
@@ -698,7 +707,7 @@ function TemplateViewer({ t, type, onClose, onEdit, onCopy }: {
   const status = t.status === "APPROVED" ? "bg-brand-50 text-brand-700 border-brand-200"
     : ["REJECTED", "PAUSED", "DISABLED", "IN_APPEAL"].includes(t.status) ? "bg-red-50 text-red-600 border-red-200"
     : "bg-amber-50 text-amber-700 border-amber-200";
-  const chip = "text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border";
+  const chip = "text-[11px] font-bold uppercase px-2 py-0.5 rounded-full border";
   const sectionTitle = "text-[11px] font-bold text-slate-400 uppercase tracking-[0.06em]";
 
   return (
@@ -710,13 +719,13 @@ function TemplateViewer({ t, type, onClose, onEdit, onCopy }: {
             <div className="min-w-0 space-y-1.5">
               <p className="font-mono text-sm font-bold text-brand-dark break-all">{t.name}</p>
               <div className="flex flex-wrap gap-1.5">
-                <span className={`${chip} ${status}`}>{t.status.toLowerCase()}</span>
+                <span className={`${chip} ${status}`}>{statusLabel(t.status)}</span>
                 <span className={`${chip} border-line text-slate-500`}>{t.category.toLowerCase()}</span>
                 <span className={`${chip} border-line text-slate-500`}>{type}</span>
                 <span className={`${chip} border-line text-slate-500 normal-case`}>{t.language}</span>
               </div>
             </div>
-            <button onClick={onClose} aria-label="Close" className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100"><X className="w-4 h-4" /></button>
+            <button onClick={onClose} aria-label="Close" className="grid place-items-center w-9 h-9 rounded-lg text-slate-400 hover:bg-slate-100"><X className="w-4 h-4" /></button>
           </div>
 
           {t.status === "REJECTED" && t.rejected_reason && (
@@ -751,7 +760,7 @@ function TemplateViewer({ t, type, onClose, onEdit, onCopy }: {
               <p className={sectionTitle}>Buttons</p>
               {buttons.map((b, i) => (
                 <div key={i} className="text-xs flex items-baseline gap-2">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase w-20 shrink-0">{b.type === "QUICK_REPLY" ? "Quick reply" : b.type === "URL" ? "Link" : b.type === "PHONE_NUMBER" ? "Call" : "Copy code"}</span>
+                  <span className="text-[11px] font-bold text-slate-500 uppercase w-20 shrink-0">{b.type === "QUICK_REPLY" ? "Quick reply" : b.type === "URL" ? "Link" : b.type === "PHONE_NUMBER" ? "Call" : "Copy code"}</span>
                   <span className="font-semibold text-slate-700 shrink-0">{b.type === "COPY_CODE" ? "Copy code" : b.text}</span>
                   {(b.type === "URL" || b.type === "PHONE_NUMBER") && <span className="text-slate-400 break-all">{b.type === "URL" ? b.url : b.phoneNumber}</span>}
                 </div>
@@ -764,7 +773,7 @@ function TemplateViewer({ t, type, onClose, onEdit, onCopy }: {
               <button onClick={onEdit} className="px-3 py-2 rounded-lg bg-brand-700 text-white text-xs font-bold flex items-center gap-1.5"><Pencil className="w-3.5 h-3.5" /> Edit</button>
             )}
             <button onClick={onCopy} className="px-3 py-2 rounded-lg border border-line text-xs font-bold text-ink-600 hover:bg-canvas flex items-center gap-1.5"><Copy className="w-3.5 h-3.5" /> Duplicate</button>
-            {t.id && <span className="ml-auto text-[10px] text-slate-400 font-mono">ID {t.id}</span>}
+            {t.id && <span className="ml-auto text-[11px] text-slate-500 font-mono">ID {t.id}</span>}
           </div>
         </div>
       </aside>

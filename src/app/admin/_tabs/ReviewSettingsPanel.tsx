@@ -185,7 +185,7 @@ export function ReviewSettingsPanel({ value, signaturePlaceholder, emailAvailabl
                 {preview.reasons.length > 0 && <ul className="ml-4 list-disc">{preview.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>}
                 {preview.note && <p className="mt-1 text-ink-600">{preview.note}</p>}
                 {preview.aiNote && <p className="mt-1">{preview.aiNote}</p>}
-                {preview.reply && <p className="mt-2 whitespace-pre-wrap rounded-control border border-line bg-white px-2 py-1.5 text-ink-800"><span className="block text-[10px] font-bold uppercase text-ink-500">Sample AI reply</span>{preview.reply}</p>}
+                {preview.reply && <p className="mt-2 whitespace-pre-wrap rounded-control border border-line bg-white px-2 py-1.5 text-ink-800"><span className="block text-[11px] font-bold uppercase text-ink-500">Sample AI reply</span>{preview.reply}</p>}
               </div>
             )}
           </div>
@@ -203,14 +203,14 @@ export function ReviewSettingsPanel({ value, signaturePlaceholder, emailAvailabl
         </div>
         <label className="flex flex-wrap items-center gap-2 text-xs text-ink-700">
           Unanswered after
-          <input type="number" min={1} max={336} className={`${inp} w-20`} value={f.alerts.unansweredHours} onChange={e => setF({ ...f, alerts: { ...f.alerts, unansweredHours: Number(e.target.value) } })} /> hours
+          <input type="number" min={1} max={336} className={`${inp} w-20`} aria-label="Unanswered after how many hours" value={f.alerts.unansweredHours} onChange={e => setF({ ...f, alerts: { ...f.alerts, unansweredHours: Number(e.target.value) } })} /> hours
         </label>
         {emailAvailable ? <div className="space-y-3 rounded-xl bg-canvas p-4">
           <label className="flex cursor-pointer items-center gap-2 text-[13px] text-ink-700">
             <input type="checkbox" className="accent-brand-700" checked={f.alerts.email} onChange={e => setF({ ...f, alerts: { ...f.alerts, email: e.target.checked } })} /> Also send by email
           </label>
           {f.alerts.email && <label className="block space-y-2 text-xs font-semibold text-ink-700">
-            <span>Recipients <span className="font-normal text-ink-400">· leave empty for all admins</span></span>
+            <span>Recipients <span className="font-normal text-ink-500">· leave empty for all admins</span></span>
             <input className={`${inp} w-full`} placeholder="owner@business.in, manager@business.in" value={recipients} onChange={e => setRecipients(e.target.value)} />
           </label>}
           {f.alerts.email && <label className="block space-y-2 text-xs font-semibold text-ink-700">
@@ -223,8 +223,8 @@ export function ReviewSettingsPanel({ value, signaturePlaceholder, emailAvailabl
       </section>
 
       {showActions && <div className="flex items-center gap-2 border-t border-line pt-4">
-        <button type="submit" disabled={saving} className="rounded-control bg-brand-700 px-4 py-2 text-xs font-semibold text-white hover:bg-brand-600 disabled:opacity-60">{saving ? "Saving…" : "Save settings"}</button>
-        <button type="button" onClick={onCancel} className="px-3 py-2 text-xs font-semibold text-ink-500 hover:text-ink-900">Cancel</button>
+        <button type="submit" disabled={saving} className="min-h-10 rounded-control bg-brand-700 px-4 py-2 text-xs font-semibold text-white hover:bg-brand-600 disabled:opacity-60">{saving ? "Saving…" : "Save settings"}</button>
+        <button type="button" onClick={onCancel} className="min-h-10 px-3 py-2 text-xs font-semibold text-ink-500 hover:text-ink-900">Cancel</button>
       </div>}
     </form>
   );

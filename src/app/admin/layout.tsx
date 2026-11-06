@@ -9,7 +9,7 @@
 // the loader itself — nothing is hardcoded here beyond the site key lookup.
 
 import Script from "next/script";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { notFound, redirect } from "next/navigation";
 import "driver.js/dist/driver.css";
 import "./onboarding.css";
@@ -50,6 +50,10 @@ async function supportWidget(): Promise<{ src: string; identity: string | null }
     return null; // widget is strictly best-effort
   }
 }
+
+// The portal draws its phone bottom bar into the iPhone home-indicator area and
+// pads it with env(safe-area-inset-bottom), which is only non-zero with cover.
+export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover", interactiveWidget: "resizes-content" };
 
 export async function generateMetadata(): Promise<Metadata> {
   const { brand } = await requestBrand();

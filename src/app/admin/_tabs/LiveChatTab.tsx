@@ -4,8 +4,8 @@
 // Extracted from admin/page.tsx, lazy-loaded. ContactProfile is a shared module
 // (also used by the Contacts tab). Pure relocation.
 import { useVocab } from "@/lib/vocab-client";
-import { useState, useEffect, useCallback, useRef, Fragment } from "react";
-import { MessageSquare, Instagram, Search, MessageCircle, Facebook, LayoutTemplate, X, Loader2, Send, Sparkles, Tag, UserCheck, Mic, Paperclip, FileText, Bot, Zap, Plus, Check, AlertTriangle, SmilePlus, History, ArrowRight } from "lucide-react";
+import { useState, useEffect, useCallback, useRef, useId, Fragment } from "react";
+import { MessageSquare, Instagram, Search, MessageCircle, Facebook, LayoutTemplate, X, Loader2, Send, Sparkles, Tag, UserCheck, Mic, Paperclip, FileText, Bot, Zap, Plus, Check, AlertTriangle, SmilePlus, History, ArrowRight, ArrowLeft, Clock, Hourglass, CirclePause, Keyboard, RotateCcw, UserRound, PanelRight, EllipsisVertical } from "lucide-react";
 import { type Conversation, ConvAvatar, statusBadge, inp, type Tab, type ChatIntent, type GoTo, useChannelList, ChannelNameBadge } from "../_shared";
 import { ContactProfile } from "./ContactProfile";
 import { SegmentedControl } from "@/components/SegmentedControl";
@@ -17,6 +17,14 @@ import { ChatNotes } from "@/components/chat-notes";
 import { CustomerWork } from "@/components/customer-work";
 import { CustomerAutomations } from "@/components/customer-automations";
 import { LeadPill, LeadReason, ApprovalCard } from "./LeadInsight";
+import { Drawer } from "@/components/overlay";
+import { toast } from "@/components/toast";
+import { fmtAgo, fmtNum, fmtUpdated } from "@/lib/format";
+import { waitInfo, replyTarget, DEFAULT_REPLY_TARGET_MINUTES, type WaitInfo, type WaitLevel } from "@/lib/wait-urgency";
+import {
+  INBOX_FILTERS, INBOX_SORTS, normalizeFilter, normalizeSort, matchesFilter, filterCounts, sortChats, isMine, lastTouchMs,
+  readSavedView, saveView, type InboxFilter, type InboxSort,
+} from "@/lib/inbox-view";
 
 type ThreadMessage = { id: string; role: "user" | "assistant"; body: string; source: "inbound" | "bot" | "agent"; createdAt: string; channelId?: string | null; mediaUrl?: string | null; mediaType?: string | null; metaMessageId?: string | null };
 // One step in a lead's ownership trail (which number owned it, and who moved it).
@@ -187,7 +195,7 @@ function CrmStatusBar() {
 
   return (
     <div className={`shrink-0 flex items-center gap-2 px-4 py-1.5 border-b text-[12px] ${tone.bg}`}>
-      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${tone.dot} ${h.state === "failing" ? "animate-pulse" : ""}`} />
+      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${tone.dot} ${h.state === "failing" ? "animate-pulse motion-reduce:animate-none" : ""}`} />
       <span className="font-bold text-ink-900 shrink-0">LeadSquared</span>
       <span className={`${tone.text} truncate`}>{h.detail}</span>
       {/* Dead pushes never retry themselves — they are the part a person has to
@@ -198,7 +206,7 @@ function CrmStatusBar() {
           onClick={retryNow}
           disabled={retrying}
           title="Release every held conversation so the next sync retries them immediately"
-          className="ml-auto shrink-0 px-2 py-0.5 rounded-control border border-current/25 font-bold hover:bg-white/60 disabled:opacity-50"
+          className="ml-auto shrink-0 min-h-8 px-2.5 rounded-control border border-current/25 font-bold hover:bg-white/60 disabled:opacity-50"
         >
           {retrying ? "Retrying…" : `Retry ${h.held} now`}
         </button>
@@ -283,14 +291,17 @@ function crmChatCopy(s: ChatCrmStatus, lastError: string): { tone: string; label
   }
 }
 
-// Compact marker for the conversation list: one dot per row, no text, so 100
-// chats stay scannable and the eye only stops on the red ones.
+// Compact marker for the conversation list: one dot per row, no visible text,
+// so 100 chats stay scannable and the eye only stops on the red ones. Screen
+// readers get the words.
 function CrmChatDot({ status, lastError }: { status: ChatCrmStatus; lastError: string }) {
-  const { tone, title } = crmChatCopy(status, lastError);
+  const { tone, label, title } = crmChatCopy(status, lastError);
   return (
     <span
+      role="img"
+      aria-label={`LeadSquared: ${label}`}
       title={title}
-      className={`w-2 h-2 rounded-full shrink-0 ${tone} ${status.state === "held" || status.state === "dead" ? "animate-pulse" : ""}`}
+      className={`w-2 h-2 rounded-full shrink-0 ${tone} ${status.state === "held" || status.state === "dead" ? "animate-pulse motion-reduce:animate-none" : ""}`}
     />
   );
 }
@@ -303,18 +314,199 @@ function CrmChatPill({ status, lastError }: { status: ChatCrmStatus; lastError: 
     : status.state === "queued" ? "bg-amber-50 text-amber-800 border-amber-200"
     : "bg-red-50 text-red-700 border-red-200";
   return (
-    <span title={title} className={`shrink-0 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[10px] font-bold ${bg}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${tone}`} />
-      LSQ · {label}
+    <span title={title} className={`shrink-0 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[12px] font-bold ${bg}`}>
+      <span aria-hidden className={`w-1.5 h-1.5 rounded-full ${tone}`} />
+      LeadSquared · {label}
     </span>
   );
+}
+
+// ── Inbox helpers shared by the list and the open chat ──────────────────────
+
+// True while the viewport is at least `px` wide. Live Chat is client-only
+// (dynamic, ssr:false), so the first render can read the real answer.
+function useMinWidth(px: number): boolean {
+  const query = `(min-width: ${px}px)`;
+  const [ok, setOk] = useState(() => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia(query).matches);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const m = window.matchMedia(query);
+    const on = () => setOk(m.matches);
+    on();
+    m.addEventListener?.("change", on);
+    return () => m.removeEventListener?.("change", on);
+  }, [query]);
+  return ok;
+}
+
+function sessionStore(): Storage | null {
+  try { return typeof window !== "undefined" ? window.sessionStorage : null; } catch { return null; }
+}
+
+// Unsent replies, per chat, for this page visit — going back to the list on a
+// phone (or opening another chat) no longer throws away what was typed.
+const drafts = new Map<string, string>();
+
+// What the inbox needs once, not once per opened chat: the composer's quick
+// replies and canned templates, the people a chat can be assigned to, the AI
+// rewrite prompts and assistants, and the broadcast batches. Opening a chat
+// used to fire all of these again, every time.
+type InboxRefs = {
+  quickReplies: { id: string; shortcut: string; body: string }[];
+  team: { name: string; email: string; title: string }[];
+  aiPrompts: { id: string; name: string; active: boolean }[];
+  canned: { id: string; label: string; stage?: string }[];
+  aiAgents: { id: string; name: string; active: boolean }[];
+  allBatches: { id: string; name: string; kind: string; size: number }[];
+  me: { name: string; email: string } | null;
+  /** Today settings' reply target, in minutes. */
+  replyTarget: number;
+};
+const EMPTY_REFS: InboxRefs = { quickReplies: [], team: [], aiPrompts: [], canned: [], aiAgents: [], allBatches: [], me: null, replyTarget: DEFAULT_REPLY_TARGET_MINUTES };
+
+// The reply target rarely changes, and its only GET is the full Today payload,
+// so it is read once per page visit rather than on every visit to the inbox.
+let replyTargetCache: number | null = null;
+
+function useInboxRefs(): InboxRefs {
+  const [refs, setRefs] = useState<InboxRefs>(() => ({ ...EMPTY_REFS, replyTarget: replyTargetCache ?? DEFAULT_REPLY_TARGET_MINUTES }));
+  useEffect(() => {
+    let alive = true;
+    const get = <T,>(url: string, pick: (d: Record<string, unknown>) => T) =>
+      fetch(url).then(r => (r.ok ? r.json() : null)).then(d => (d ? pick(d) : undefined)).catch(() => undefined);
+    const put = (patch: Partial<InboxRefs>) => { if (alive) setRefs(r => ({ ...r, ...patch })); };
+    void get("/api/admin/quick-replies", d => (d.quickReplies ?? []) as InboxRefs["quickReplies"]).then(v => v && put({ quickReplies: v }));
+    void get("/api/admin/team/members", d => (d.members ?? []) as InboxRefs["team"]).then(v => v && put({ team: v }));
+    void get("/api/admin/ai/prompts", d => ((d.prompts ?? []) as InboxRefs["aiPrompts"]).filter(p => p.active)).then(v => v && put({ aiPrompts: v }));
+    void get("/api/admin/canned", d => (d.canned ?? []) as InboxRefs["canned"]).then(v => v && put({ canned: v }));
+    void get("/api/admin/ai/agents", d => (d.agents ?? []) as InboxRefs["aiAgents"]).then(v => v && put({ aiAgents: v }));
+    void get("/api/admin/batches", d => (d.batches ?? []) as InboxRefs["allBatches"]).then(v => v && put({ allBatches: v }));
+    void get("/api/admin/me", d => {
+      const u = d.user as { name?: string; email?: string } | undefined;
+      return u?.email ? { name: u.name ?? "", email: u.email } : null;
+    }).then(v => v !== undefined && put({ me: v }));
+    if (replyTargetCache == null) {
+      void get("/api/admin/today", d => replyTarget((d.settings as { replyTargetMinutes?: unknown } | undefined)?.replyTargetMinutes))
+        .then(v => { if (v) { replyTargetCache = v; put({ replyTarget: v }); } });
+    }
+    return () => { alive = false; };
+  }, []);
+  return refs;
+}
+
+// "Waiting 42 min" with an icon that changes with the level, so lateness is
+// never said by colour alone: a clock, an hourglass, then a warning sign.
+const WAIT_TONE: Record<WaitLevel, string> = {
+  fine: "bg-canvas text-ink-700 border-line",
+  soon: "bg-amber-50 text-amber-900 border-amber-300",
+  late: "bg-red-50 text-red-800 border-red-300",
+};
+function WaitChip({ info }: { info: WaitInfo }) {
+  const Icon = info.level === "late" ? AlertTriangle : info.level === "soon" ? Hourglass : Clock;
+  return (
+    <span title={`${info.label}, ${info.explain}`}
+      className={`shrink-0 whitespace-nowrap inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[12px] font-semibold tabular-nums ${WAIT_TONE[info.level]}`}>
+      <Icon className="w-3.5 h-3.5 shrink-0" aria-hidden />
+      {info.label}
+      <span className="sr-only">, {info.explain}</span>
+    </span>
+  );
+}
+
+// A small labelled status chip for list rows and the chat header.
+function StatusChip({ icon, children, tone = "neutral", title }: { icon: React.ReactNode; children: React.ReactNode; tone?: "neutral" | "red"; title?: string }) {
+  return (
+    <span title={title} className={`shrink-0 whitespace-nowrap inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[12px] font-semibold ${tone === "red" ? "bg-red-50 text-red-800 border-red-200" : "bg-canvas text-ink-700 border-line"}`}>
+      <span aria-hidden className="shrink-0 [&>svg]:w-3.5 [&>svg]:h-3.5">{icon}</span>
+      {children}
+    </span>
+  );
+}
+
+// Last touch, short enough for a row: "just now", "42 min", "3 h", "2 days".
+const shortAgo = (iso: string | null, now: number) => (iso ? fmtAgo(iso, now).replace(/ ago$/, "") : "");
+
+// The keys the inbox answers to, shown from the "Shortcuts" button.
+const SHORTCUTS: [string, string][] = [
+  ["↑ ↓  or  j k", "Move through the chat list"],
+  ["Enter", "Open the highlighted chat"],
+  ["Esc", "Back to the list (phone)"],
+  ["/", "Quick replies, in the reply box"],
+  ["⌘ Enter  or  Ctrl Enter", "Send the reply"],
+];
+
+function ShortcutsHint() {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  return (
+    <div className="relative hidden md:block">
+      <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open} aria-controls={id} aria-label="Keyboard shortcuts" title="Keyboard shortcuts"
+        className="inline-flex items-center justify-center w-8 h-8 rounded-control text-ink-500 hover:text-ink-900 hover:bg-canvas">
+        <Keyboard className="w-4 h-4" aria-hidden />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} aria-hidden />
+          <div id={id} role="note" className="absolute right-0 top-full mt-1 z-20 w-72 rounded-card border border-line bg-white shadow-lg p-3">
+            <p className="text-[12px] font-bold text-ink-900 mb-1.5">Keyboard shortcuts</p>
+            <dl className="space-y-1">
+              {SHORTCUTS.map(([k, v]) => (
+                <div key={k} className="flex items-start justify-between gap-3 text-[12px]">
+                  <dt><kbd className="font-mono text-[11px] px-1.5 py-0.5 rounded border border-line bg-canvas text-ink-800 whitespace-nowrap">{k}</kbd></dt>
+                  <dd className="text-ink-600 text-right">{v}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Placeholder rows while the first list is on its way, so "No conversations
+// yet" is never shown to someone whose chats just haven't arrived.
+function ListSkeleton() {
+  return (
+    <div aria-busy="true" aria-live="polite">
+      <span className="sr-only">Loading conversations…</span>
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} aria-hidden className="flex items-start gap-3 px-4 py-3 border-b border-line/60 animate-pulse motion-reduce:animate-none">
+          <div className="w-9 h-9 rounded-full bg-canvas shrink-0" />
+          <div className="flex-1 space-y-2 py-0.5">
+            <div className="h-3 w-2/5 rounded bg-canvas" />
+            <div className="h-3 w-4/5 rounded bg-canvas" />
+            <div className="h-4 w-24 rounded-full bg-canvas" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Why a list or thread fetch failed, in words a shop owner can act on.
+function fetchProblem(status: number | null): string {
+  if (status === 401) return "You've been signed out. Sign in again to see your chats.";
+  if (status === 403) return "This chat belongs to another team.";
+  if (status === 404) return "This chat no longer exists.";
+  if (status && status >= 500) return "The server had a problem loading this.";
+  return "Couldn't reach the server. Check your internet connection.";
 }
 
 function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIntent | null; clearIntent: () => void }) {
   const { vocab } = useVocab();
   const [convos, setConvos] = useState<Conversation[]>([]);
+  // Until the first answer, the list shows placeholders, not "No conversations yet".
+  const [loaded, setLoaded] = useState(false);
+  const [listError, setListError] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
-  const [filter, setFilter] = useState<"all" | "needs_reply" | "escalated" | "bot_off">("all");
+  // Filter and sort are remembered for this browser tab, so leaving the inbox
+  // and coming back keeps the view an agent chose.
+  const [filter, setFilter] = useState<InboxFilter>(() => readSavedView(sessionStore()).filter);
+  const [sort, setSort] = useState<InboxSort>(() => readSavedView(sessionStore()).sort);
+  useEffect(() => { saveView(sessionStore(), { filter, sort }); }, [filter, sort]);
   const [platform, setPlatform] = useState<"all" | "whatsapp" | "instagram" | "messenger" | "webchat">("all");
   // Narrow further to ONE number/account/Page of the selected platform — only
   // shown when that platform has 2+ connected channels.
@@ -331,23 +523,52 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
   const [view, setView] = useState<"chats" | "comments">("chats");
   const [search, setSearch] = useState("");
   const [pendingPhone, setPendingPhone] = useState<string | null>(null);   // deep-link: open this person once loaded
+  // Chats the alerts endpoint says are waiting for a person (ready to pay,
+  // approvals, or all of them while the AI is off) — joined into "Waiting for
+  // you" so the list and the alert count agree.
+  const [alerted, setAlerted] = useState<ReadonlySet<string>>(() => new Set());
+  // The clock the wait labels read; ticks so "Waiting 4 min" keeps up.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(t); }, []);
+  const refs = useInboxRefs();
+
+  // One panel at a time on a phone; the contact details join as a third
+  // column only where there is room for all three.
+  const twoPane = useMinWidth(768);
+  const threePane = useMinWidth(1280);
 
   // The number filter goes to the SERVER, not the browser. This endpoint returns
   // at most 150 conversations ordered by recency, so filtering client-side would
   // search only the newest page and quietly hide the rest of that number's chats.
   // Refetching on change also means the counts and the list agree.
-  const load = useCallback(() => {
+  const seq = useRef(0);
+  const load = useCallback(async () => {
+    const mine = ++seq.current;
     const qs = channelFilter ? `?channelId=${encodeURIComponent(channelFilter)}` : "";
-    fetch(`/api/admin/conversations${qs}`).then(r => r.ok ? r.json() : { conversations: [] })
-      .then(d => { setConvos(d.conversations ?? []); setStages(d.stages ?? {}); setScopedTeam(d.scopedToTeam ?? null); }).catch(() => {});
+    // Best-effort, alongside: which chats the alerts count as waiting.
+    fetch("/api/admin/inbox/waiting").then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d && Array.isArray(d.chats) && mine === seq.current) setAlerted(new Set((d.chats as { id: string }[]).map(c => c.id))); })
+      .catch(() => {});
+    let status: number | null = null;
+    try {
+      const r = await fetch(`/api/admin/conversations${qs}`);
+      status = r.status;
+      if (!r.ok) throw new Error(String(r.status));
+      const d = await r.json();
+      if (mine !== seq.current) return;   // a newer request (another number) owns the list now
+      setConvos(d.conversations ?? []); setStages(d.stages ?? {}); setScopedTeam(d.scopedToTeam ?? null);
+      setLoaded(true); setListError(null); setUpdatedAt(Date.now()); setNow(Date.now());
+    } catch {
+      if (mine === seq.current) setListError(fetchProblem(status));
+    }
   }, [channelFilter]);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { void load(); }, [load]);
   useEffect(() => {
-    const t = setInterval(() => { if (!document.hidden) load(); }, 10_000);
+    const t = setInterval(() => { if (!document.hidden) void load(); }, 10_000);
     // The poll skips hidden tabs, so coming back to one left the list showing
     // whatever was true when it was last visible for up to another 10s. Fetch on
     // the way back in: that gap is exactly when the inbox looks frozen.
-    const wake = () => { if (!document.hidden) load(); };
+    const wake = () => { if (!document.hidden) void load(); };
     document.addEventListener("visibilitychange", wake);
     window.addEventListener("focus", wake);
     return () => {
@@ -356,6 +577,7 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
       window.removeEventListener("focus", wake);
     };
   }, [load]);
+  const retryList = async () => { setRetrying(true); try { await load(); } finally { setRetrying(false); } };
 
   // Per-chat CRM markers. Polled a third as often as the conversations: this
   // state moves on the flush cron's cadence, not the customer's, so matching the
@@ -372,23 +594,84 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
     return () => clearInterval(t);
   }, []);
 
-  // Apply a deep-link intent on arrival (Home cards / Pipeline / Contacts).
+  // ── Opening a chat, and getting back to the list ──
+  // On a phone the open chat replaces the list, so it gets a history entry:
+  // the browser's Back (or the swipe-back gesture) returns to the list instead
+  // of leaving the portal.
+  const pushed = useRef(false);
+  const selectedRef = useRef<string | null>(null);
+  selectedRef.current = selected;
+  const openChat = useCallback((id: string) => {
+    setSelected(id);
+    if (!twoPane && !pushed.current) {
+      try { window.history.pushState({ ...(window.history.state ?? {}), talkoInboxChat: id }, ""); pushed.current = true; } catch { /* history unavailable */ }
+    }
+  }, [twoPane]);
+  const backToList = useCallback(() => {
+    if (pushed.current) { window.history.back(); return; }   // popstate below clears the selection
+    setSelected(null);
+  }, []);
+  useEffect(() => {
+    const onPop = (e: PopStateEvent) => {
+      const s = e.state as { talkoInboxChat?: string } | null;
+      if (pushed.current && !s?.talkoInboxChat) { pushed.current = false; setSelected(null); }
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  // Apply a deep-link intent on arrival (Home cards / Pipeline / Contacts / Today).
   // Opening a specific person clears any filter so their chat can't be hidden.
+  // Older filter names (needs_reply, escalated, bot_off) still work.
   useEffect(() => {
     if (!intent) return;
     if (intent.openPhone) { setPendingPhone(intent.openPhone); setView("chats"); setPlatform("all"); setChannelFilter(null); setFilter("all"); }
-    else { if (intent.view) setView(intent.view); if (intent.platform) { setPlatform(intent.platform); setChannelFilter(null); } if (intent.filter) setFilter(intent.filter); }
+    else { if (intent.view) setView(intent.view); if (intent.platform) { setPlatform(intent.platform); setChannelFilter(null); } if (intent.filter) setFilter(normalizeFilter(intent.filter)); }
     clearIntent();
   }, [intent, clearIntent]);
 
   // Once conversations are loaded, open the deep-linked person (match by number).
   useEffect(() => {
-    if (!pendingPhone || convos.length === 0) return;
+    if (!pendingPhone || !loaded) return;
     const norm = (p: string) => (p || "").replace(/\D/g, "").slice(-10);
     const match = convos.find(c => norm(c.phone) === norm(pendingPhone));
-    if (match) setSelected(match.id);
+    if (match) openChat(match.id);
     setPendingPhone(null);   // resolved (found or not) — stop retrying on each refresh
-  }, [pendingPhone, convos]);
+  }, [pendingPhone, convos, loaded, openChat]);
+
+  // ── Keyboard: ↑/↓ or j/k move through the list, Enter opens (the rows are
+  // buttons), Escape goes back to the list on a phone. Never while typing, and
+  // never under an open dialog.
+  const listRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t?.closest?.("input, textarea, select, [contenteditable=''], [contenteditable='true'], [role='dialog'], [role='menu']")) return;
+      if (document.querySelector("[aria-modal='true']")) return;
+      if (e.key === "Escape") {
+        if (!twoPane && selectedRef.current) { e.preventDefault(); backToList(); }
+        return;
+      }
+      const arrow = e.key === "ArrowDown" || e.key === "ArrowUp";
+      const dir = e.key === "ArrowDown" || e.key === "j" ? 1 : e.key === "ArrowUp" || e.key === "k" ? -1 : 0;
+      if (!dir) return;
+      const list = listRef.current;
+      if (!list || list.offsetParent === null) return;   // list hidden (a phone showing the chat)
+      // Arrows keep scrolling the thread when focus is in it; j/k work anywhere.
+      if (arrow && t && t !== document.body && !list.contains(t)) return;
+      const rows = Array.from(list.querySelectorAll<HTMLElement>("[data-inbox-row]"));
+      if (!rows.length) return;
+      e.preventDefault();
+      let from = rows.findIndex(r => r === document.activeElement);
+      if (from < 0) from = rows.findIndex(r => r.dataset.id === selectedRef.current);
+      const to = from < 0 ? (dir > 0 ? 0 : rows.length - 1) : Math.max(0, Math.min(rows.length - 1, from + dir));
+      rows[to].focus();
+      rows[to].scrollIntoView?.({ block: "nearest" });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [twoPane, backToList]);
 
   const q = search.trim().toLowerCase();
   const onPlatform = (c: Conversation, p: "whatsapp" | "instagram" | "messenger" | "webchat") => (c.platform ?? "whatsapp") === p;
@@ -396,14 +679,17 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
   const chatsCount = convos.filter(c => !c.isComment).length;
   const commentsCount = convos.filter(c => !!c.isComment).length;
   const inView = convos.filter(c => view === "comments" ? !!c.isComment : !c.isComment);
-  const visible = inView
+  const filterCtx = { now, me: refs.me, alerted };
+  // Everything except the status filter, so each filter chip can say how many it would show.
+  const scoped = inView
     .filter(c => platform === "all" ? true : onPlatform(c, platform))
     // Belt-and-braces only: the server already applied this. Kept so a list still
     // in flight from the previous number can't flash the wrong chats.
     .filter(c => !channelFilter || c.channelId === channelFilter)
     .filter(c => !stageFilter || (stageFilter === "__none" ? !stages[c.phone] : stages[c.phone]?.name === stageFilter))
-    .filter(c => filter === "all" ? true : filter === "needs_reply" ? !!c.needsReply : filter === "escalated" ? c.status === "escalated" : !c.botEnabled)
     .filter(c => !q || (c.name ?? "").toLowerCase().includes(q) || c.phone.includes(q));
+  const counts = filterCounts(scoped, filterCtx);
+  const visible = sortChats(scoped.filter(c => matchesFilter(c, filter, filterCtx)), sort, now);
   const stageNames = [...new Set(inView.map(c => stages[c.phone]?.name).filter(Boolean))] as string[];
   const platformChannels = platform === "all" ? [] : channelList.filter(c => (c.kind ?? "whatsapp") === platform);
   const waCount = inView.filter(c => onPlatform(c, "whatsapp")).length;
@@ -416,30 +702,34 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
   // the customer last wrote — while the preview underneath showed our reply, so
   // the row contradicted itself. The later of the two is the last touch.
   const lastTouch = (c: Conversation) => {
-    const t = Math.max(
-      c.lastInboundAt ? Date.parse(c.lastInboundAt) : 0,
-      c.lastOutboundAt ? Date.parse(c.lastOutboundAt) : 0,
-    );
+    const t = lastTouchMs(c);
     return t ? new Date(t).toISOString() : null;
   };
 
-  const timeAgo = (iso: string | null) => {
-    if (!iso) return "";
-    const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-    if (mins < 1) return "now";
-    if (mins < 60) return `${mins}m`;
-    if (mins < 24 * 60) return `${Math.floor(mins / 60)}h`;
-    return `${Math.floor(mins / (24 * 60))}d`;
-  };
+  const showList = twoPane || !selected;
+  const showThread = twoPane || !!selected;
+  const filterLabel = INBOX_FILTERS.find(f => f.key === filter)?.label ?? "All";
 
   return (
-    <div className="-m-6 h-[calc(100vh-64px)] flex flex-col bg-white overflow-hidden">
+    // Fills the screen between the shell's header and (on phones) its bottom tab
+    // bar, cancelling <main>'s padding: p-4 / sm:p-6, pb-24 under md for the bar.
+    <div className="-mx-4 -mt-4 -mb-24 sm:-mx-6 sm:-mt-6 md:-mb-6 h-[calc(100dvh-112px-env(safe-area-inset-bottom))] sm:h-[calc(100dvh-120px-env(safe-area-inset-bottom))] md:h-[calc(100dvh-64px)] flex flex-col bg-white overflow-hidden">
       <CrmStatusBar />
       <div className="flex-1 flex min-h-0">
       {/* Conversation list */}
-      <aside className="w-80 shrink-0 border-r border-line flex flex-col min-h-0">
-        <div className="p-4 pb-3 space-y-3 border-b border-line">
-          <p className="text-[15px] font-bold text-ink-900">{view === "comments" ? "Comments" : "Live Chat"} <span className="text-xs font-normal text-ink-400">({visible.length})</span></p>
+      <aside aria-label="Conversations" className={`${showList ? "flex" : "hidden"} w-full md:w-80 shrink-0 md:border-r border-line flex-col min-h-0`}>
+        <div className="px-4 pt-3 pb-2 space-y-2.5 border-b border-line">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-[15px] font-bold text-ink-900 whitespace-nowrap">{view === "comments" ? "Comments" : "Live Chat"} <span className="text-xs font-normal text-ink-500">({fmtNum(visible.length)})</span></h2>
+            <div className="flex items-center gap-1">
+              <ShortcutsHint />
+              <label className="sr-only" htmlFor="inbox-sort">Sort chats</label>
+              <select id="inbox-sort" value={sort} onChange={e => setSort(normalizeSort(e.target.value))}
+                className="h-8 rounded-control border border-line bg-white pl-2 pr-7 text-[12px] font-semibold text-ink-700">
+                {INBOX_SORTS.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+              </select>
+            </div>
+          </div>
           {/* Chats vs Comments — comment threads (IG comment → AI reply) live in
               their own section so they don't clutter real DM conversations. */}
           <SegmentedControl
@@ -452,12 +742,13 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
             ]}
           />
           <div className="relative">
-            <Search className="w-3.5 h-3.5 text-ink-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input className="w-full border border-line rounded-control pl-8 pr-3 py-2 text-sm bg-canvas text-ink-900 placeholder:text-ink-400" placeholder="Search name or number" value={search} onChange={e => setSearch(e.target.value)} />
+            <Search className="w-3.5 h-3.5 text-ink-400 absolute left-3 top-1/2 -translate-y-1/2" aria-hidden />
+            <input type="search" aria-label="Search chats by name or number" className="w-full border border-line rounded-control pl-8 pr-3 py-2 text-base md:text-sm bg-canvas text-ink-900 placeholder:text-ink-500" placeholder="Search name or number" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
-          {/* Platform toggle — only for Chats; comments are Instagram-only. */}
+          {/* Platform toggle — only for Chats; comments are Instagram-only. One
+              scrolling row on a phone, so the list keeps its room. */}
           {view === "chats" && (
-          <div className="flex flex-wrap gap-1 p-0.5 bg-canvas rounded-control">
+          <div role="group" aria-label="Channel" className="flex gap-1 p-0.5 bg-canvas rounded-control overflow-x-auto md:flex-wrap [scrollbar-width:none]">
             {([
               ["all", "All", inView.length],
               ["whatsapp", "WhatsApp", waCount],
@@ -467,12 +758,12 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
               ["messenger", "Facebook", fbCount],
               ["webchat", "Web chat", wcCount],
             ] as const).map(([k, label, n]) => (
-              <button key={k} onClick={() => { setPlatform(k); setChannelFilter(null); }} className={`flex-1 min-w-[68px] px-2 py-1.5 rounded-[7px] text-[11px] font-bold flex items-center justify-center gap-1 transition-colors ${platform === k ? "bg-white shadow-sm text-ink-900" : "text-ink-400 hover:text-ink-600"}`}>
-                {k === "whatsapp" && <MessageCircle className="w-3 h-3 text-green-600" />}
-                {k === "instagram" && <Instagram className="w-3 h-3 text-pink-600" />}
-                {k === "messenger" && <Facebook className="w-3 h-3 text-blue-600" />}
-                {k === "webchat" && <MessageSquare className="w-3 h-3 text-brand-600" />}
-                {label} <span className="opacity-60">{n}</span>
+              <button key={k} aria-pressed={platform === k} onClick={() => { setPlatform(k); setChannelFilter(null); }} className={`shrink-0 md:flex-1 min-w-[68px] min-h-8 px-2 py-1 rounded-[7px] text-[12px] font-bold flex items-center justify-center gap-1 whitespace-nowrap transition-colors ${platform === k ? "bg-white shadow-sm text-ink-900" : "text-ink-500 hover:text-ink-800"}`}>
+                {k === "whatsapp" && <MessageCircle className="w-3 h-3 text-green-600" aria-hidden />}
+                {k === "instagram" && <Instagram className="w-3 h-3 text-pink-600" aria-hidden />}
+                {k === "messenger" && <Facebook className="w-3 h-3 text-blue-600" aria-hidden />}
+                {k === "webchat" && <MessageSquare className="w-3 h-3 text-brand-600" aria-hidden />}
+                {label} <span className="opacity-70 tabular-nums">{fmtNum(n)}</span>
               </button>
             ))}
           </div>
@@ -481,7 +772,7 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
               2+ connected channels is selected ("which number is this on?"). */}
           {platformChannels.length > 1 && (
             <select className={`${inp} w-full !py-1.5 text-xs`} value={channelFilter ?? ""} onChange={e => setChannelFilter(e.target.value || null)}
-              title={platform === "instagram" ? "Filter by Instagram account" : platform === "messenger" ? "Filter by Facebook Page" : platform === "webchat" ? "Filter by web-chat site" : "Filter by WhatsApp number"}>
+              aria-label={platform === "instagram" ? "Filter by Instagram account" : platform === "messenger" ? "Filter by Facebook Page" : platform === "webchat" ? "Filter by web-chat site" : "Filter by WhatsApp number"}>
               <option value="">{platform === "instagram" ? "All accounts" : platform === "messenger" ? "All Pages" : platform === "webchat" ? "All sites" : "All numbers"}</option>
               {platformChannels.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
@@ -489,7 +780,7 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
           {/* A pinned member's inbox is a subset by design. Saying so stops it
               reading as missing data — the failure mode this whole split risks. */}
           {scopedTeam && (
-            <p className="text-[11px] text-blue-700 bg-blue-50 rounded-control px-2.5 py-1.5">
+            <p className="text-[12px] text-blue-800 bg-blue-50 rounded-control px-2.5 py-1.5">
               Showing the <b>{TEAM_SHORT[scopedTeam]}</b> team&apos;s numbers only. Other teams&apos; chats are handled in their own inbox.
             </p>
           )}
@@ -498,68 +789,112 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
               configuration of its own. */}
           {stageNames.length > 0 && (
             <select className={`${inp} w-full !py-1.5 text-xs`} value={stageFilter} onChange={e => { setStageFilter(e.target.value); setSelected(null); }}
-              title={`Show only ${vocab.lead.many.toLowerCase()} sitting at one ${vocab.pipeline.one.toLowerCase()} stage`}>
+              aria-label={`Show only ${vocab.lead.many.toLowerCase()} sitting at one ${vocab.pipeline.one.toLowerCase()} stage`}>
               <option value="">All stages</option>
               {stageNames.map(n => <option key={n} value={n}>Stage: {n}</option>)}
               <option value="__none">No stage set</option>
             </select>
           )}
-          <div className="flex gap-1 flex-wrap">
-            {([["all", "All"], ["needs_reply", "Needs reply"], ["escalated", "Escalated"], ["bot_off", "Human"]] as const).map(([k, label]) => (
-              <button key={k} onClick={() => setFilter(k)} className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${filter === k ? "bg-ink-950 text-white" : "bg-canvas text-ink-400 hover:text-ink-600"}`}>{label}</button>
+          {/* Who needs to act. One scrolling row on a phone. */}
+          <div role="group" aria-label="Show" className="flex gap-1.5 overflow-x-auto md:flex-wrap -mx-1 px-1 pb-0.5 [scrollbar-width:none]">
+            {INBOX_FILTERS.map(f => (
+              <button key={f.key} aria-pressed={filter === f.key} onClick={() => setFilter(f.key)}
+                className={`shrink-0 inline-flex items-center gap-1 min-h-8 px-3 rounded-full text-[12px] font-bold whitespace-nowrap border transition-colors ${filter === f.key ? "bg-ink-950 border-ink-950 text-white" : "bg-white border-line text-ink-600 hover:text-ink-900 hover:border-ink-300"}`}>
+                {f.label}
+                {loaded && <span className={`tabular-nums ${filter === f.key ? "text-white/75" : "text-ink-400"}`}>{fmtNum(counts[f.key])}</span>}
+              </button>
             ))}
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto">
-          {visible.map(c => (
-            <button key={c.id} onClick={() => setSelected(c.id)}
-              className={`w-full flex items-start gap-3 px-4 py-3 text-left border-b border-line/60 transition-colors ${selected === c.id ? "bg-brand-50" : "hover:bg-canvas"}`}>
+        <div ref={listRef} className="flex-1 overflow-y-auto overscroll-contain">
+          {/* A refresh that failed after the list had loaded: keep what we had, say so. */}
+          {loaded && listError && (
+            <div role="alert" className="flex items-center gap-2 px-4 py-2 text-[12px] text-amber-900 bg-amber-50 border-b border-amber-200">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" aria-hidden />
+              <span className="flex-1">Couldn&apos;t refresh the list. {fmtUpdated(updatedAt, now)}.</span>
+              <button onClick={() => void retryList()} disabled={retrying} className="shrink-0 min-h-8 px-2.5 rounded-control border border-amber-300 bg-white font-bold hover:bg-amber-100 disabled:opacity-60">{retrying ? "Retrying…" : "Retry"}</button>
+            </div>
+          )}
+          {!loaded && !listError && <ListSkeleton />}
+          {!loaded && listError && (
+            <div role="alert" className="flex flex-col items-center text-center gap-3 px-6 py-12">
+              <div className="w-12 h-12 rounded-full bg-red-50 text-red-700 flex items-center justify-center"><AlertTriangle className="w-5 h-5" aria-hidden /></div>
+              <div>
+                <p className="text-sm font-bold text-ink-900">Couldn&apos;t load your chats</p>
+                <p className="text-[13px] text-ink-600 mt-1">{listError}</p>
+              </div>
+              <button onClick={() => void retryList()} disabled={retrying} className="min-h-10 px-4 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-sm font-bold disabled:opacity-60 inline-flex items-center gap-1.5">
+                {retrying ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" aria-hidden /> : <RotateCcw className="w-4 h-4" aria-hidden />} Retry
+              </button>
+            </div>
+          )}
+          {loaded && visible.map(c => {
+            const awaiting = !!c.needsReply;
+            const wait = awaiting ? waitInfo(c.lastInboundAt, refs.replyTarget, now) : null;
+            const mine = isMine(c.assignedTo, refs.me);
+            const name = contactDisplayName(c);
+            return (
+            <button key={c.id} data-inbox-row data-id={c.id} onClick={() => openChat(c.id)}
+              aria-current={selected === c.id ? "true" : undefined}
+              className={`w-full flex items-start gap-3 px-4 py-3 text-left border-b border-line/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500 ${selected === c.id ? "bg-brand-50" : "hover:bg-canvas"}`}>
               <div className="relative shrink-0 mt-0.5">
-                <ConvAvatar url={c.avatarUrl} label={contactDisplayName(c)} size={36} />
+                <ConvAvatar url={c.avatarUrl} label={name} size={40} />
                 <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-white border border-line flex items-center justify-center" title={c.platform === "instagram" ? "Instagram" : c.platform === "messenger" ? "Messenger" : c.platform === "webchat" ? "Web chat" : "WhatsApp"}>
-                  {c.platform === "instagram" ? <Instagram className="w-2.5 h-2.5 text-pink-600" /> : c.platform === "messenger" ? <Facebook className="w-2.5 h-2.5 text-blue-600" /> : c.platform === "webchat" ? <MessageSquare className="w-2.5 h-2.5 text-brand-600" /> : <MessageCircle className="w-2.5 h-2.5 text-green-600" />}
+                  {c.platform === "instagram" ? <Instagram className="w-2.5 h-2.5 text-pink-600" aria-hidden /> : c.platform === "messenger" ? <Facebook className="w-2.5 h-2.5 text-blue-600" aria-hidden /> : c.platform === "webchat" ? <MessageSquare className="w-2.5 h-2.5 text-brand-600" aria-hidden /> : <MessageCircle className="w-2.5 h-2.5 text-green-600" aria-hidden />}
                 </span>
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-[13px] font-semibold text-ink-900 truncate">{contactDisplayName(c)}</p>
+                  <p className={`text-[14px] truncate ${awaiting ? "font-bold text-ink-950" : "font-medium text-ink-800"}`}>
+                    {awaiting && <span aria-hidden className="inline-block w-2 h-2 rounded-full bg-brand-600 mr-1.5 align-middle" />}
+                    {name}
+                    <span className="sr-only">{awaiting ? ", awaiting a reply" : ""}, on {channelShort(contactChannel(c))}</span>
+                  </p>
                   {/* Whether THIS chat's messages are reaching LeadSquared. Hidden
                       entirely when LeadSquared isn't configured, so a workspace
                       that doesn't use it sees no unexplained dots. */}
                   {crmOn && <CrmChatDot status={crmStatusFor(c, crmChats)} lastError={crmErr} />}
-                  <span className="text-[10px] text-ink-400 shrink-0">{timeAgo(lastTouch(c))}</span>
+                  <span className="text-[12px] text-ink-500 shrink-0 tabular-nums">{shortAgo(lastTouch(c), now)}</span>
                 </div>
-                <p className="text-[12px] text-ink-400 truncate">{c.lastMessage ?? "—"}</p>
-                <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                  {c.needsReply && <span className="w-2 h-2 rounded-full bg-brand-500" title="awaiting reply" />}
-                  {c.status === "escalated" && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-red-50 text-red-600">ESCALATED</span>}
-                  {!c.botEnabled && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-canvas text-ink-400">BOT OFF</span>}
+                <p className={`text-[13px] truncate ${awaiting ? "text-ink-800" : "text-ink-500"}`}>{c.lastMessage ?? "—"}</p>
+                <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                  {wait && <WaitChip info={wait} />}
+                  {awaiting && !wait && <StatusChip icon={<Clock />}>Awaiting reply</StatusChip>}
+                  {c.status === "escalated" && <StatusChip tone="red" icon={<UserRound />}>Needs a person</StatusChip>}
+                  {!c.botEnabled && <StatusChip icon={<CirclePause />} title="The AI won't reply in this chat until it is resumed">AI paused</StatusChip>}
                   <LeadPill lead={c.lead} compact />
                   {stages[c.phone] && (
-                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
-                      style={{ backgroundColor: `${stages[c.phone].color ?? "#64748b"}1a`, color: stages[c.phone].color ?? "#64748b" }}
-                      title={`${vocab.pipeline.one} stage: ${stages[c.phone].name}`}>{stages[c.phone].name.toUpperCase()}</span>
+                    <span className="text-[12px] font-semibold px-2 py-0.5 rounded-full"
+                      style={{ backgroundColor: `${stages[c.phone].color ?? "#64748b"}1a`, color: stages[c.phone].color ?? "#475569" }}
+                      title={`${vocab.pipeline.one} stage: ${stages[c.phone].name}`}>{stages[c.phone].name}</span>
                   )}
-                  {c.assignedTo && <span className="text-[9px] font-bold text-brand-700 truncate">@{c.assignedTo}</span>}
+                  {c.assignedTo && (
+                    <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-brand-800 min-w-0" title={`Assigned to ${c.assignedTo}`}>
+                      <UserCheck className="w-3.5 h-3.5 shrink-0" aria-hidden /><span className="sr-only">Assigned to </span><span className="truncate">{mine ? "You" : c.assignedTo}</span>
+                    </span>
+                  )}
                 </div>
               </div>
             </button>
-          ))}
-          {visible.length === 0 && (
-            (q || filter !== "all")
-              ? <EmptyState mood="searching" title="No conversations match this filter"
-                  body="Try clearing the search, or switch back to All." />
+            );
+          })}
+          {loaded && visible.length === 0 && (
+            (q || filter !== "all" || platform !== "all" || stageFilter || channelFilter)
+              ? <EmptyState mood="searching" title={filter === "waiting" && !q ? "Nobody is waiting for you" : "No conversations match"}
+                  body={filter !== "all" ? `Nothing under “${filterLabel}” right now. Clear the search or switch back to All.` : "Try clearing the search, or switch back to All."}
+                  action={<button onClick={() => { setSearch(""); setFilter("all"); setPlatform("all"); setStageFilter(""); setChannelFilter(null); }} className="min-h-10 px-4 rounded-control border border-line bg-white text-sm font-bold text-ink-800 hover:bg-canvas">Show all chats</button>} />
               : <EmptyState mood="sleeping" title="No conversations yet"
                   body="When someone messages one of your connected channels, the chat lands here." />
           )}
         </div>
       </aside>
 
-      {selected
-        ? <ChatView key={selected} id={selected} onChanged={load} goTo={goTo} crm={crmOn ? crmChats : null} crmError={crmErr} />
-        : (
-          <div className="flex-1 flex flex-col items-center justify-center gap-3 text-ink-400 bg-canvas/40">
-            <div className="w-14 h-14 rounded-full bg-brand-50 text-brand-700 flex items-center justify-center"><MessageSquare className="w-6 h-6" /></div>
+      {selected && showThread
+        ? <ChatView key={selected} id={selected} onChanged={load} goTo={goTo} crm={crmOn ? crmChats : null} crmError={crmErr}
+            refs={refs} now={now} onBack={twoPane ? null : backToList} detailsColumn={threePane} />
+        : showThread && (
+          <div className="flex-1 flex flex-col items-center justify-center gap-3 text-ink-500 bg-canvas/40">
+            <div className="w-14 h-14 rounded-full bg-brand-50 text-brand-700 flex items-center justify-center"><MessageSquare className="w-6 h-6" aria-hidden /></div>
             <p className="text-sm font-medium">Select a conversation to start chatting</p>
           </div>
         )}
@@ -621,7 +956,7 @@ function TemplateComposer({ channelId, busy, onSend, onClose }: {
     <div className="border border-line rounded-control bg-canvas/60 p-3 space-y-2">
       <div className="flex items-center justify-between">
         <p className="text-[11px] font-bold text-ink-600 uppercase tracking-[0.06em] flex items-center gap-1.5"><LayoutTemplate className="w-3.5 h-3.5" /> Send approved template</p>
-        <button onClick={onClose} className="text-ink-400 hover:text-ink-900"><X className="w-4 h-4" /></button>
+        <button onClick={onClose} aria-label="Close templates" className="w-8 h-8 -m-1.5 flex items-center justify-center rounded-full text-ink-500 hover:text-ink-900 hover:bg-white"><X className="w-4 h-4" aria-hidden /></button>
       </div>
       {loading ? (
         <p className="text-[11px] text-ink-400 flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading templates…</p>
@@ -641,7 +976,7 @@ function TemplateComposer({ channelId, busy, onSend, onClose }: {
             </div>
           )}
           {selected && <p className="text-[12px] text-ink-600 bg-white border border-line rounded-control px-2.5 py-1.5 whitespace-pre-wrap break-words">{preview()}</p>}
-          {hiddenCount > 0 && <p className="text-[10px] text-ink-400">{hiddenCount} template{hiddenCount > 1 ? "s" : ""} with media headers hidden — send those from the Broadcast tab.</p>}
+          {hiddenCount > 0 && <p className="text-[12px] text-ink-500">{hiddenCount} template{hiddenCount > 1 ? "s" : ""} with media headers hidden — send those from the Broadcast tab.</p>}
           <div className="flex items-center justify-end">
             <button
               onClick={() => selected && onSend({ templateName: selected.name, languageCode: selected.language, bodyParams: vars.slice(0, varCount).map(v => v.trim()), preview: preview() })}
@@ -656,10 +991,26 @@ function TemplateComposer({ channelId, busy, onSend, onClose }: {
   );
 }
 
-// Middle thread + right contact-info pane for one conversation.
-function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChanged: () => void; goTo: (t: Tab) => void; crm?: CrmChatMap | null; crmError?: string }) {
+// A reply shown in the thread the moment it is sent, before the server has it.
+type PendingReply = { tempId: string; body: string; buttons: string[]; createdAt: string; state: "sending" | "failed"; error?: string };
+
+// Middle thread + contact details for one conversation. `onBack` is set on a
+// phone, where the thread replaces the list; `detailsColumn` puts the details
+// in a third column (wide screens) instead of a side panel.
+function ChatView({ id, onChanged, goTo, crm, crmError, refs, now, onBack, detailsColumn }: {
+  id: string; onChanged: () => unknown; goTo: (t: Tab) => void; crm?: CrmChatMap | null; crmError?: string;
+  refs: InboxRefs; now: number; onBack: (() => void) | null; detailsColumn: boolean;
+}) {
   const { vocab } = useVocab();
   const [conv, setConv] = useState<Conversation | null>(null);
+  const [thread, setThread] = useState<"loading" | "ok" | "error">("loading");
+  const [threadError, setThreadError] = useState("");
+  const [retryingThread, setRetryingThread] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
+  const [showMore, setShowMore] = useState(false);
+  const [pending, setPending] = useState<PendingReply[]>([]);
+  const pendingRef = useRef(pending);
+  pendingRef.current = pending;
   const [showProfile, setShowProfile] = useState(false);
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   // Per-message channel log: when the customer has talked to MORE THAN ONE of
@@ -682,7 +1033,6 @@ function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChange
   // Broadcast batches this lead is in, so an agent can add them to one straight
   // from the chat instead of going hunting in Contacts.
   const [leadBatches, setLeadBatches] = useState<{ id: string; name: string }[]>([]);
-  const [allBatches, setAllBatches] = useState<{ id: string; name: string; kind: string; size: number }[]>([]);
   const [batchBusy, setBatchBusy] = useState(false);
   // The customer is free to message any of our numbers, but ownership is sticky
   // — so flag it when their latest message landed somewhere other than the
@@ -690,21 +1040,20 @@ function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChange
   const lastChannelMsg = [...messages].reverse().find(m => m.channelId);
   const offOwnerChannel = conv?.channelId && lastChannelMsg?.channelId && lastChannelMsg.channelId !== conv.channelId
     ? lastChannelMsg.channelId : null;
-  const [reply, setReply] = useState("");
+  // The draft is kept per chat for this visit, so Back on a phone doesn't lose it.
+  const [reply, setReplyState] = useState(() => drafts.get(id) ?? "");
+  const setReply = (v: string) => { setReplyState(v); if (v) drafts.set(id, v); else drafts.delete(id); };
   const [busy, setBusy] = useState(false);
   const [showButtons, setShowButtons] = useState(false);
   const [btns, setBtns] = useState<string[]>(["", "", ""]);
-  const [quickReplies, setQuickReplies] = useState<{ id: string; shortcut: string; body: string }[]>([]);
   const [showQuick, setShowQuick] = useState(false);
   const [labelInput, setLabelInput] = useState("");
-  const [team, setTeam] = useState<{ name: string; email: string; title: string }[]>([]);
-  const [aiPrompts, setAiPrompts] = useState<{ id: string; name: string; active: boolean }[]>([]);
-  const [canned, setCanned] = useState<{ id: string; label: string; stage?: string }[]>([]);
+  // Fetched once by the inbox, not once per opened chat.
+  const { quickReplies, team, aiPrompts, canned, aiAgents, allBatches } = refs;
   const [showAssist, setShowAssist] = useState(false);
   const [assisting, setAssisting] = useState(false);
   const [drafting, setDrafting] = useState(false);
   const [showTools, setShowTools] = useState(false);
-  const [aiAgents, setAiAgents] = useState<{ id: string; name: string; active: boolean }[]>([]);
   const [actError, setActError] = useState("");
   // What the last hand-over said back — which number took the lead, and whether it
   // has left this person's inbox. Shown, not swallowed: a chat that leaves the
@@ -719,13 +1068,24 @@ function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChange
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const prevCount = useRef(0);
 
-  const load = useCallback(() => {
-    fetch(`/api/admin/conversations/${id}`).then(r => r.json()).then(d => { setConv(d.conversation ?? null); setMessages(d.messages ?? []); setOwnerHistory(d.ownerHistory ?? []); setLeadBatches(d.batches ?? []); }).catch(() => {});
+  // A failed first load shows an error with Retry; a failed poll after that
+  // keeps the thread on screen and says so above the reply box.
+  const load = useCallback(async () => {
+    let status: number | null = null;
+    try {
+      const r = await fetch(`/api/admin/conversations/${id}`);
+      status = r.status;
+      if (!r.ok) throw new Error(String(r.status));
+      const d = await r.json();
+      setConv(d.conversation ?? null); setMessages(d.messages ?? []); setOwnerHistory(d.ownerHistory ?? []); setLeadBatches(d.batches ?? []);
+      setThread("ok"); setThreadError("");
+    } catch {
+      setThreadError(fetchProblem(status));
+      setThread(t => (t === "ok" ? "ok" : "error"));
+    }
   }, [id]);
-  useEffect(() => { load(); }, [load]);
-  useEffect(() => {
-    fetch("/api/admin/batches").then(r => r.json()).then(d => setAllBatches(d.batches ?? [])).catch(() => {});
-  }, []);
+  useEffect(() => { void load(); }, [load]);
+  const retryThread = async () => { setRetryingThread(true); try { await load(); } finally { setRetryingThread(false); } };
 
   async function leadBatchAction(action: "addToBatch" | "removeFromBatch", batchId: string, label: string) {
     setBatchBusy(true); setActError("");
@@ -745,7 +1105,7 @@ function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChange
   // Live thread: poll every 4s so inbound messages, AI replies, and flow
   // sends appear without a manual refresh.
   useEffect(() => {
-    const t = setInterval(() => { if (!document.hidden) load(); }, 4_000);
+    const t = setInterval(() => { if (!document.hidden) void load(); }, 4_000);
     return () => clearInterval(t);
   }, [load]);
   // Contact card (tags + attributes collected by flows/forms/AI functions).
@@ -761,18 +1121,16 @@ function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChange
     setCrmSourceSnap(null);
     fetch(`/api/admin/contacts/crm?phone=${encodeURIComponent(key)}`).then(r => r.json()).then(setCrmSourceSnap).catch(() => {});
   }, [conv?.phone, conv?.leadPhone]);
-  // Stick to the bottom when new messages arrive (jump on first paint).
+  // Stick to the bottom when new messages arrive (jump on first paint), and
+  // when a reply is sent. No smooth scroll for people who asked for less motion.
+  const shownCount = messages.length + pending.length;
   useEffect(() => {
-    if (messages.length !== prevCount.current) {
-      bottomRef.current?.scrollIntoView({ behavior: prevCount.current === 0 ? "auto" : "smooth" });
-      prevCount.current = messages.length;
+    if (shownCount !== prevCount.current) {
+      const calm = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      bottomRef.current?.scrollIntoView?.({ behavior: prevCount.current === 0 || calm ? "auto" : "smooth", block: "end" });
+      prevCount.current = shownCount;
     }
-  }, [messages.length]);
-  useEffect(() => { fetch("/api/admin/quick-replies").then(r => r.json()).then(d => setQuickReplies(d.quickReplies ?? [])).catch(() => {}); }, []);
-  useEffect(() => { fetch("/api/admin/team/members").then(r => r.json()).then(d => setTeam(d.members ?? [])).catch(() => {}); }, []);
-  useEffect(() => { fetch("/api/admin/ai/prompts").then(r => r.json()).then(d => setAiPrompts((d.prompts ?? []).filter((p: { active: boolean }) => p.active))).catch(() => {}); }, []);
-  useEffect(() => { fetch("/api/admin/canned").then(r => r.json()).then(d => setCanned(d.canned ?? [])).catch(() => {}); }, []);
-  useEffect(() => { fetch("/api/admin/ai/agents").then(r => r.json()).then(d => setAiAgents(d.agents ?? [])).catch(() => {}); }, []);
+  }, [shownCount]);
 
   async function applyAssist(promptId: string) {
     if (!reply.trim()) return;
@@ -843,12 +1201,43 @@ function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChange
     } catch { setActError("Could not reach the server"); return false; }
     finally { setBusy(false); }
   }
-  async function sendReply() {
-    if (!reply.trim()) return;
-    const buttons = btns.map(b => b.trim()).filter(Boolean);
-    // Keep the draft on failure so the agent can retry without retyping.
-    const ok = await act({ action: "reply", body: reply.trim(), ...(buttons.length ? { buttons } : {}) });
-    if (ok) { setReply(""); setBtns(["", "", ""]); setShowButtons(false); }
+  // Optimistic send: the reply appears in the thread at once as "Sending…".
+  // On success the server's copy replaces it; on failure it stays, marked
+  // "Not sent", with Retry and Edit (which puts the text back in the box) —
+  // nothing typed is ever lost.
+  async function sendReply(retry?: PendingReply) {
+    const body = retry ? retry.body : reply.trim();
+    if (!body) return;
+    // A retry only for a reply still marked "Not sent" — the toast's Retry and
+    // the bubble's can't both send it.
+    if (retry && !pendingRef.current.some(x => x.tempId === retry.tempId && x.state === "failed")) return;
+    const buttons = retry ? retry.buttons : btns.map(b => b.trim()).filter(Boolean);
+    const p: PendingReply = retry
+      ? { ...retry, state: "sending", error: undefined }
+      : { tempId: `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, body, buttons, createdAt: new Date().toISOString(), state: "sending" };
+    setPending(list => (retry ? list.map(x => (x.tempId === p.tempId ? p : x)) : [...list, p]));
+    if (!retry) { setReply(""); setBtns(["", "", ""]); setShowButtons(false); }
+    setActError("");
+    try {
+      const res = await fetch(`/api/admin/conversations/${id}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reply", body, ...(buttons.length ? { buttons } : {}) }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error ?? `The server answered ${res.status}`);
+      await load();
+      setPending(list => list.filter(x => x.tempId !== p.tempId));
+      void onChanged();
+    } catch (e) {
+      const why = e instanceof Error && e.message !== "Failed to fetch" ? e.message : "Couldn't reach the server";
+      setPending(list => list.map(x => (x.tempId === p.tempId ? { ...x, state: "failed", error: why } : x)));
+      toast({ tone: "error", text: `Message not sent. ${why}`, action: { label: "Retry", onClick: () => void sendReply({ ...p, state: "failed" }) } });
+    }
+  }
+  function editFailed(p: PendingReply) {
+    setPending(list => list.filter(x => x.tempId !== p.tempId));
+    setReply(reply.trim() ? `${reply}\n${p.body}` : p.body);
+    if (p.buttons.length) { setBtns([0, 1, 2].map(i => p.buttons[i] ?? "")); setShowButtons(true); }
   }
   // Send a photo/video/file to the customer: upload to public storage, then send
   // it via WhatsApp/IG. Any text in the box rides along as the caption (WhatsApp).
@@ -885,41 +1274,111 @@ function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChange
   return (
     <>
       {/* ── Middle: thread ── */}
-      <section className="flex-1 flex flex-col min-w-0 min-h-0">
-        <div className="h-14 shrink-0 px-5 border-b border-line flex items-center justify-between gap-3 bg-white">
-          <div className="min-w-0 flex items-center gap-3">
-            <ConvAvatar url={conv?.avatarUrl} label={conv ? contactDisplayName(conv) : "?"} size={36} />
-            <div className="min-w-0">
-              <p className="text-sm font-bold text-ink-900 truncate leading-tight">{conv ? contactDisplayName(conv) : "Conversation"}</p>
-              {conv && <p className={`text-[11px] text-ink-400 leading-tight truncate ${subtitleIsPhone(conv) ? "font-mono" : ""}`}>{contactSubtitle(conv)}</p>}
+      <section aria-label={conv ? `Chat with ${contactDisplayName(conv)}` : "Chat"} className="flex-1 flex flex-col min-w-0 min-h-0">
+        <div className="shrink-0 border-b border-line bg-white">
+          <div className="min-h-14 px-2 md:px-5 py-2 flex items-center justify-between gap-2">
+            <div className="min-w-0 flex items-center gap-2 md:gap-3">
+              {onBack && (
+                <button type="button" onClick={onBack} aria-label="Back to chats"
+                  className="shrink-0 w-11 h-11 -ml-1 rounded-full flex items-center justify-center text-ink-700 hover:bg-canvas">
+                  <ArrowLeft className="w-5 h-5" aria-hidden />
+                </button>
+              )}
+              <ConvAvatar url={conv?.avatarUrl} label={conv ? contactDisplayName(conv) : "?"} size={36} />
+              <div className="min-w-0">
+                <h2 className="text-sm font-bold text-ink-900 truncate leading-tight">{conv ? contactDisplayName(conv) : "Conversation"}</h2>
+                {conv && <p className={`text-[12px] text-ink-500 leading-tight truncate ${subtitleIsPhone(conv) ? "font-mono" : ""}`}>{contactSubtitle(conv)}</p>}
+              </div>
             </div>
-            {conv && <span className={statusBadge(conv.status)}>{conv.status}</span>}
-            {/* Which number/account/Page this chat lives on — replies always
-                leave from it, so the agent should see it at a glance. */}
-            {conv?.channelId && <ChannelNameBadge channelId={conv.channelId} />}
-            {/* Has this specific conversation landed on the lead's LeadSquared
-                timeline? The bar above answers it for the whole inbox; sales
-                asks it about the person they're looking at. */}
-            {conv && crm && <CrmChatPill status={crmStatusFor(conv, crm)} lastError={crmError ?? ""} />}
-            {conv && <LeadPill lead={conv.lead} />}
+            {conv && (
+              <div className="flex items-center gap-1.5 shrink-0 text-xs">
+                {/* Wide screens: the two chat switches as buttons. */}
+                <button disabled={busy} onClick={() => act({ action: "bot", enabled: !conv.botEnabled })}
+                  className={`hidden xl:inline-flex items-center gap-1.5 min-h-9 px-2.5 rounded-control border font-semibold ${conv.botEnabled ? "border-line text-ink-700 hover:bg-canvas" : "border-brand-700 bg-brand-700 text-white"}`}>
+                  {conv.botEnabled ? <><CirclePause className="w-3.5 h-3.5" aria-hidden /> Pause AI for this chat</> : <><Bot className="w-3.5 h-3.5" aria-hidden /> Resume AI</>}
+                </button>
+                {conv.status !== "escalated"
+                  ? <button disabled={busy} onClick={() => act({ action: "status", status: "escalated" })} title="Flag this chat for a person on your team" className="hidden xl:inline-flex items-center gap-1.5 min-h-9 px-2.5 rounded-control border border-red-200 text-red-700 font-semibold hover:bg-red-50"><UserRound className="w-3.5 h-3.5" aria-hidden /> Needs a person</button>
+                  : <button disabled={busy} onClick={() => act({ action: "status", status: "active" })} title="A person has it — clear the flag" className="hidden xl:inline-flex items-center gap-1.5 min-h-9 px-2.5 rounded-control border border-line text-ink-700 font-semibold hover:bg-canvas"><Check className="w-3.5 h-3.5" aria-hidden /> Mark handled</button>}
+                {/* Phones and tablets: the same two switches in a menu, so the name keeps its room. */}
+                <div className="relative xl:hidden">
+                  <button type="button" onClick={() => setShowMore(o => !o)} aria-label="Chat actions" aria-haspopup="menu" aria-expanded={showMore}
+                    className="w-11 h-11 rounded-full flex items-center justify-center text-ink-700 hover:bg-canvas">
+                    <EllipsisVertical className="w-5 h-5" aria-hidden />
+                  </button>
+                  {showMore && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setShowMore(false)} aria-hidden />
+                      <div role="menu" aria-label="Chat actions" className="absolute right-0 top-full mt-1 z-20 w-60 bg-white border border-line rounded-card shadow-lg p-1">
+                        <button role="menuitem" disabled={busy} onClick={() => { setShowMore(false); void act({ action: "bot", enabled: !conv.botEnabled }); }}
+                          className="w-full min-h-11 flex items-center gap-2.5 px-3 rounded-lg text-sm text-ink-800 hover:bg-canvas text-left">
+                          {conv.botEnabled ? <><CirclePause className="w-4 h-4 text-ink-500" aria-hidden /> Pause AI for this chat</> : <><Bot className="w-4 h-4 text-ink-500" aria-hidden /> Resume AI</>}
+                        </button>
+                        <button role="menuitem" disabled={busy} onClick={() => { setShowMore(false); void act({ action: "status", status: conv.status === "escalated" ? "active" : "escalated" }); }}
+                          className="w-full min-h-11 flex items-center gap-2.5 px-3 rounded-lg text-sm text-ink-800 hover:bg-canvas text-left">
+                          {conv.status === "escalated" ? <><Check className="w-4 h-4 text-ink-500" aria-hidden /> Mark handled</> : <><UserRound className="w-4 h-4 text-red-600" aria-hidden /> Needs a person</>}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+                {!detailsColumn && (
+                  <button type="button" onClick={() => setShowDetails(true)} aria-label="Contact details" aria-expanded={showDetails}
+                    className="inline-flex items-center justify-center gap-1.5 w-11 h-11 md:w-auto md:h-auto md:min-h-9 md:px-2.5 rounded-full md:rounded-control md:border md:border-line text-ink-700 font-semibold hover:bg-canvas">
+                    <PanelRight className="w-5 h-5 md:w-3.5 md:h-3.5" aria-hidden /><span className="hidden md:inline">Details</span>
+                  </button>
+                )}
+              </div>
+            )}
           </div>
-          {conv && (
-            <div className="flex items-center gap-2 shrink-0 text-xs">
-              <button disabled={busy} onClick={() => act({ action: "bot", enabled: !conv.botEnabled })}
-                className={`px-2.5 py-1.5 rounded-control border font-semibold ${conv.botEnabled ? "border-line text-ink-600 hover:bg-canvas" : "border-brand-700 bg-brand-700 text-white"}`}>
-                {conv.botEnabled ? "Turn bot off" : "Turn bot on"}
-              </button>
-              {conv.status !== "escalated"
-                ? <button disabled={busy} onClick={() => act({ action: "status", status: "escalated" })} className="px-2.5 py-1.5 rounded-control border border-red-200 text-red-600 font-semibold hover:bg-red-50">Escalate</button>
-                : <button disabled={busy} onClick={() => act({ action: "status", status: "active" })} className="px-2.5 py-1.5 rounded-control border border-line text-ink-600 font-semibold hover:bg-canvas">Mark active</button>}
-            </div>
-          )}
+          {/* Where this chat stands, in words: waiting time, who it needs, which
+              number it is on, CRM sync, the AI's read of the lead. */}
+          {conv && (() => {
+            const wait = conv.needsReply ? waitInfo(conv.lastInboundAt, refs.replyTarget, now) : null;
+            return (
+              <div className="px-3 md:px-5 pb-2 flex items-center gap-1.5 overflow-x-auto md:flex-wrap [scrollbar-width:none] [&>*]:shrink-0">
+                {wait && <WaitChip info={wait} />}
+                {conv.status === "escalated" && <StatusChip tone="red" icon={<UserRound />}>Needs a person</StatusChip>}
+                {conv.status === "paused" && <StatusChip icon={<CirclePause />}>Paused</StatusChip>}
+                {!conv.botEnabled && <StatusChip icon={<CirclePause />} title="The AI won't reply in this chat until it is resumed">AI paused</StatusChip>}
+                {/* Which number/account/Page this chat lives on — replies always
+                    leave from it, so the agent should see it at a glance. */}
+                {conv.channelId && <ChannelNameBadge channelId={conv.channelId} />}
+                {/* Has this specific conversation landed on the lead's LeadSquared
+                    timeline? The bar above answers it for the whole inbox; sales
+                    asks it about the person they're looking at. */}
+                {crm && <CrmChatPill status={crmStatusFor(conv, crm)} lastError={crmError ?? ""} />}
+                <LeadPill lead={conv.lead} />
+              </div>
+            );
+          })()}
         </div>
 
-        {conv?.lead?.reason && <div className="px-5 py-1.5 border-b border-line bg-white"><LeadReason lead={conv.lead} /></div>}
+        {conv?.lead?.reason && <div className="px-3 md:px-5 py-1.5 border-b border-line bg-white"><LeadReason lead={conv.lead} /></div>}
         {conv && <ApprovalCard conversationId={conv.id} onDecided={() => { load(); onChanged(); }} />}
 
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-1.5 bg-canvas/60">
+        <div className="flex-1 overflow-y-auto overscroll-contain px-3 md:px-6 py-4 space-y-1.5 bg-canvas/60">
+          {thread === "loading" && (
+            <div aria-busy="true" className="space-y-3 animate-pulse motion-reduce:animate-none">
+              <span className="sr-only">Loading this chat…</span>
+              {["w-2/3", "w-1/2 ml-auto", "w-3/5", "w-2/5 ml-auto"].map((w, i) => <div key={i} aria-hidden className={`h-10 rounded-2xl bg-white border border-line ${w}`} />)}
+            </div>
+          )}
+          {thread === "error" && (
+            <div role="alert" className="flex flex-col items-center text-center gap-3 py-12">
+              <div className="w-12 h-12 rounded-full bg-red-50 text-red-700 flex items-center justify-center"><AlertTriangle className="w-5 h-5" aria-hidden /></div>
+              <div>
+                <p className="text-sm font-bold text-ink-900">Couldn&apos;t load this chat</p>
+                <p className="text-[13px] text-ink-600 mt-1">{threadError}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => void retryThread()} disabled={retryingThread} className="min-h-10 px-4 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-sm font-bold disabled:opacity-60 inline-flex items-center gap-1.5">
+                  {retryingThread ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" aria-hidden /> : <RotateCcw className="w-4 h-4" aria-hidden />} Retry
+                </button>
+                {onBack && <button onClick={onBack} className="min-h-10 px-4 rounded-control border border-line bg-white text-sm font-bold text-ink-800 hover:bg-canvas">Back to chats</button>}
+              </div>
+            </div>
+          )}
           {messages.map((m, i) => {
             // WhatsApp-style centered day divider whenever the calendar day changes.
             const dateDivider = startsNewDay(messages, i)
@@ -955,15 +1414,15 @@ function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChange
               <div className="relative shrink-0 self-end mb-1">
                 <button
                   onClick={() => setReactMsgId(reactMsgId === m.id ? null : m.id)}
-                  title="React"
-                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-full text-ink-400 hover:text-brand-700 hover:bg-white"
+                  aria-label="React to this message" aria-expanded={reactMsgId === m.id}
+                  className="md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100 transition-opacity w-8 h-8 flex items-center justify-center rounded-full text-ink-400 hover:text-brand-700 hover:bg-white"
                 >
-                  <SmilePlus className="w-4 h-4" />
+                  <SmilePlus className="w-4 h-4" aria-hidden />
                 </button>
                 {reactMsgId === m.id && (
                   <div className={`absolute z-10 bottom-8 ${m.role === "user" ? "left-0" : "right-0"} flex items-center gap-0.5 bg-white border border-line rounded-full shadow-lg px-1.5 py-1`}>
                     {REACTION_EMOJIS.map(e => (
-                      <button key={e} onClick={() => reactTo(m.metaMessageId!, e)} className="text-lg leading-none p-1 rounded-full hover:bg-canvas hover:scale-125 transition-transform">{e}</button>
+                      <button key={e} onClick={() => reactTo(m.metaMessageId!, e)} aria-label={`React with ${e}`} className="text-lg leading-none w-9 h-9 flex items-center justify-center rounded-full hover:bg-canvas motion-safe:hover:scale-125 transition-transform">{e}</button>
                     ))}
                   </div>
                 )}
@@ -975,13 +1434,13 @@ function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChange
               <div className={`group flex items-end gap-1 ${m.role === "user" ? "justify-start" : "justify-end"}`}>
                 {m.role !== "user" && reactButton}
                 <div className={`max-w-[78%] sm:max-w-[68%] min-w-[2.75rem] px-3.5 py-2 text-sm shadow-sm rounded-2xl ${m.role === "user" ? "rounded-bl-md" : "rounded-br-md"} ${submitted ? "bg-emerald-50 border border-emerald-200 text-ink-900" : isComment ? (commentIsFb ? "bg-blue-50 border border-blue-200 text-ink-900" : "bg-pink-50 border border-pink-200 text-ink-900") : m.role === "user" ? "bg-white border border-line text-ink-900" : "bg-brand-100 text-ink-900"}`}>
-                  {isComment && <p className={`text-[10px] font-bold mb-0.5 flex items-center gap-1 ${commentIsFb ? "text-blue-600" : "text-pink-600"}`}>{commentIsFb ? <Facebook className="w-3 h-3" /> : <Instagram className="w-3 h-3" />} {m.role === "user" ? "comment" : "comment reply"}</p>}
+                  {isComment && <p className={`text-[11px] font-bold mb-0.5 flex items-center gap-1 ${commentIsFb ? "text-blue-600" : "text-pink-600"}`}>{commentIsFb ? <Facebook className="w-3 h-3" /> : <Instagram className="w-3 h-3" />} {m.role === "user" ? "comment" : "comment reply"}</p>}
                   {isMedia ? (
                     <div className="space-y-1.5">
                       {isImage && <a href={m.mediaUrl!} target="_blank" rel="noreferrer"><img src={m.mediaUrl!} alt="Image attachment (opens full size)" className="rounded-lg max-h-72 max-w-full object-cover" /></a>}
                       {isVideo && <video controls preload="metadata" src={m.mediaUrl!} className="rounded-lg max-h-72 max-w-full" />}
                       {isAudio && <>
-                        <p className="text-[10px] font-bold text-ink-400 flex items-center gap-1"><Mic className="w-3 h-3" /> Voice note</p>
+                        <p className="text-[11px] font-bold text-ink-500 flex items-center gap-1"><Mic className="w-3 h-3" /> Voice note</p>
                         <audio controls preload="none" src={m.mediaUrl!} className="h-10 w-[240px] max-w-full" />
                       </>}
                       {isFile && <a href={m.mediaUrl!} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-brand-700 underline text-[13px] font-semibold"><FileText className="w-4 h-4" /> Download file</a>}
@@ -1008,7 +1467,7 @@ function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChange
                     <p className="whitespace-pre-wrap break-words">{linkify(body)}</p>
                   )}
                   {!contNext && (
-                    <p className={`text-[10px] mt-1 text-right ${m.role === "user" ? "text-ink-400" : "text-brand-900/50"}`}>
+                    <p className={`text-[11px] mt-1 text-right ${m.role === "user" ? "text-ink-500" : "text-brand-900/70"}`}>
                       {m.role === "user" ? "" : m.source === "bot" ? "AI · " : `${vocab.teamMember.one.toLowerCase()} · `}{new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                       {multiChannelThread && channelNote(m) && <span className="ml-1.5 font-semibold opacity-80" title={m.role === "user" ? "The number this message arrived on" : "The number this message was sent from"}>· {channelNote(m)}</span>}
                     </p>
@@ -1019,20 +1478,51 @@ function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChange
               </Fragment>
             );
           })}
-          {messages.length === 0 && <p className="text-center text-ink-400 text-sm py-10">No messages yet.</p>}
+          {thread === "ok" && messages.length === 0 && pending.length === 0 && <p className="text-center text-ink-500 text-sm py-10">No messages yet.</p>}
+          {/* Replies on their way out, shown at once. A server copy that has
+              already landed (the 4s poll can beat the send) hides its twin. */}
+          <div aria-live="polite" className="space-y-1.5">
+            {pending.filter(p => !messages.some(m => m.role === "assistant" && m.source === "agent" && m.body.startsWith(p.body) && Date.parse(m.createdAt) >= Date.parse(p.createdAt) - 60_000)).map(p => (
+              <div key={p.tempId} className="flex justify-end">
+                <div className={`max-w-[78%] sm:max-w-[68%] px-3.5 py-2 text-sm shadow-sm rounded-2xl rounded-br-md text-ink-900 ${p.state === "failed" ? "bg-red-50 border border-red-200" : "bg-brand-100/70"}`}>
+                  <p className="whitespace-pre-wrap break-words">{p.body}</p>
+                  {p.buttons.length > 0 && <p className="mt-1 text-[12px] text-ink-600">Buttons: {p.buttons.join(" · ")}</p>}
+                  {p.state === "sending" ? (
+                    <p className="text-[11px] mt-1 text-right text-brand-900/70 inline-flex w-full justify-end items-center gap-1"><Loader2 className="w-3 h-3 animate-spin motion-reduce:animate-none" aria-hidden /> Sending…</p>
+                  ) : (
+                    <div className="mt-1.5 flex flex-wrap items-center justify-end gap-x-2 gap-y-1 text-[12px]">
+                      <span className="inline-flex items-center gap-1 font-bold text-red-700" title={p.error}><AlertTriangle className="w-3.5 h-3.5" aria-hidden /> Not sent</span>
+                      <button onClick={() => void sendReply(p)} className="min-h-8 px-2.5 rounded-control bg-white border border-red-200 font-bold text-red-700 hover:bg-red-100">Retry</button>
+                      <button onClick={() => editFailed(p)} className="min-h-8 px-2.5 rounded-control bg-white border border-line font-bold text-ink-700 hover:bg-canvas">Edit</button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
           <div ref={bottomRef} />
         </div>
 
-        <div className="px-5 py-3 border-t border-line space-y-2 bg-white">
+        {/* The reply box stays pinned under the thread, and the thread above
+            shrinks for the keyboard. On phones the shell's tab bar below already
+            clears the home indicator; elsewhere the box does. */}
+        <div className="shrink-0 px-3 md:px-5 pt-3 pb-3 md:pb-[max(0.75rem,env(safe-area-inset-bottom))] border-t border-line space-y-2 bg-white max-h-[60dvh] overflow-y-auto">
+          {thread === "ok" && threadError && (
+            <p role="status" className="flex items-center gap-2 text-[12px] text-amber-900 bg-amber-50 border border-amber-200 rounded-control px-3 py-1.5">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" aria-hidden />
+              <span className="flex-1">Couldn&apos;t refresh this chat. New messages may be missing.</span>
+              <button onClick={() => void retryThread()} disabled={retryingThread} className="shrink-0 min-h-8 px-2.5 rounded-control border border-amber-300 bg-white font-bold hover:bg-amber-100 disabled:opacity-60">{retryingThread ? "Retrying…" : "Retry"}</button>
+            </p>
+          )}
           {actError && (
             <p className="flex items-start gap-1.5 text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-control px-3 py-2">
               <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" /> <span>{actError}{/Invalid OAuth|access token|credentials not configured/i.test(actError) ? " — WhatsApp (Meta) credentials are not set yet, so messages can't actually send." : ""}</span>
             </p>
           )}
           {windowClosed && (
-            <div className="text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-control px-3 py-2 flex items-center justify-between gap-2">
+            <div className="text-[12px] font-semibold text-amber-900 bg-amber-50 border border-amber-200 rounded-control px-3 py-2 flex items-center justify-between gap-2">
               <span>⏱ Outside WhatsApp&apos;s 24-hour window — free-form replies won&apos;t deliver. Send an approved template to re-open the chat (a paid, business-initiated message).</span>
-              {!showTemplate && <button onClick={() => setShowTemplate(true)} className="shrink-0 px-2 py-1 rounded-control bg-amber-600 text-white font-bold hover:bg-amber-700">Send template</button>}
+              {!showTemplate && <button onClick={() => setShowTemplate(true)} className="shrink-0 min-h-8 px-2.5 rounded-control bg-amber-700 text-white font-bold hover:bg-amber-800">Send template</button>}
             </div>
           )}
           {showTemplate && conv && (
@@ -1041,22 +1531,22 @@ function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChange
           {showQuick && quickReplies.length > 0 && (
             <div className="flex gap-1.5 flex-wrap max-h-24 overflow-y-auto">
               {quickReplies.map(q => (
-                <button key={q.id} onClick={() => { setReply(q.body); setShowQuick(false); }} title={q.body} className="px-2 py-1 rounded-full border border-line text-[11px] font-bold text-ink-600 hover:border-brand-700">/{q.shortcut}</button>
+                <button key={q.id} onClick={() => { setReply(q.body); setShowQuick(false); }} title={q.body} className="min-h-8 px-2.5 rounded-full border border-line text-[12px] font-bold text-ink-700 hover:border-brand-700">/{q.shortcut}</button>
               ))}
             </div>
           )}
           {showAssist && (
             <div className="flex gap-1.5 flex-wrap">
-              {aiPrompts.length === 0 && <p className="text-[11px] text-ink-400">No AI prompts yet — add them in the AI Hub tab.</p>}
+              {aiPrompts.length === 0 && <p className="text-[12px] text-ink-500">No AI prompts yet — add them in the AI Hub tab.</p>}
               {aiPrompts.map(p => (
-                <button key={p.id} onClick={() => applyAssist(p.id)} disabled={assisting || !reply.trim()} className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-brand-100 text-[11px] font-bold text-brand-700 hover:bg-brand-50 disabled:opacity-40"><Sparkles className="w-3 h-3" /> {p.name}</button>
+                <button key={p.id} onClick={() => applyAssist(p.id)} disabled={assisting || !reply.trim()} className="inline-flex items-center gap-1 min-h-8 px-2.5 rounded-full border border-brand-100 text-[12px] font-bold text-brand-700 hover:bg-brand-50 disabled:opacity-40"><Sparkles className="w-3 h-3" aria-hidden /> {p.name}</button>
               ))}
             </div>
           )}
           {showButtons && (
             <div className="grid grid-cols-3 gap-2">
               {btns.map((b, i) => (
-                <input key={i} className={`${inp} text-xs`} maxLength={20} placeholder={`Button ${i + 1}`} value={b} onChange={e => setBtns(prev => prev.map((v, j) => (j === i ? e.target.value : v)))} />
+                <input key={i} aria-label={`Reply button ${i + 1}`} className={`${inp} !text-base md:!text-xs`} maxLength={20} placeholder={`Button ${i + 1}`} value={b} onChange={e => setBtns(prev => prev.map((v, j) => (j === i ? e.target.value : v)))} />
               ))}
             </div>
           )}
@@ -1067,27 +1557,28 @@ function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChange
               {canned.map(c => (
                 <button key={c.id} disabled={busy} onClick={() => act({ action: "canned", cannedId: c.id })}
                   title={`Send the "${c.label}" template from this number${c.stage ? ` and set the CRM stage to ${c.stage}` : ""}`}
-                  className="px-2.5 py-1 rounded-full border border-brand-700 text-brand-700 text-[11px] font-bold hover:bg-brand-50 disabled:opacity-60">
+                  className="min-h-8 px-2.5 rounded-full border border-brand-700 text-brand-700 text-[12px] font-bold hover:bg-brand-50 disabled:opacity-60">
                   {c.label}{c.stage ? ` · ${c.stage}` : ""}
                 </button>
               ))}
             </div>
           )}
           <div className="flex items-end gap-2">
-            <textarea className={`${inp} flex-1 resize-none`} rows={2} placeholder="Type a reply… (type / for quick replies, ⌘↵ to send)" value={reply}
+            {/* 16px text on phones: smaller makes iOS zoom the page on focus. */}
+            <textarea aria-label="Reply" aria-keyshortcuts="Meta+Enter Control+Enter" className={`${inp} flex-1 min-w-0 resize-none !text-base md:!text-sm`} rows={2} placeholder="Type a reply… (/ for quick replies)" value={reply}
               onChange={e => { setReply(e.target.value); if (e.target.value === "/") setShowQuick(true); }}
-              onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) sendReply(); }} />
+              onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void sendReply(); } }} />
             {/* mp3/m4a only for audio — WhatsApp accepts aac/amr/mpeg/mp4/ogg-opus, not wav. */}
             <input ref={fileRef} type="file" accept="image/*,video/*,audio/mpeg,audio/mp4,.mp3,.m4a,.pdf,.doc,.docx,.xls,.xlsx" hidden onChange={onPickFile} />
             {/* All composer tools live in one menu so the reply box stays roomy. */}
             <div className="relative">
-              <button onClick={() => setShowTools(s => !s)} title="Reply tools" className={`px-2.5 py-2 rounded-control border text-sm font-bold ${showTools ? "border-ink-950 bg-ink-950 text-white" : "border-line text-ink-400 hover:bg-canvas"}`}>
-                {drafting || assisting || uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className={`w-4 h-4 transition-transform ${showTools ? "rotate-45" : ""}`} />}
+              <button onClick={() => setShowTools(s => !s)} aria-label="Reply tools" aria-haspopup="menu" aria-expanded={showTools} className={`w-11 h-11 md:w-10 md:h-10 flex items-center justify-center rounded-control border text-sm font-bold ${showTools ? "border-ink-950 bg-ink-950 text-white" : "border-line text-ink-500 hover:bg-canvas"}`}>
+                {drafting || assisting || uploading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" aria-hidden /> : <Plus className={`w-4 h-4 motion-safe:transition-transform ${showTools ? "rotate-45" : ""}`} aria-hidden />}
               </button>
               {showTools && (
                 <>
                   <div className="fixed inset-0 z-10" onClick={() => setShowTools(false)} />
-                  <div className="absolute bottom-full right-0 mb-2 w-52 bg-white border border-line rounded-card shadow-lg p-1 z-20 u-scale-in origin-bottom-right">
+                  <div role="menu" aria-label="Reply tools" className="absolute bottom-full right-0 mb-2 w-60 bg-white border border-line rounded-card shadow-lg p-1 z-20 u-scale-in origin-bottom-right">
                     {[
                       { icon: <Zap className="w-4 h-4" />, label: "Quick replies", on: () => setShowQuick(s => !s) },
                       { icon: <Bot className="w-4 h-4" />, label: "Draft from knowledge base", on: draftReply },
@@ -1096,23 +1587,27 @@ function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChange
                       ...(conv?.platform === "whatsapp" ? [{ icon: <LayoutTemplate className="w-4 h-4" />, label: "Send template", on: () => setShowTemplate(s => !s) }] : []),
                       { icon: <Paperclip className="w-4 h-4" />, label: "Attach photo, file or voice note", on: () => fileRef.current?.click() },
                     ].map(t => (
-                      <button key={t.label} onClick={() => { setShowTools(false); t.on(); }} className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm text-ink-600 hover:bg-canvas text-left">
-                        <span className="text-ink-400 w-4 flex justify-center">{t.icon}</span> {t.label}
+                      <button key={t.label} role="menuitem" onClick={() => { setShowTools(false); t.on(); }} className="w-full min-h-11 md:min-h-9 flex items-center gap-2.5 px-2.5 rounded-lg text-sm text-ink-700 hover:bg-canvas text-left">
+                        <span className="text-ink-500 w-4 flex justify-center" aria-hidden>{t.icon}</span> {t.label}
                       </button>
                     ))}
                   </div>
                 </>
               )}
             </div>
-            <button onClick={sendReply} disabled={busy || !reply.trim()} className="px-3.5 py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-sm font-bold disabled:opacity-60 flex items-center gap-1.5">
-              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Send className="w-4 h-4" /> Send</>}
+            <button onClick={() => void sendReply()} disabled={!reply.trim() || thread !== "ok"} aria-label="Send reply"
+              className="min-w-11 h-11 md:h-10 px-3 md:px-3.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-sm font-bold disabled:opacity-60 flex items-center justify-center gap-1.5">
+              <Send className="w-4 h-4" aria-hidden /><span className="hidden md:inline">Send</span>
             </button>
           </div>
         </div>
       </section>
 
-      {/* ── Right: contact info ── */}
-      <aside className="w-80 shrink-0 border-l border-line overflow-y-auto bg-white">
+      {/* ── Contact details: a third column on wide screens, a side panel
+          (opened from the header) everywhere else. Built once, shown in one. ── */}
+      {(() => {
+      const details = (
+      <div>
         <div className="p-5 flex flex-col items-center text-center border-b border-line">
           <ConvAvatar url={conv?.avatarUrl} label={conv ? contactDisplayName(conv) : "?"} size={64} />
           <p className="text-[15px] font-bold text-ink-900 mt-2">{conv ? contactDisplayName(conv) : "Unknown"}</p>
@@ -1134,11 +1629,12 @@ function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChange
                   {(conv.labels ?? []).map(l => (
                     <span key={l} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-50 text-brand-700 text-[11px] font-bold">
                       {l}
-                      <button disabled={busy} onClick={() => act({ action: "labels", labels: (conv.labels ?? []).filter(x => x !== l) })} className="text-brand-700/50 hover:text-red-500">×</button>
+                      <button disabled={busy} onClick={() => act({ action: "labels", labels: (conv.labels ?? []).filter(x => x !== l) })} aria-label={`Remove label ${l}`} className="w-6 h-6 -my-1 -mr-1.5 flex items-center justify-center rounded-full text-brand-700/70 hover:text-red-600 hover:bg-white">×</button>
                     </span>
                   ))}
                   <input
-                    className="border border-line rounded-full px-2 py-0.5 text-[11px] w-20 focus:outline-none"
+                    aria-label="Add a label"
+                    className="border border-line rounded-full px-2.5 py-1 text-base md:text-[12px] w-28"
                     placeholder="+ label" value={labelInput} onChange={e => setLabelInput(e.target.value)}
                     onKeyDown={e => { if (e.key === "Enter" && labelInput.trim()) { act({ action: "labels", labels: [...(conv.labels ?? []), labelInput.trim()] }); setLabelInput(""); } }}
                   />
@@ -1173,7 +1669,7 @@ function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChange
 
               {aiAgents.length > 0 && (
                 <div>
-                  <p className="text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-1.5 flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5" /> AI persona</p>
+                  <p className="text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-1.5 flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5" aria-hidden /> AI assistant</p>
                   <select
                     disabled={busy}
                     className="w-full border border-line rounded-control px-2.5 py-1.5 text-xs focus:outline-none bg-white"
@@ -1325,7 +1821,8 @@ function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChange
                     {b.name}
                     <button disabled={batchBusy} onClick={() => leadBatchAction("removeFromBatch", b.id, b.name)}
                       title={`Remove from ${b.name}`}
-                      className="w-3.5 h-3.5 rounded-full hover:bg-black/10 leading-none disabled:opacity-40">×</button>
+                      aria-label={`Remove from ${b.name}`}
+                      className="w-6 h-6 -my-1 flex items-center justify-center rounded-full hover:bg-black/10 leading-none disabled:opacity-40">×</button>
                   </span>
                 ))}
               </div>
@@ -1375,7 +1872,14 @@ function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChange
             </div>
           )}
         </div>
-      </aside>
+      </div>
+      );
+      return detailsColumn
+        ? <aside aria-label="Contact details" className="w-80 shrink-0 border-l border-line overflow-y-auto bg-white">{details}</aside>
+        : <Drawer open={showDetails} onClose={() => setShowDetails(false)} title="Contact details" subtitle={conv ? contactDisplayName(conv) : undefined} width="md">
+            <div className="-mx-5 -my-4">{details}</div>
+          </Drawer>;
+      })()}
       {showProfile && conv?.phone && <ContactProfile phone={conv.leadPhone || conv.phone} onClose={() => setShowProfile(false)} onChanged={() => { load(); onChanged(); }} goTo={goTo} />}
     </>
   );

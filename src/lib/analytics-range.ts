@@ -115,3 +115,97 @@ export function bucketKeys(from: Date, to: Date, g: Granularity): string[] {
   }
   return keys;
 }
+
+// ── Date-range presets shared by every data screen ───────────────────────────
+//
+// Analytics, Results, Team Progress and Review reports each had their own set
+// of windows (7/14/30/90/all, 7/30/90, 1/7/14/30/90, 7/30/90/365 + custom) in
+// three different controls. One list, in one order, with one set of names; a
+// screen picks the presets its API can actually answer and nothing else.
+
+export type PresetKey = "24h" | "7d" | "30d" | "90d" | "12m" | "all" | "custom";
+
+export interface RangePreset {
+  key: PresetKey;
+  /** Full name, used on wider screens and as the accessible name. */
+  label: string;
+  /** Shorter name for phones. Always a word-for-word part of `label`. */
+  short: string;
+  /** Length in days; null for all time and for custom dates. */
+  days: number | null;
+}
+
+export const RANGE_PRESETS: readonly RangePreset[] = [
+  // Team Progress counts a rolling day (now minus 24 hours), not "since
+  // midnight" — so it is named for what it counts.
+  { key: "24h",    label: "Last 24 hours",  short: "24 hours",  days: 1 },
+  { key: "7d",     label: "Last 7 days",    short: "7 days",    days: 7 },
+  { key: "30d",    label: "Last 30 days",   short: "30 days",   days: 30 },
+  { key: "90d",    label: "Last 90 days",   short: "90 days",   days: 90 },
+  { key: "12m",    label: "Last 12 months", short: "12 months", days: 365 },
+  { key: "all",    label: "All time",       short: "All time",  days: null },
+  { key: "custom", label: "Custom dates",   short: "Custom",    days: null },
+];
+
+/** The presets a screen offers, always in the canonical order above. Unknown keys are dropped. */
+export function presetOptions(keys: readonly PresetKey[]): RangePreset[] {
+  return RANGE_PRESETS.filter(p => keys.includes(p.key));
+}
+
+export function presetByKey(key: string): RangePreset | undefined {
+  return RANGE_PRESETS.find(p => p.key === key);
+}
+
+/** The preset for a day count (7 → "7d"), or undefined when none matches. */
+export function presetForDays(days: number, keys: readonly PresetKey[] = RANGE_PRESETS.map(p => p.key)): RangePreset | undefined {
+  return presetOptions(keys).find(p => p.days === days);
+}
+
+/** A local calendar day as YYYY-MM-DD (what <input type="date"> reads and writes). */
+export function isoDay(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/** First and last day (inclusive) of an N-day window ending today. */
+export function presetDates(days: number, now: Date = new Date()): { from: string; to: string } {
+  const from = new Date(now);
+  from.setDate(from.getDate() - (Math.max(1, days) - 1));
+  return { from: isoDay(from), to: isoDay(now) };
+}
+
+/** Why a custom from/to pair can't be used, in words — or null when it can. */
+export function customRangeProblem(from: string, to: string, opts: { maxDays?: number; today?: string } = {}): string | null {
+  const ok = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`));
+  if (!ok(from) || !ok(to)) return "Choose both a start and an end date.";
+  if (from > to) return "The start date is after the end date.";
+  if (opts.today && to > opts.today) return "The end date is in the future.";
+  if (opts.maxDays) {
+    const span = Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000) + 1;
+    if (span > opts.maxDays) return `Choose a period of ${opts.maxDays >= 365 ? "a year" : `${opts.maxDays} days`} or less.`;
+  }
+  return null;
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
+ * How a chart bucket key reads: a day "6 Nov", a week "Week of 3 Nov", a month
+ * "Nov 2026". `withYear` always adds the year (for exports and tables).
+ */
+export function bucketLabel(key: string, g: Granularity, opts: { withYear?: boolean; now?: Date } = {}): string {
+  const m = /^(\d{4})-(\d{2})(?:-(\d{2}))?$/.exec(key);
+  if (!m) return key;
+  const [, y, mo, d] = m;
+  const month = MONTHS[Number(mo) - 1] ?? mo;
+  if (g === "month" || !d) return `${month} ${y}`;
+  const thisYear = (opts.now ?? new Date()).getFullYear();
+  const day = `${Number(d)} ${month}${opts.withYear || Number(y) !== thisYear ? ` ${y}` : ""}`;
+  return g === "week" ? `Week of ${day}` : day;
+}
+
+/** "previous 15 days" / "previous 3 months" — the comparison window, in words. */
+export function previousWindow(n: number, g: Granularity): string {
+  const unit = g === "month" ? "month" : g === "week" ? "week" : "day";
+  return `previous ${n} ${unit}${n === 1 ? "" : "s"}`;
+}
