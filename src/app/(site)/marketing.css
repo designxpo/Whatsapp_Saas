@@ -2978,7 +2978,8 @@
   padding: 0;
   cursor: pointer;
   animation: workflow-node-cycle 10s ease-in-out infinite;
-  animation-delay: calc(var(--step-index, 0) * 2s);
+  /* --cycle-shift starts the walkthrough at the step a visitor last inspected. */
+  animation-delay: calc(var(--step-index, 0) * 2s - var(--cycle-shift, 0s));
 }
 .workflow-node-icon {
   display: grid;
@@ -3020,13 +3021,14 @@
   box-shadow: 0 0 9px #0783fd88;
   opacity: 0;
   animation: workflow-packet-travel 10s linear infinite;
-  animation-delay: calc(var(--step-index, 0) * 2s + 0.7s);
+  animation-delay: calc(var(--step-index, 0) * 2s + 0.7s - var(--cycle-shift, 0s));
 }
 .workflow-nodes li:last-child .workflow-link {
   display: none;
 }
 .workflow-outcome {
   animation: workflow-outcome-cycle 10s ease-in-out infinite;
+  animation-delay: calc(0s - var(--cycle-shift, 0s));
 }
 .workflow-demo-canvas[data-inspecting="true"]
   :is(.workflow-node, .workflow-link > span, .workflow-outcome) {
@@ -3034,6 +3036,14 @@
 }
 .workflow-demo-canvas[data-inspecting="true"] .workflow-node {
   animation: none;
+}
+/* While a step is inspected, only that step is highlighted — the AI step's
+   resting accent would otherwise look selected too. */
+.workflow-demo-canvas[data-inspecting="true"] .workflow-node-ai:not([aria-pressed="true"]) {
+  background: white;
+  border-color: #b8b8c1;
+  box-shadow: 0 3px 0 #e3e3e7;
+  color: inherit;
 }
 .workflow-node[aria-pressed="true"] {
   background: #dcefff;
@@ -3518,14 +3528,16 @@
 .marketing-global-stats strong { color: #1b3651; font-size: 60px; font-weight: 400; line-height: 1; letter-spacing: -.07em; }
 .marketing-global-stats span { font-size: 11px; color: #6f8192; }
 .marketing-global-channels { margin-top: 25px; font-size: 10px; line-height: 1.9; letter-spacing: .015em; color: #8998a6; }
-.marketing-global-visual { position: relative; min-width: 0; height: 700px; }
-.marketing-global-sphere { position: absolute; width: 840px; max-width: none; aspect-ratio: 1; top: -77px; left: -52px; pointer-events: none; mask-image: linear-gradient(#000 70%, transparent 98%); }
-.marketing-global-fallback, .marketing-global-canvas { position: absolute; inset: 0; height: 100%; width: 100%; object-fit: contain; }
+.marketing-global-visual { position: relative; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.marketing-global-sphere { position: relative; width: min(100%, 560px); aspect-ratio: 1; pointer-events: none; }
+.marketing-global-canvas { position: absolute; inset: 0; height: 100%; width: 100%; }
+/* Before WebGL is ready (or without it): the same photo as a still globe. */
+.marketing-global-fallback { position: absolute; inset: 7%; border-radius: 50%; background: #0b2a4a 30% center / 200% 100%; box-shadow: inset -34px -26px 70px #020c1ad9, inset 12px 10px 34px #ffffff22, 0 0 46px #7cc2ff59; }
 .marketing-global-canvas { opacity: 0; transition: opacity .6s; }
 .marketing-global-fallback { opacity: 1; transition: opacity .6s; }
 .marketing-global-sphere.is-ready .marketing-global-canvas { opacity: 1; }
 .marketing-global-sphere.is-ready .marketing-global-fallback { opacity: 0; }
-.marketing-global-demo { position: absolute; z-index: 2; width: 294px; top: 215px; left: 8px; padding: 19px; border: 1px solid #ffffff85; border-radius: 20px; background: #f8fcfff2; box-shadow: 0 16px 60px -20px #092b574a; backdrop-filter: blur(18px); }
+.marketing-global-demo { position: relative; z-index: 2; width: min(100%, 430px); padding: 19px; border: 1px solid #ffffff85; border-radius: 20px; background: #f8fcfff2; box-shadow: 0 16px 60px -20px #092b574a; backdrop-filter: blur(18px); }
 .marketing-global-demo-heading { display: flex; align-items: center; gap: 9px; }
 .marketing-global-channel-icon { display: grid; place-items: center; width: 33px; height: 33px; border-radius: 11px; color: #0886e8; background: #e2f1ff; }
 .marketing-global-demo-heading > div { display: flex; flex-direction: column; gap: 3px; }
@@ -3537,19 +3549,18 @@
 .marketing-global-reply svg { flex-shrink: 0; margin-top: 2px; }
 .marketing-global-reply p { margin: 0; font-size: 11px; line-height: 1.6; color: #fff; }
 .marketing-global-workflow { border-top: 1px solid #e3ebf2; padding-top: 12px; margin-top: 15px; font-size: 9px; line-height: 1.6; color: #7e92a5; }
-.marketing-globe-pause { display: grid; place-items: center; position: absolute; right: 17px; bottom: 140px; width: 34px; height: 34px; background: #ffffffda; border: 1px solid #dbe7f1; border-radius: 50%; color: #466783; z-index: 3; }
+.marketing-global-controls { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 7px; margin-top: -6px; }
+.marketing-globe-pause { display: grid; place-items: center; position: relative; flex-shrink: 0; width: 34px; height: 34px; background: #ffffffda; border: 1px solid #dbe7f1; border-radius: 50%; color: #466783; z-index: 3; }
 .marketing-globe-pause:disabled { opacity: .55; cursor: default; }
-.marketing-global-city-picker { position: absolute; z-index: 3; display: flex; justify-content: center; flex-wrap: wrap; gap: 7px; bottom: 76px; left: 0; right: 0; }
+.marketing-global-city-picker { position: relative; z-index: 3; display: flex; justify-content: center; flex-wrap: wrap; gap: 7px; }
 .marketing-global-city-picker button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 35px; padding: 8px 12px; border: 1px solid #dbe6ef; border-radius: 30px; background: #ffffffc9; font-size: 10px; color: #607d97; transition: color .2s, background .2s, border-color .2s; }
 .marketing-global-city-picker button > span { width: 4px; height: 4px; border-radius: 50%; background: #adc1d2; }
 .marketing-global-city-picker button[aria-pressed="true"] { color: #0668cf; border-color: #9ecdf8; background: #e9f4ff; }
 .marketing-global-city-picker button[aria-pressed="true"] > span { background: #0783fd; box-shadow: 0 0 0 3px #0783fd12; }
-.marketing-global-disclaimer { position: absolute; bottom: 45px; left: 0; right: 0; text-align: center; font-size: 9px; color: #8b9eaf; }
-@media (min-width: 1600px) { .marketing-global-sphere { width: 900px; left: -45px; top: -110px; } }
+.marketing-global-disclaimer { margin: 0; text-align: center; font-size: 9px; color: #8b9eaf; }
+@media (min-width: 1600px) { .marketing-global-sphere { width: min(100%, 620px); } }
 @media (max-width: 1100px) {
   .marketing-global-layout { grid-template-columns: 1fr 1fr; }
-  .marketing-global-sphere { width: 720px; left: -65px; top: -25px; }
-  .marketing-global-demo { width: 260px; left: -12px; top: 220px; }
   .marketing-global-copy h2 { font-size: 46px; }
 }
 @media (max-width: 900px) {
@@ -3577,12 +3588,7 @@
   .marketing-global-copy { padding-bottom: 0; max-width: 520px; }
   .marketing-global-copy h2 { font-size: clamp(40px, 6.8vw, 56px); }
   .marketing-global-stats { margin-top: 29px; }
-  .marketing-global-visual { height: 620px; max-width: 650px; margin: -10px auto 0; }
-  .marketing-global-sphere { width: 780px; left: 50%; transform: translateX(-50%); top: -70px; }
-  .marketing-global-demo { top: 230px; left: 25px; width: 280px; }
-  .marketing-global-city-picker { bottom: 40px; }
-  .marketing-global-disclaimer { bottom: 10px; }
-  .marketing-globe-pause { bottom: 105px; right: 30px; }
+  .marketing-global-visual { max-width: 560px; margin: 30px auto 0; }
 }
 @media (max-width: 640px) {
   .marketing-nav { min-height: 53px; padding: 6px 9px 6px 18px; border-radius: 25px; }
@@ -3596,20 +3602,19 @@
   .marketing-global-stats strong { font-size: 45px; }
   .marketing-global-stats span { font-size: 10px; }
   .marketing-global-channels { font-size: 9px; margin-top: 17px; }
-  .marketing-global-visual { height: 510px; margin-top: 5px; }
-  .marketing-global-sphere { width: 590px; top: -30px; left: 57%; }
-  .marketing-global-demo { top: 165px; left: 0; width: min(265px, 85%); padding: 16px; border-radius: 17px; }
-  .marketing-global-city-picker { gap: 5px; bottom: 37px; left: -3px; right: -3px; }
+  .marketing-global-visual { margin-top: 20px; gap: 12px; }
+  .marketing-global-demo { padding: 16px; border-radius: 17px; }
+  .marketing-global-city-picker { gap: 5px; }
   .marketing-global-city-picker button { min-height: 34px; padding: 8px 9px; font-size: 9px; gap: 5px; }
-  .marketing-global-disclaimer { bottom: 10px; font-size: 8px; }
-  .marketing-globe-pause { bottom: 96px; right: 0; }
+  .marketing-global-disclaimer { font-size: 8px; }
+  .marketing-global-controls { gap: 5px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .marketing-mega-panel, .marketing-nav-backdrop { animation: none; }
   .marketing-mega-card, .marketing-mega-art img, .marketing-global-canvas, .marketing-global-fallback, .marketing-global-city-picker button, .marketing-nav-trigger > svg { transition: none !important; }
   .marketing-nav a.marketing-mega-card:hover, .marketing-mega-card:hover .marketing-mega-art img { transform: none; }
 }
-.marketing-global-disclaimer { z-index: 3; left: 50%; right: auto; transform: translateX(-50%); width: max-content; max-width: 95%; padding: 5px 10px; border-radius: 20px; background: #f6fbfff2; color: #58758e; font-size: 9px; }
+.marketing-global-disclaimer { z-index: 3; width: max-content; max-width: 95%; padding: 5px 10px; border-radius: 20px; background: #f6fbfff2; color: #58758e; font-size: 9px; }
 /* The site's floating chat launcher must not cover mobile navigation links. */
 body:has(.marketing-nav-expanded) :is(.twc-launch, .twc-panel) { visibility: hidden !important; pointer-events: none !important; }
 
@@ -3660,4 +3665,28 @@ body:has(.marketing-nav-expanded) :is(.twc-launch, .twc-panel) { visibility: hid
 }
 @media (prefers-reduced-motion: reduce) {
   .character-story *, .character-story[data-running="true"] .character-story-art > img { animation: none !important; transition: none !important; }
+}
+
+/* Phones: the workflow steps stack in one column so a single unbroken line
+   runs down through every step (two wrapped rows would break it after step 2). */
+@keyframes workflow-packet-fall {
+  0% { top: 0; opacity: 0; }
+  2% { opacity: 1; }
+  13% { top: 100%; opacity: 1; }
+  15%, 100% { top: 100%; opacity: 0; }
+}
+@media (max-width: 640px) {
+  .workflow-nodes { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 20px 0 8px; }
+  .workflow-nodes li { display: grid; grid-template-columns: 56px minmax(0, 1fr); column-gap: 14px; align-items: start; padding-bottom: 20px; text-align: left; }
+  .workflow-nodes li:last-child { padding-bottom: 4px; }
+  .workflow-nodes li .workflow-node { grid-row: span 2; margin: 0; }
+  .workflow-nodes h3 { margin-top: 9px; font-size: 12px; }
+  .workflow-nodes li > p { max-width: none; margin: 3px 0 0; font-size: 10px; }
+  .workflow-node-port { left: 24px; right: auto; top: auto; bottom: -4px; }
+  .workflow-nodes li:not(:last-child):after,
+  .workflow-nodes li:nth-child(2):after { display: block; left: 28px; top: 56px; width: 1px; height: calc(100% - 56px); }
+  .workflow-link,
+  .workflow-nodes li:nth-child(2) .workflow-link { display: block; left: 28px; top: 56px; width: 1px; height: calc(100% - 56px); }
+  .workflow-link > span { left: -2px; top: 0; animation-name: workflow-packet-fall; }
+  .workflow-nodes li:last-child .workflow-node-port { display: none; }
 }

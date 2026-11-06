@@ -2,7 +2,7 @@
 
 import { CharacterStory } from "./character-story";
 import type { CharacterStoryId } from "../_content/character-stories";
-import { useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import {
   ArrowRight,
   Check,
@@ -469,13 +469,39 @@ const EXAMPLES: {
 
 const STORY_FOR_WORKFLOW: Record<string, CharacterStoryId> = { journey: "team", reviews: "reviews", sequence: "followthrough", creator: "creator", business: "booking", promise: "followthrough", broadcasts: "insights", commerce: "commerce", audiences: "agency", knowledge: "knowledge", youtube: "creator", webchat: "team", handoff: "handoff", experiments: "insights" };
 
+const STEP_SECONDS = 2; // matches the 2s per-step delay in marketing.css
+const RESUME_AFTER_MS = 5000;
+
 export function WorkflowDemo() {
   const [selected, setSelected] = useState(EXAMPLES[0].id);
   const [inspecting, setInspecting] = useState<number | null>(null);
+  // After a step is inspected, the walkthrough carries on from that step.
+  const [resumeFrom, setResumeFrom] = useState(0);
+  const [cycle, setCycle] = useState(0);
+  const resumeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const example = EXAMPLES.find((item) => item.id === selected)!;
+  const clearResume = () => {
+    if (resumeTimer.current) clearTimeout(resumeTimer.current);
+    resumeTimer.current = null;
+  };
+  useEffect(() => clearResume, []);
+  const resume = (index: number) => {
+    clearResume();
+    setInspecting(null);
+    setResumeFrom(index);
+    setCycle((value) => value + 1);
+  };
+  const inspect = (index: number) => {
+    if (inspecting === index) return resume(index);
+    clearResume();
+    setInspecting(index);
+    resumeTimer.current = setTimeout(() => resume(index), RESUME_AFTER_MS);
+  };
   const choose = (id: string) => {
+    clearResume();
     setSelected(id);
     setInspecting(null);
+    setResumeFrom(0);
   };
   return (
     <div className="workflow-demo" id="how-it-works" data-motion-region>
@@ -522,6 +548,7 @@ export function WorkflowDemo() {
         key={example.id}
         className="workflow-demo-canvas"
         data-inspecting={inspecting !== null}
+        style={{ "--cycle-shift": `${resumeFrom * STEP_SECONDS}s` } as CSSProperties}
         aria-live="polite"
         aria-atomic="true"
       >
@@ -538,7 +565,7 @@ export function WorkflowDemo() {
           <span className="workflow-message-tag">Trigger</span>
         </div>
         </div>
-        <ol className="workflow-nodes" aria-label="Workflow steps">
+        <ol key={`nodes-${cycle}`} className="workflow-nodes" aria-label="Workflow steps">
           {example.nodes.map((node, index) => (
             <li
               key={node.title}
@@ -548,9 +575,7 @@ export function WorkflowDemo() {
                 type="button"
                 aria-label={`Inspect step ${index + 1}: ${node.title}`}
                 aria-pressed={inspecting === index}
-                onClick={() =>
-                  setInspecting(inspecting === index ? null : index)
-                }
+                onClick={() => inspect(index)}
                 className={`workflow-node ${index === 1 ? "workflow-node-ai" : ""}`}
               >
                 <span className="workflow-step-number" aria-hidden>
@@ -569,7 +594,7 @@ export function WorkflowDemo() {
             </li>
           ))}
         </ol>
-        <div className="workflow-outcome">
+        <div key={`outcome-${cycle}`} className="workflow-outcome">
           <span>
             <Check size={16} aria-hidden />
             {example.result}
@@ -585,8 +610,8 @@ export function WorkflowDemo() {
                 Step {inspecting + 1}: {example.nodes[inspecting].title}
               </strong>
               <span>
-                {example.nodes[inspecting].detail}. Select this step again to
-                resume.
+                {example.nodes[inspecting].detail}. The walkthrough carries on
+                from here in a moment.
               </span>
             </>
           )}
