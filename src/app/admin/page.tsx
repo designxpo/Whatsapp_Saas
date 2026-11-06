@@ -13,6 +13,7 @@ import { brandCopy } from "@/lib/whitelabel";
 import { setPartnerMetaApp } from "@/lib/embedded-signup-client";
 import { HotLeads } from "./_tabs/HotLeads";
 import { useTabInUrl } from "@/lib/tab-url";
+import { TabErrorBoundary } from "@/components/tab-error-boundary";
 import { type Tab, type ChatIntent, type GoTo, DEFAULT_TENANT_ID, inp, btnPrimary, railLoading, ChannelSelect, type AnalyticsData, ImageUpload, ConvAvatar, ImgFallback, RailCard, StatRow, RailBar, useAnalytics } from "./_shared";
 import { type Entitlements, type AccountState, tabAllowed, tabRoleAllowed, accountState } from "@/lib/entitlement-registry";
 import { Send, Users, History, Zap, Ban, LogOut, Bot, MessageSquare, Facebook, Youtube, Globe, Database, Sparkles, ShieldCheck, ArrowRight, BarChart3, LayoutTemplate, FlaskConical, Home, Settings, ClipboardList, Megaphone, Instagram, Workflow, ShoppingBag, TrendingUp, ListChecks, ListTodo, CalendarDays, Plug, KanbanSquare, AtSign, Star, AlertTriangle, Eye, CreditCard } from "lucide-react";
@@ -402,7 +403,7 @@ function AdminShell() {
         </header>
 
         <main className="flex-1 p-6 overflow-x-hidden">
-          {roleBlocked ? <AdminOnlyTab title={tabLabel(tab, vocab)} goTo={goTo} /> : <>
+          {roleBlocked ? <AdminOnlyTab title={tabLabel(tab, vocab)} goTo={goTo} /> : <TabErrorBoundary key={tab} title={tabLabel(tab, vocab)} onHome={() => setTab("home")}>
           {tab === "home" && <HomeTab goTo={goTo} />}
           {tab === "today" && <TodayTab goTo={goTo} />}
           {tab === "results" && <ResultsTab />}
@@ -434,7 +435,7 @@ function AdminShell() {
           {tab === "settings" && <SettingsTab goTo={goTo} />}
           {tab === "security" && <SecurityTab />}
           {tab === "team" && <TeamProgressTab me={me ? { role: me.role as "admin" | "lead" | "member", team: (me.team ?? null) as import("@/lib/team-vocab").Team | null } : null} goTo={goTo} />}
-          </>}
+          </TabErrorBoundary>}
         </main>
       </div>
       {me && <HoverHelp scope={tab} />}
