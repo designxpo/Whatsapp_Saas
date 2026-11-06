@@ -50,13 +50,19 @@ export function memdb(unique: Record<string, string[][]> = {}): MemDb {
     b.like = chain((c, v) => { const re = new RegExp("^" + String(v).replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*") + "$"); preds.push(r => re.test(String(r[c as string] ?? ""))); });
     const likeRe = (v: unknown, flags = "") => new RegExp("^" + String(v).replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*") + "$", flags);
     b.ilike = chain((c, v) => { const re = likeRe(v, "i"); preds.push(r => re.test(String(r[c as string] ?? ""))); });
-    // PostgREST or(): "col.op.value,col.op.value" with eq / ilike / like.
+    // PostgREST or(): "col.op.value,col.op.value" with eq / ilike / like and the
+    // comparisons; a value may be double-quoted (timestamps contain dots).
     b.or = chain(expr => {
-      const parts = String(expr).split(",").map(p => { const [col, opName, ...rest] = p.split("."); return { col, opName, value: rest.join(".") }; });
+      const parts = String(expr).split(",").map(p => { const [col, opName, ...rest] = p.split("."); return { col, opName, value: rest.join(".").replace(/^"(.*)"$/, "$1") }; });
+      const cmp = (r: Row, col: string, ok: (a: string) => boolean) => r[col] != null && ok(String(r[col]));
       preds.push(r => parts.some(({ col, opName, value }) =>
         opName === "eq" ? String(r[col] ?? "") === value
           : opName === "ilike" ? likeRe(value, "i").test(String(r[col] ?? ""))
-          : opName === "like" ? likeRe(value).test(String(r[col] ?? "")) : false));
+          : opName === "like" ? likeRe(value).test(String(r[col] ?? ""))
+          : opName === "lte" ? cmp(r, col, a => a <= value)
+          : opName === "lt" ? cmp(r, col, a => a < value)
+          : opName === "gte" ? cmp(r, col, a => a >= value)
+          : opName === "gt" ? cmp(r, col, a => a > value) : false));
     });
     b.order = chain((c, o) => orderBy.push({ col: c as string, asc: (o as { ascending?: boolean } | undefined)?.ascending !== false }));
     b.limit = chain(n => { lim = n as number; });

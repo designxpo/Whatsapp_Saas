@@ -20,8 +20,8 @@ import { getTenantSetting, setTenantSetting } from "./store";
 import { SITE_URL } from "./siteurl";
 
 /** Email streams a recipient can opt out of, independently of each other. */
-export type EmailKind = "weekly_recap" | "daily_digest" | "product_news" | "review_alerts";
-const KINDS: readonly EmailKind[] = ["weekly_recap", "daily_digest", "product_news", "review_alerts"];
+export type EmailKind = "weekly_recap" | "daily_digest" | "product_news" | "review_alerts" | "work_alerts";
+const KINDS: readonly EmailKind[] = ["weekly_recap", "daily_digest", "product_news", "review_alerts", "work_alerts"];
 const isKind = (k: string): k is EmailKind => (KINDS as readonly string[]).includes(k);
 
 const SETTING_PREFIX = "email_optout:";

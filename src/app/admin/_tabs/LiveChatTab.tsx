@@ -14,6 +14,7 @@ import { crmChatKey, type ChatCrmStatus } from "@/lib/crmkey";
 import { TEAM_SHORT, nextTeam, type Team } from "@/lib/team-vocab";
 import { EmptyState } from "../_shared";
 import { ChatNotes } from "@/components/chat-notes";
+import { CustomerWork } from "@/components/customer-work";
 import { LeadPill, LeadReason, ApprovalCard } from "./LeadInsight";
 
 type ThreadMessage = { id: string; role: "user" | "assistant"; body: string; source: "inbound" | "bot" | "agent"; createdAt: string; channelId?: string | null; mediaUrl?: string | null; mediaType?: string | null; metaMessageId?: string | null };
@@ -1142,6 +1143,8 @@ function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChange
                   />
                 </div>
               </div>
+
+              <CustomerWork phone={conv.phone} conversationId={conv.id} />
 
               <ChatNotes conversationId={conv.id} />
 

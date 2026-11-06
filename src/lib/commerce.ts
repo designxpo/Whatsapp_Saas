@@ -185,7 +185,10 @@ export async function checkoutCart(p: { phone: string; paymentRef?: string; disc
     const link = await createPaymentLink(tenantId, { amountCents: total, description: `Order ${orderId.slice(0, 8)}${off ? ` (${off}% off)` : ""}`, phone: p.phone });
     if (link) {
       paymentUrl = link.url;
-      await db().from("wa_orders").update({ payment_ref: link.id }).eq("id", orderId).then(() => {}, () => {});
+      // The link is kept on the order so an unpaid-order reminder can resend it
+      // (unpaid-orders.ts). Before that column exists, save the reference alone.
+      const saved = await db().from("wa_orders").update({ payment_ref: link.id, payment_url: link.url }).eq("id", orderId).then(r => r, () => ({ error: { code: "ERR" } }));
+      if (saved.error) await db().from("wa_orders").update({ payment_ref: link.id }).eq("id", orderId).then(() => {}, () => {});
     }
   }
   return { orderId, totalCents: total, paymentUrl };

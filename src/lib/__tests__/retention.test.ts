@@ -55,17 +55,18 @@ describe("retention limits", () => {
     ]);
     put("wa_inbound_events", [{ created_at: ago(31) }, { created_at: ago(29) }]);
     put("wa_review_alerts", [{ created_at: ago(91) }, { created_at: ago(89) }]);
+    put("wa_work_alerts", [{ created_at: ago(91) }, { created_at: ago(89) }]);
     put("wa_review_requests", [{ created_at: ago(401) }, { created_at: ago(399) }]);
 
     const r = await runRetention({ now: NOW });
     expect(r.errors).toEqual([]);
     expect(r.deleted).toEqual({
       session_refs: 1, router_events: 1, semantic_cache: 1, ai_gaps_resolved: 1, ai_gaps_open: 1,
-      email_log: 1, deletion_proof: 1, inbound_events: 1, review_alerts: 1, review_requests: 1,
+      email_log: 1, deletion_proof: 1, inbound_events: 1, review_alerts: 1, review_requests: 1, work_alerts: 1,
     });
     expect(mem.tables.wa_ai_gaps.map(g => g.resolved_at ?? g.created_at)).toEqual([ago(100), ago(200)]);
     expect(mem.tables.meta_deletion_requests.map(d => d.status)).toEqual(["completed", "processing"]);
-    for (const t of ["wa_session_refs", "wa_router_events", "wa_semantic_cache", "wa_email_log", "wa_inbound_events", "wa_review_alerts", "wa_review_requests"]) expect(left(t), t).toBe(1);
+    for (const t of ["wa_session_refs", "wa_router_events", "wa_semantic_cache", "wa_email_log", "wa_inbound_events", "wa_review_alerts", "wa_review_requests", "wa_work_alerts"]) expect(left(t), t).toBe(1);
   });
 
   it("never touches customer conversations, contacts or orders", async () => {
@@ -75,7 +76,7 @@ describe("retention limits", () => {
     put("wa_orders", [{ created_at: ago(5000) }]);
     await runRetention({ now: NOW });
     expect([...h.touched].sort()).toEqual([...new Set(RETENTION_RULES.map(r => r.table))].sort());
-    expect([...h.touched].sort()).toEqual(["meta_deletion_requests", "wa_ai_gaps", "wa_email_log", "wa_inbound_events", "wa_review_alerts", "wa_review_requests", "wa_router_events", "wa_semantic_cache", "wa_session_refs"]);
+    expect([...h.touched].sort()).toEqual(["meta_deletion_requests", "wa_ai_gaps", "wa_email_log", "wa_inbound_events", "wa_review_alerts", "wa_review_requests", "wa_router_events", "wa_semantic_cache", "wa_session_refs", "wa_work_alerts"]);
     for (const t of ["wa_conversations", "wa_conv_messages", "contacts", "wa_orders"]) expect(left(t), t).toBe(1);
   });
 });
