@@ -42,7 +42,7 @@ export function CustomerAutomations({ conversationId }: { conversationId: string
 
   const load = useCallback(async () => {
     try {
-      const r = await fetch(`/api/admin/automations?conversationId=${encodeURIComponent(conversationId)}`, { cache: "no-store" });
+      const r = await fetch(`/api/admin/customer-automations?conversationId=${encodeURIComponent(conversationId)}`, { cache: "no-store" });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
       setList(j.automations); setErr(null);
@@ -55,7 +55,7 @@ export function CustomerAutomations({ conversationId }: { conversationId: string
       message: a.kind === "ai_followup" ? "The AI won't follow up in this chat until the customer writes again." : "Nothing more is sent from it to this customer. This can't be undone from here." });
     if (!ok) return;
     setBusy(a.key); setErr(null);
-    const r = await fetch("/api/admin/automations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ conversationId, key: a.key }) });
+    const r = await fetch("/api/admin/customer-automations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ conversationId, key: a.key }) });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) setErr(j.error || "Couldn't stop it."); else await load();
     setBusy(null);
