@@ -14,6 +14,7 @@ import { inp, type GoTo } from "../_shared";
 type Status = "booked" | "confirmed" | "completed" | "no_show" | "cancelled";
 type Booking = {
   id: string; phone: string; name: string; title: string; startsAt: string; endsAt: string; status: Status; source: string;
+  channel: "whatsapp" | "instagram" | "messenger" | "webchat"; chatKey: string;
   serviceName: string | null; staffName: string | null; depositCents: number; deposit: "none" | "requested" | "paid"; depositUrl: string | null;
   reminderSentAt: string | null; reminderDetail: string | null; notes: string; cancelReason: string | null;
 };
@@ -29,7 +30,8 @@ const STATUS: Record<Status, { label: string; cls: string }> = {
   no_show: { label: "No-show", cls: "bg-red-50 text-red-700 border-red-200" },
   cancelled: { label: "Cancelled", cls: "bg-canvas text-ink-400 border-line line-through" },
 };
-const SOURCE: Record<string, string> = { manual: "Added here", google_calendar: "AI · Google Calendar", calcom: "Cal.com", calendly: "Calendly" };
+const SOURCE: Record<string, string> = { manual: "Added here", google_calendar: "Google Calendar", calcom: "Cal.com", calendly: "Calendly", mezvaan: "Mezvaan" };
+const CHANNEL: Record<string, string> = { whatsapp: "WhatsApp", instagram: "Instagram", messenger: "Facebook", webchat: "Web chat" };
 const rupees = (c: number) => `₹${(c / 100).toLocaleString("en-IN")}`;
 const dayStart = (d: Date) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };
 const time = (iso: string) => new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
@@ -73,7 +75,7 @@ export default function BookingsTab({ goTo }: { goTo: GoTo }) {
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-extrabold text-ink-900"><CalendarDays className="h-5 w-5" /> Bookings</h1>
-          <p className="text-sm text-ink-600">Who&apos;s coming, for what and with whom. Bookings from Cal.com, Calendly and your AI show up here too.</p>
+          <p className="text-sm text-ink-600">Who&apos;s coming, for what and with whom. Bookings made in any chat — WhatsApp, Instagram, Facebook, web chat — and from Cal.com, Calendly and Mezvaan show up here on their own.</p>
         </div>
         <div className="flex gap-2">
           <button onClick={() => setAdding(a => !a)} disabled={!setup || setup.setupPending} className="inline-flex items-center gap-1.5 rounded-control bg-brand-700 px-3 py-2 text-xs font-bold text-white hover:bg-brand-600 disabled:opacity-50"><Plus className="h-3.5 w-3.5" /> Add booking</button>
@@ -112,8 +114,8 @@ export default function BookingsTab({ goTo }: { goTo: GoTo }) {
                       {b.deposit === "requested" && <span className="rounded-full border border-amber-200 bg-amber-50 px-1.5 py-px text-[10px] font-bold text-amber-800">Deposit requested</span>}
                     </div>
                     <p className="text-[12px] text-ink-700">
-                      <button onClick={() => goTo("livechat", { openPhone: b.phone })} className="font-semibold hover:underline">{b.name || `+${b.phone}`}</button>
-                      {b.staffName && <> · with {b.staffName}</>} · <span className="text-ink-400">{SOURCE[b.source] ?? b.source}</span>
+                      <button onClick={() => goTo("livechat", { openPhone: b.chatKey || b.phone })} className="font-semibold hover:underline">{b.name || (b.channel === "whatsapp" ? `+${b.phone}` : "Open the chat")}</button>
+                      {b.staffName && <> · with {b.staffName}</>} · <span className="text-ink-400">{SOURCE[b.source] ?? b.source}{b.source !== "manual" && b.channel ? ` · booked on ${CHANNEL[b.channel] ?? b.channel}` : ""}</span>
                     </p>
                     {b.reminderDetail && <p className="text-[11px] text-ink-500">Reminder: {b.reminderDetail === "Sent" ? `sent ${b.reminderSentAt ? new Date(b.reminderSentAt).toLocaleString(undefined, { hour: "numeric", minute: "2-digit", day: "numeric", month: "short" }) : ""}` : b.reminderDetail}</p>}
                     {b.cancelReason && b.status === "cancelled" && <p className="text-[11px] text-ink-500">{b.cancelReason}</p>}

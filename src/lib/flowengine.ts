@@ -1368,11 +1368,12 @@ export async function handleFlowMessage(
           const kind = (send.kind && send.kind !== "dry" ? send.kind : "whatsapp") as Platform;
           return finish(await scheduleBook(tid, {
             startIso, name: contact?.name || "", phone: kind === "whatsapp" ? phone : "", channel: channelShort(kind), tz,
+            who: isReal ? bookedBy(kind, phone, convKey) : undefined,
           }), "", formatSlotLabel(startIso, tz));
         }
         const attrEmail = Object.values(contact?.attributes ?? {}).map(v => extractEmail(String(v))).find(Boolean) ?? null;
         const email = contact?.email || attrEmail;
-        if (email) return finish(await calcomBook(tid, { startIso, name: contact?.name || phone, email, tz }), email);
+        if (email) return finish(await calcomBook(tid, { startIso, name: contact?.name || phone, email, tz, who: isReal ? bookedBy((send.kind && send.kind !== "dry" ? send.kind : "whatsapp") as Platform, phone, convKey) : undefined }), email);
         await send.text("Great choice! What email should I send the calendar invite to?");
         await saveSession(convKey, flow.id, waiting.id, { step: "askEmail", startIso, tz, ...(state.menu ? { menu: state.menu } : {}) }, tid);
         if (isReal) await claimReply(convKey).catch(() => undefined);
@@ -1389,7 +1390,7 @@ export async function handleFlowMessage(
         const startIso = str(state.startIso);
         const contact = await getContactByPhone(phone, tid).catch(() => null);
         if (isReal) await updateContactProfile(phone, { email }, tid).catch(() => undefined);
-        return finish(await calcomBook(tid, { startIso, name: contact?.name || phone, email, tz }), email);
+        return finish(await calcomBook(tid, { startIso, name: contact?.name || phone, email, tz, who: isReal ? bookedBy((send.kind && send.kind !== "dry" ? send.kind : "whatsapp") as Platform, phone, convKey) : undefined }), email);
       }
 
       await endSession(convKey);
@@ -1644,4 +1645,11 @@ export async function drainFlowReminders(max = 50): Promise<number> {
     if (!r.error) sent++;
   }
   return sent;
+}
+
+/** Who a flow booking is for, so it lands in Talko's Bookings from any chat channel. */
+function bookedBy(kind: Platform, phone: string, convKey: string): import("./integrations").BookedBy | undefined {
+  const channel = kind === "instagram" || kind === "messenger" || kind === "webchat" ? kind : "whatsapp";
+  return channel === "whatsapp" ? { phone, channel, conversationId: /^[0-9a-f-]{36}$/i.test(convKey) ? convKey : null }
+    : { contactKey: phone, channel, conversationId: /^[0-9a-f-]{36}$/i.test(convKey) ? convKey : null };
 }

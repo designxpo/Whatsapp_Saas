@@ -21,6 +21,8 @@ import { fenceData } from "./guard/fence";
 import { RUNTIME_POLICY, RUNTIME_POLICY_VERSION } from "./prompts/runtime-policy";
 import { DEFAULT_TENANT_ID } from "./tenant";
 import { executeRestaurantTool, isRestaurantTool, RESTAURANT_PROMPT, restaurantLink, restaurantTools } from "./restaurant-tools";
+import { appointmentTools, APPOINTMENT_PROMPT, executeAppointmentTool, isAppointmentTool } from "./appointment-tools";
+import { schedulingProvider } from "./integrations";
 // Persona/email scrubbers now live in the shared guard module; re-exported so
 // existing importers (and tests) keep resolving them from "@/lib/llm".
 export { stripLeadingName, scrubContactEmails } from "./guard/sanitize";
@@ -663,6 +665,10 @@ async function generateReplyUnmoderated(history: { role: "user" | "assistant"; b
   // A restaurant linked to Mezvaan: the live menu and table booking come from
   // there, so Talko's own catalog/cart is off for it — one menu, one price list.
   const restaurant = await restaurantLink(tenantId, platform).catch(() => null);
+  // A calendar connected in Integrations (Google Calendar or Cal.com): the AI can
+  // offer free times and book them (appointment-tools.ts). Restaurants book
+  // tables through their own system instead.
+  const calendar = restaurant ? null : await schedulingProvider(tenantId).catch(() => null);
   // Cross-channel cart: enable the built-in commerce tools only when the caller
   // opts in (IG/Messenger) AND we have a contact key + at least one available
   // product. WhatsApp uses its native catalog cart, so it doesn't opt in.
@@ -675,7 +681,7 @@ async function generateReplyUnmoderated(history: { role: "user" | "assistant"; b
   // `functions` stays the configured list (the no-context guard keys off it).
   const approvalPolicy = !opts.practice && phone ? await getApprovalPolicy(tenantId).catch(() => null) : null;
   const tools: ChatTool[] = [
-    ...(toChatTools(functions) ?? []), MEMORY_TOOL, ...(hasCommerce ? COMMERCE_TOOLS : []), ...(restaurant ? restaurantTools(platform, !!opts.canAct) : []),
+    ...(toChatTools(functions) ?? []), MEMORY_TOOL, ...(hasCommerce ? COMMERCE_TOOLS : []), ...(restaurant ? restaurantTools(platform, !!opts.canAct) : []), ...(calendar ? appointmentTools(platform, !!opts.canAct, calendar) : []),
     ...(approvalPolicy?.discounts.enabled ? [DISCOUNT_TOOL] : []), ...(approvalPolicy?.refunds.enabled ? [REFUND_TOOL] : []),
   ];
 
@@ -767,7 +773,7 @@ async function generateReplyUnmoderated(history: { role: "user" | "assistant"; b
     return media ? { role: "user", text, media } : { role: "user", text: m.body };
   });
 
-  const systemWithTools = restaurant ? `${system}\n\n${RESTAURANT_PROMPT}` : system;
+  const systemWithTools = restaurant ? `${system}\n\n${RESTAURANT_PROMPT}` : calendar ? `${system}\n\n${APPOINTMENT_PROMPT}` : system;
   const systemWithMedia = sawMedia
     ? systemWithTools + "\n\nThe customer has attached one or more files (image, PDF, or video). Examine the attached file(s) and answer about what you actually see in them. Never say you cannot open, view, or access files."
     : systemWithTools;
@@ -811,6 +817,17 @@ async function generateReplyUnmoderated(history: { role: "user" | "assistant"; b
             }, restaurant);
             // Same as the commerce tools: what the restaurant system said is
             // grounded; a quoted echo of the model's own words is not.
+            toolFacts.push(r.status.replace(/"[^"]*"/g, '""'));
+            executed.push(c.name);
+            results.push({ id: c.id, name: c.name, status: r.status });
+            continue;
+          }
+          if (calendar && isAppointmentTool(c.name)) {
+            const r = await executeAppointmentTool(c.name, c.args, {
+              tenantId, platform, canAct: !!opts.canAct, contactKey: phone ?? null,
+              conversationId: commerce?.conversationId ?? opts.conversationId ?? null,
+            }, calendar);
+            // What the calendar said is grounded, like the restaurant tools.
             toolFacts.push(r.status.replace(/"[^"]*"/g, '""'));
             executed.push(c.name);
             results.push({ id: c.id, name: c.name, status: r.status });

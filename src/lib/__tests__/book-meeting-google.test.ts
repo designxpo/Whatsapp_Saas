@@ -245,11 +245,37 @@ describe("Book meeting with Google Calendar", () => {
 
     expect(await handleFlowMessage(CONVK, PHONE, "2", { tenantId: T })).toBe(true);
     expect(sched.book).toHaveBeenCalledWith(T, expect.objectContaining({ startIso: SLOTS[1].iso, name: "Asha Verma", phone: PHONE, channel: "WhatsApp" }));
+    // …and says who booked, so it also lands in Talko's Bookings.
+    expect(sched.book.mock.calls[0][1].who).toEqual({ phone: PHONE, channel: "whatsapp", conversationId: null });
     expect(sched.calcomBook).not.toHaveBeenCalled();
     expect(said().join("\n")).not.toMatch(/email/i);
     expect(said().join("\n")).not.toMatch(/invite/i);
     expect(said()).toContain("✅ Booked for Wed 04 Nov 11:30 am! It's on our calendar — see you then.");
     expect(said()).toContain("Thanks!");
+  });
+
+  it("on Instagram, books for the chat (no phone) so it still lands in Bookings", async () => {
+    seed();
+    sched.slots.mockResolvedValue({ provider: "google_calendar", slots: SLOTS });
+    sched.book.mockResolvedValue(true);
+    h.tables["wa_flows"][0].platform = "instagram";
+    const ig = { kind: "instagram", tenantId: T, id: "ch-ig", token: "tok", igUserId: "ig-biz" } as never;
+    const CONV_ID = "5b0c7d1e-0000-4000-8000-000000000001";
+    await handleFlowMessage(CONV_ID, "1789000111222", "book", { tenantId: T, channel: ig });
+    await handleFlowMessage(CONV_ID, "1789000111222", "1", { tenantId: T, channel: ig });
+    expect(sched.book).toHaveBeenCalledWith(T, expect.objectContaining({ phone: "", who: { contactKey: "1789000111222", channel: "instagram", conversationId: CONV_ID } }));
+  });
+
+  it("the flow simulator books nothing into Bookings", async () => {
+    seed();
+    sched.slots.mockResolvedValue({ provider: "google_calendar", slots: SLOTS });
+    sched.book.mockResolvedValue(true);
+    const out: SimOutput[] = [];
+    await handleFlowMessage(CONVK, PHONE, "book", { tenantId: T, sender: drySender(out) });
+    await handleFlowMessage(CONVK, PHONE, "1", { tenantId: T, sender: drySender(out) });
+    // The simulator only describes the step; it never books anything.
+    expect(out.some(o => /would show available times/.test(o.body ?? ""))).toBe(true);
+    expect(sched.book).not.toHaveBeenCalled();
   });
 
   it("a time taken meanwhile is not confirmed", async () => {

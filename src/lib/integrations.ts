@@ -998,6 +998,12 @@ const CONNECTORS: Record<IntegrationKind, Connector> = {
 };
 
 // Resolve the tenant's active integration of any of `kinds` (+ its secret).
+/** Which calendar this workspace books through, if any — no calls to Google or Cal.com. */
+export async function schedulingProvider(tenantId: string): Promise<ScheduleProvider | null> {
+  const i = (await listIntegrations(tenantId)).find(x => x.active && SCHEDULE_KINDS.includes(x.kind));
+  return i ? (i.kind as ScheduleProvider) : null;
+}
+
 async function activeIntegration(tenantId: string, kinds: IntegrationKind[]): Promise<{ integration: Integration; secret: string | null } | null> {
   const all = await listIntegrations(tenantId);
   const i = all.find(x => x.active && kinds.includes(x.kind));
@@ -1035,7 +1041,19 @@ export async function calcomSlots(tenantId: string, opts: { days?: number; tz?: 
 }
 
 // Book a Cal.com slot for an attendee. Returns true on success. Never throws.
-export async function calcomBook(tenantId: string, p: { startIso: string; name: string; email: string; tz?: string }): Promise<boolean> {
+/** Who booked, so the booking is also kept in Talko's Bookings (bookings.ts). */
+export interface BookedBy { phone?: string; contactKey?: string; channel?: "whatsapp" | "instagram" | "messenger" | "webchat"; conversationId?: string | null }
+
+async function recordBooked(tenantId: string, source: "google_calendar" | "calcom", ref: string | null, start: Date, minutes: number, name: string, who?: BookedBy): Promise<void> {
+  const key = (who?.phone ?? "").replace(/\D/g, "") || who?.contactKey || "";
+  if (!key) return;
+  await import("./bookings").then(m => m.recordExternalBooking(tenantId, {
+    source, kind: "created", ref, phone: key, name, title: "Appointment", startsAt: start.toISOString(),
+    endsAt: new Date(start.getTime() + minutes * 60_000).toISOString(), channel: who?.channel, conversationId: who?.conversationId ?? null,
+  })).catch(e => console.warn("[integrations] booking not recorded:", errorMessage(e)));
+}
+
+export async function calcomBook(tenantId: string, p: { startIso: string; name: string; email: string; tz?: string; who?: BookedBy }): Promise<boolean> {
   try {
     const found = await activeIntegration(tenantId, ["calcom"]);
     if (!found?.secret) return false;
@@ -1056,8 +1074,14 @@ export async function calcomBook(tenantId: string, p: { startIso: string; name: 
         },
       }),
     });
-    if (!res.ok) console.error("[integrations] calcom book HTTP", res.status, (await res.text().catch(() => "")).slice(0, 200));
-    return res.ok;
+    if (!res.ok) { console.error("[integrations] calcom book HTTP", res.status, (await res.text().catch(() => "")).slice(0, 200)); return false; }
+    // The booking's uid, when Cal.com's reply carries it, ties a later webhook to the same booking.
+    const body = await res.json().catch(() => null) as { data?: { uid?: unknown; end?: unknown } } | null;
+    const uid = typeof body?.data?.uid === "string" ? body.data.uid : null;
+    const end = typeof body?.data?.end === "string" ? Date.parse(body.data.end) : NaN;
+    const start = new Date(p.startIso);
+    await recordBooked(tenantId, "calcom", uid, start, Number.isFinite(end) && end > start.getTime() ? (end - start.getTime()) / 60_000 : 30, p.name, p.who);
+    return true;
   } catch (err) {
     console.error("[integrations] calcom book failed:", errorMessage(err));
     return false;
@@ -1107,22 +1131,17 @@ export async function scheduleSlots(tenantId: string, opts: { days?: number; tz?
  * first and refuses a time taken meanwhile — false, never a double booking.
  * Never throws.
  */
-export async function scheduleBook(tenantId: string, p: { startIso: string; name: string; email?: string; phone?: string; channel?: string; tz?: string }): Promise<boolean> {
+export async function scheduleBook(tenantId: string, p: { startIso: string; name: string; email?: string; phone?: string; channel?: string; tz?: string; who?: BookedBy }): Promise<boolean> {
   const found = await activeIntegration(tenantId, SCHEDULE_KINDS).catch(() => null);
   if (!found) return false;
-  if (found.integration.kind === "calcom") return p.email ? calcomBook(tenantId, { startIso: p.startIso, name: p.name, email: p.email, tz: p.tz }) : false;
+  if (found.integration.kind === "calcom") return p.email ? calcomBook(tenantId, { startIso: p.startIso, name: p.name, email: p.email, tz: p.tz, who: p.who }) : false;
   try {
     const settings = bookingSettings(Object.fromEntries(Object.entries(found.integration.config).map(([k, v]) => [k, v === null || v === undefined ? "" : String(v)]))).settings;
     const start = new Date(p.startIso);
     if (!settings || Number.isNaN(start.getTime())) return false;
     const booked = await bookSlot(settings, start, { name: p.name, phone: (p.phone ?? "").replace(/\D/g, ""), channel: p.channel || "WhatsApp" });
-    if (booked && p.phone) {
-      // Also in Talko's Bookings, so it can be confirmed, reminded and marked attended.
-      await import("./bookings").then(m => m.recordExternalBooking(tenantId, {
-        source: "google_calendar", kind: "created", ref: booked.eventId, phone: p.phone!.replace(/\D/g, ""), name: p.name,
-        title: "Appointment", startsAt: start.toISOString(), endsAt: new Date(start.getTime() + settings.slotMinutes * 60_000).toISOString(),
-      })).catch(e => console.warn("[integrations] booking not recorded:", errorMessage(e)));
-    }
+    // Also in Talko's Bookings — from any chat channel — so it can be confirmed, reminded and marked attended.
+    if (booked) await recordBooked(tenantId, "google_calendar", booked.eventId, start, settings.slotMinutes, p.name, { phone: p.phone, ...p.who });
     return booked !== null;
   } catch (err) {
     console.error("[integrations] google calendar booking failed:", errorMessage(err));

@@ -22,13 +22,17 @@ import { accountCanSend } from "./feature-guard";
 import type { WorkViewer } from "./tasks";
 
 export type BookingStatus = "booked" | "confirmed" | "completed" | "no_show" | "cancelled";
-export type BookingSource = "manual" | "google_calendar" | "calcom" | "calendly";
+export type BookingSource = "manual" | "google_calendar" | "calcom" | "calendly" | "mezvaan";
+export type BookingChannel = "whatsapp" | "instagram" | "messenger" | "webchat";
+const CHANNELS: BookingChannel[] = ["whatsapp", "instagram", "messenger", "webchat"];
 const LIVE: BookingStatus[] = ["booked", "confirmed"];
 
 export interface Service { id: string; name: string; durationMinutes: number; priceCents: number; depositCents: number; active: boolean }
 export interface Staff { id: string; name: string; userId: string | null; active: boolean }
 export interface Booking {
   id: string; phone: string; name: string; title: string; startsAt: string; endsAt: string; status: BookingStatus; source: BookingSource;
+  /** Where the customer booked, and the key that opens their chat in Live Chat. */
+  channel: BookingChannel; chatKey: string;
   serviceId: string | null; serviceName: string | null; staffId: string | null; staffName: string | null;
   depositCents: number; deposit: "none" | "requested" | "paid"; depositUrl: string | null;
   reminderSentAt: string | null; reminderDetail: string | null; notes: string; cancelReason: string | null;
@@ -107,11 +111,16 @@ async function hydrate(tenantId: string, rows: Row[]): Promise<Booking[]> {
   const orderIds = rows.map(r => r.deposit_order_id).filter(Boolean) as string[];
   const { data: orders } = orderIds.length ? await db().from("wa_orders").select("id,status,payment_url").eq("tenant_id", tenantId).in("id", orderIds) : { data: [] };
   const ord = new Map(((orders ?? []) as { id: string; status: string; payment_url: string | null }[]).map(o => [o.id, o]));
+  const convIds = rows.map(r => r.conversation_id).filter(Boolean) as string[];
+  const { data: convs } = convIds.length ? await db().from("wa_conversations").select("id,phone").eq("tenant_id", tenantId).in("id", convIds) : { data: [] };
+  const chat = new Map(((convs ?? []) as { id: string; phone: string }[]).map(c => [c.id, c.phone]));
   return rows.map(r => {
     const o = r.deposit_order_id ? ord.get(r.deposit_order_id as string) : undefined;
     return {
       id: r.id as string, phone: r.phone as string, name: (r.name as string) ?? "", title: (r.title as string) ?? "",
       startsAt: r.starts_at as string, endsAt: r.ends_at as string, status: r.status as BookingStatus, source: r.source as BookingSource,
+      channel: (CHANNELS.includes(r.channel as BookingChannel) ? r.channel : "whatsapp") as BookingChannel,
+      chatKey: (r.conversation_id ? chat.get(r.conversation_id as string) : null) ?? (r.phone as string),
       serviceId: (r.service_id as string | null) ?? null, serviceName: services.find(s => s.id === r.service_id)?.name ?? null,
       staffId: (r.staff_id as string | null) ?? null, staffName: staff.find(s => s.id === r.staff_id)?.name ?? null,
       depositCents: (r.deposit_cents as number) ?? 0,
@@ -233,7 +242,8 @@ export async function requestDeposit(v: WorkViewer, myId: string | null, id: str
   await db().from("wa_orders").update({ payment_ref: link.id, payment_url: link.url }).eq("tenant_id", v.tenantId).eq("id", (order as { id: string }).id);
   await tdb(v.tenantId).from("wa_bookings").update({ deposit_order_id: (order as { id: string }).id, updated_at: new Date().toISOString() }).eq("id", id);
   const when = new Date(b.starts_at as string).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
-  const sent = await sendInWindow(v.tenantId, b.phone as string, `To confirm your ${b.title} on ${when}, please pay the deposit here: ${link.url}`);
+  // Sent in the chat only on WhatsApp; for other channels the teammate shares the link there.
+  const sent = (b.channel ?? "whatsapp") === "whatsapp" && await sendInWindow(v.tenantId, b.phone as string, `To confirm your ${b.title} on ${when}, please pay the deposit here: ${link.url}`);
   return { url: link.url, sent };
 }
 
@@ -260,7 +270,9 @@ async function sendInWindow(tenantId: string, phone: string, body: string): Prom
  */
 export async function recordExternalBooking(tenantId: string, e: {
   source: Exclude<BookingSource, "manual">; ref: string | null; previousRef?: string | null; kind: "created" | "rescheduled" | "cancelled";
+  /** The customer's WhatsApp number, or for Instagram / Messenger / web chat their chat key. */
   phone: string; name?: string; title?: string; startsAt?: string | null; endsAt?: string | null; cancelReason?: string | null;
+  channel?: BookingChannel; conversationId?: string | null;
 }): Promise<"created" | "updated" | "cancelled" | "ignored"> {
   const t = tdb(tenantId).from("wa_bookings");
   const start = e.startsAt ? Date.parse(e.startsAt) : NaN;
@@ -291,8 +303,45 @@ export async function recordExternalBooking(tenantId: string, e: {
     }
   }
   if (e.ref && await find(e.ref)) return "ignored";   // a webhook retry
-  const { error } = await t.insert({ phone: e.phone, name: (e.name ?? "").slice(0, 120), title: (e.title || "Appointment").slice(0, 120), ...times, status: "booked", source: e.source, external_ref: e.ref, created_by: e.source });
+  // Already recorded from the chat that made it (before the tool's own webhook
+  // arrived): same customer, same source, same start. Attach the reference.
+  const { data: same } = await tdb(tenantId).from("wa_bookings").select("id,external_ref").eq("source", e.source).eq("phone", e.phone).eq("starts_at", times.starts_at).in("status", LIVE).limit(1);
+  const twin = ((same ?? []) as unknown as { id: string; external_ref: string | null }[])[0];
+  if (twin) {
+    if (e.ref && !twin.external_ref) await tdb(tenantId).from("wa_bookings").update({ external_ref: e.ref, updated_at: new Date().toISOString() }).eq("id", twin.id);
+    return "updated";
+  }
+  const row: Row = { phone: e.phone, name: (e.name ?? "").slice(0, 120), title: (e.title || "Appointment").slice(0, 120), ...times, status: "booked", source: e.source, external_ref: e.ref, created_by: e.source };
+  const extra: Row = { ...(e.channel ? { channel: e.channel } : {}), ...(e.conversationId ? { conversation_id: e.conversationId } : {}) };
+  let { error } = await t.insert({ ...row, ...extra });
+  // Before migration 20261106240000 there's no channel / conversation column.
+  if (error && Object.keys(extra).length && /channel|conversation_id/.test(error.message ?? "")) ({ error } = await tdb(tenantId).from("wa_bookings").insert(row));
   return error ? "ignored" : "created";
+}
+
+/** How long a table booking shows for: Mezvaan sends a start time, not an end. */
+export const TABLE_MINUTES = 90;
+
+/**
+ * A Mezvaan table reservation — from its reservation events (WhatsApp
+ * bookings, staff bookings) or from the AI's book_table / cancel_booking
+ * tools on any channel. Matched by the booking code, so the event and the
+ * tool's own record are one booking.
+ */
+export async function recordMezvaanBooking(tenantId: string, r: {
+  kind: "created" | "cancelled"; ref: string | null; phone: string; name?: string | null;
+  outletName?: string | null; partySize?: number | string | null; slotStart?: string | null;
+  channel?: BookingChannel; conversationId?: string | null;
+}): Promise<string> {
+  const start = r.slotStart ? Date.parse(r.slotStart) : NaN;
+  const party = Number(r.partySize);
+  return recordExternalBooking(tenantId, {
+    source: "mezvaan", kind: r.kind, ref: r.ref, phone: (r.phone ?? "").replace(/\D/g, "") || r.phone, name: r.name ?? undefined,
+    title: `Table${Number.isFinite(party) && party > 0 ? ` for ${party}` : ""}${r.outletName ? ` — ${r.outletName}` : ""}`,
+    startsAt: Number.isFinite(start) ? new Date(start).toISOString() : null,
+    endsAt: Number.isFinite(start) ? new Date(start + TABLE_MINUTES * 60_000).toISOString() : null,
+    cancelReason: r.kind === "cancelled" ? "Cancelled in Mezvaan" : null, channel: r.channel, conversationId: r.conversationId ?? null,
+  });
 }
 
 // ── Reminders ────────────────────────────────────────────────────────────────
@@ -321,6 +370,7 @@ export async function drainBookingReminders(now = Date.now(), max = 100): Promis
       if (!claimed.data?.length) continue;
       const note = async (detail: string) => { await tdb(tenantId).from("wa_bookings").update({ reminder_detail: detail }).eq("id", b.id as string); };
       const phone = b.phone as string;
+      if (b.channel && b.channel !== "whatsapp") { skipped++; await note(`Booked on ${b.channel === "webchat" ? "web chat" : b.channel === "messenger" ? "Facebook" : "Instagram"} — WhatsApp reminders only go to WhatsApp bookings.`); continue; }
       if (!ch) { skipped++; await note("No WhatsApp number is connected to send from."); continue; }
       if (await isOptedOutStrict(phone, tenantId).catch(() => true)) { skipped++; await note("The customer opted out of messages."); continue; }
       const { data: conv } = await tdb(tenantId).from("wa_conversations").select("id,last_inbound_at").eq("phone", phone).eq("platform", "whatsapp").maybeSingle();

@@ -184,6 +184,11 @@ export async function executeRestaurantTool(
         return { status: `Not booked — the restaurant system said: ${booked.message}. Apologise and offer to have the team call.` };
       }
       const b = booked.data;
+      // Kept in Talko's Bookings too, from any channel (Mezvaan sends no event for Instagram, Messenger or web chat bookings).
+      await import("./bookings").then(m => m.recordMezvaanBooking(ctx.tenantId, {
+        kind: "created", ref: b.ref ?? b.id, phone, name: guestName, outletName: b.outlet_name, partySize: b.party_size, slotStart: b.slot_start,
+        channel: ctx.platform === "instagram" || ctx.platform === "messenger" || ctx.platform === "webchat" ? ctx.platform : "whatsapp", conversationId: ctx.conversationId ?? null,
+      })).catch(e => console.warn("[restaurant] booking not recorded", e));
       return { status: `Booked. Code ${b.ref}: table for ${b.party_size} at ${b.outlet_name} on ${b.date} at ${b.time}, under ${guestName}. Give the guest the booking code.` };
     }
 
@@ -200,7 +205,10 @@ export async function executeRestaurantTool(
       const ref = str(args.booking_code).toUpperCase().replace(/\s+/g, "");
       if (!/^BK[A-Z0-9]{6}$/.test(ref)) return { status: "Ask the guest for the booking code (it starts with BK)." };
       const res = await mez.cancel(link.key, ref, phone);
-      if (res.ok) return { status: `Cancelled booking ${ref} at ${res.data.outlet_name} on ${res.data.date} at ${res.data.time}.` };
+      if (res.ok) {
+        await import("./bookings").then(m => m.recordMezvaanBooking(ctx.tenantId, { kind: "cancelled", ref, phone })).catch(() => undefined);
+        return { status: `Cancelled booking ${ref} at ${res.data.outlet_name} on ${res.data.date} at ${res.data.time}.` };
+      }
       if (res.status === 404) return { status: `No upcoming booking ${ref} under this number. Ask the guest to check the code.` };
       return { status: `Not cancelled: ${res.message}` };
     }

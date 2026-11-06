@@ -316,6 +316,16 @@ export async function processEvent(params: {
   // A review request after this event, when the workspace asks for one
   // (review-booster.ts). Independent of API rules, so it runs even when no
   // rule listens for the event. Never blocks or fails the event itself.
+  // Mezvaan table reservations also land in Talko's Bookings (bookings.ts).
+  const ev = params.event.trim();
+  if (!params.dryRun && (ev === "mezmitra.reservation.created" || ev === "mezmitra.reservation.cancelled")) {
+    const d = (payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {}) as Record<string, unknown>;
+    const text = (k: string) => (typeof d[k] === "string" || typeof d[k] === "number" ? String(d[k]) : null);
+    await import("./bookings").then(m => m.recordMezvaanBooking(tenantId, {
+      kind: ev.endsWith("created") ? "created" : "cancelled", ref: text("booking_ref") ?? text("booking_id"), phone: params.phone, name: params.name,
+      outletName: text("outlet_name"), partySize: text("party_size"), slotStart: text("slot_start"), channel: "whatsapp",
+    })).catch(e => console.error("[apirules] booking not recorded", e));
+  }
   if (!params.dryRun) {
     await import("./review-booster")
       .then(m => m.queueFromEvent(tenantId, params.event.trim(), params.phone, params.name, (payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {}) as Record<string, unknown>))
