@@ -40,6 +40,7 @@ import { drainLeadScoring } from "@/lib/lead-intel";
 import { drainReviewBooster } from "@/lib/review-booster";
 import { sweepWorkAlerts, sweepIntegrationAlerts, drainWorkAlertEmails } from "@/lib/work-alerts";
 import { drainUnpaidReminders } from "@/lib/unpaid-orders";
+import { drainBookingReminders } from "@/lib/bookings";
 import { runRetention } from "@/lib/retention";
 import { drainDeletionRequests } from "@/lib/metadeletion";
 import { drainSheetRows } from "@/lib/google/sheetwatch";
@@ -61,7 +62,7 @@ const STAGES = [
   "ownerbroadcast", "escalationsweeps", "botresumes", "dailydigests", "metausage", "integrationdeliveries",
   "ytcomments", "googlereviews", "kbsync", "igtokens", "partnerbilling", "replyhistory", "reviewbooster",
   "metadeletion", "retention", "sheetrows", "tenantmetrics", "leadscore", "reviewalerts",
-  "workalerts", "unpaidorders",
+  "workalerts", "unpaidorders", "bookingreminders",
 ];
 
 // POST /api/cron/process-queue — run on a schedule (*/5 GitHub Actions pinger).
@@ -125,6 +126,8 @@ export async function POST(req: Request) {
     const workAlerts = await stage("workalerts", null, async () => ({ raised: await sweepWorkAlerts(), integration: await sweepIntegrationAlerts(), emails: await drainWorkAlertEmails() }), pollStart, POLL_BUDGET);
     // One pay-link reminder per unpaid order, inside the 24h window, opt-in per workspace.
     const unpaidOrders = await stage("unpaidorders", null, () => drainUnpaidReminders(), pollStart, POLL_BUDGET);
+    // One reminder per booking before it starts, where a workspace switched reminders on (bookings.ts).
+    const bookingReminders = await stage("bookingreminders", null, () => drainBookingReminders(), pollStart, POLL_BUDGET);
     // The AI's read of each lead with new messages — status, intent, ready to
     // pay — saved on the chat and sent to the CRM when it changes (lead-intel.ts).
     const leadScore = await stage("leadscore", null, () => drainLeadScoring(pollStart + POLL_BUDGET), pollStart, POLL_BUDGET);
@@ -138,7 +141,7 @@ export async function POST(req: Request) {
     const sheetRows = await stage("sheetrows", null, () => drainSheetRows(pollStart + POLL_BUDGET), pollStart, POLL_BUDGET);
     // Last, so the owner console's figures can never take a turn from the pollers above.
     const tenantMetrics = await stage("tenantmetrics", null, () => sweepTenantMetricsIfDue(pollStart + POLL_BUDGET), pollStart, POLL_BUDGET);
-    console.log(JSON.stringify({ tag: "cron_pollers", ytComments, googleReviews, reviewAlerts, kbSync, igTokens, partnerBilling, replyHistory, reviewBooster, workAlerts, unpaidOrders, leadScore, metaDeletion, retention, sheetRows, tenantMetrics, tookMs: Date.now() - pollStart }));
+    console.log(JSON.stringify({ tag: "cron_pollers", ytComments, googleReviews, reviewAlerts, kbSync, igTokens, partnerBilling, replyHistory, reviewBooster, workAlerts, unpaidOrders, bookingReminders, leadScore, metaDeletion, retention, sheetRows, tenantMetrics, tookMs: Date.now() - pollStart }));
     await recordStageTick(ran, [...new Set([...STAGES, ...declared])], tookMs);
   });
 

@@ -76,6 +76,8 @@ async function ingestOne(integration: Integration, e: NormalizedEvent): Promise<
     // upsertContacts keeps a known contact's old attribute values; the latest
     // order or payment must replace them.
     if (e.attributes && Object.keys(e.attributes).length) await setContactAttributes(e.phone, e.attributes, tenantId).catch(() => undefined);
+    // Bookings from Cal.com / Calendly also land in Talko's Bookings (bookings.ts).
+    await recordBookingEvent(tenantId, e).catch(err => console.warn("[inbound] booking not recorded", err instanceof Error ? err.message : err));
 
     const rules = await processEvent({ event: e.eventKey, phone: e.phone, name: e.name, payload: e.data }, tenantId);
     const contact = await getContactByPhone(e.phone, tenantId).catch(() => null);
@@ -96,6 +98,27 @@ async function ingestOne(integration: Integration, e: NormalizedEvent): Promise<
   } catch (err) {
     return settle("failed", err instanceof Error ? err.message : String(err));
   }
+}
+
+const BOOKING_EVENTS: Record<string, { source: "calcom" | "calendly"; kind: "created" | "rescheduled" | "cancelled" }> = {
+  "calcom.booking_created": { source: "calcom", kind: "created" },
+  "calcom.booking_rescheduled": { source: "calcom", kind: "rescheduled" },
+  "calcom.booking_cancelled": { source: "calcom", kind: "cancelled" },
+  "calendly.booking_created": { source: "calendly", kind: "created" },
+  "calendly.booking_rescheduled": { source: "calendly", kind: "rescheduled" },
+  "calendly.booking_canceled": { source: "calendly", kind: "cancelled" },
+};
+
+async function recordBookingEvent(tenantId: string, e: NormalizedEvent): Promise<void> {
+  const b = BOOKING_EVENTS[e.eventKey];
+  if (!b) return;
+  const d = e.data as Record<string, unknown>;
+  const text = (k: string) => (typeof d[k] === "string" && d[k] ? String(d[k]) : null);
+  const { recordExternalBooking } = await import("../bookings");
+  await recordExternalBooking(tenantId, {
+    source: b.source, kind: b.kind, ref: text("booking_ref"), previousRef: text("previous_ref"), phone: e.phone, name: e.name,
+    title: text("meeting") ?? undefined, startsAt: text("start_time"), endsAt: text("end_time"), cancelReason: text("cancel_reason"),
+  });
 }
 
 /** Cancel this person's still-pending messages for `eventKeys`; how many were cancelled. */

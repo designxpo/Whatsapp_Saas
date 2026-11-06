@@ -15,8 +15,9 @@ import { UNANSWERED_AFTER_MS } from "./store";
 import { listTasks, type WorkViewer } from "./tasks";
 import { addDaysIn, startOfDayIn } from "./businessclock";
 import { healthReport } from "./integration-health";
+import { listBookings } from "./bookings";
 
-export type TodayKind = "reply" | "ready_to_pay" | "approval" | "unpaid_order" | "task" | "review_case" | "commitment" | "connection";
+export type TodayKind = "reply" | "ready_to_pay" | "approval" | "unpaid_order" | "task" | "review_case" | "commitment" | "connection" | "booking";
 
 export interface TodayItem {
   key: string;
@@ -30,7 +31,7 @@ export interface TodayItem {
   overdue: boolean;
   mine: boolean;
   /** Where the item opens. */
-  open: { tab: "livechat"; phone: string } | { tab: "reviews"; reviewId?: string } | { tab: "catalog" | "growth" | "today" | "integrations" | "setup" | "instagram" | "facebook" };
+  open: { tab: "livechat"; phone: string } | { tab: "reviews"; reviewId?: string } | { tab: "catalog" | "growth" | "today" | "integrations" | "setup" | "instagram" | "facebook" | "bookings" };
   taskId?: string;
 }
 
@@ -199,6 +200,22 @@ export async function buildToday(v: WorkViewer, myId: string | null, now: number
         person: "Admins", action: p.fix.label, dueAt: p.since, overdue: p.severity === "critical", mine: true,
         open: p.fix.tab === "reviews" ? { tab: "reviews" } : { tab: p.fix.tab },
       });
+    }
+  }
+
+  // 8. Bookings: confirm the ones coming up in the next day, and close the ones
+  // that have ended (completed or a no-show) so Results and reminders stay true.
+  {
+    const r = await listBookings(v, myId, new Date(now - 3 * 86_400_000).toISOString(), new Date(now + 86_400_000).toISOString()).catch(() => ({ bookings: [], setupPending: false }));
+    for (const b of r.bookings) {
+      const who = b.name || `+${b.phone}`;
+      if (b.status === "booked" && Date.parse(b.startsAt) > now) {
+        items.push({ key: `booking:${b.id}:confirm`, kind: "booking", title: `${b.title} — ${who}`, detail: `Starts ${new Date(b.startsAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", weekday: "short", hour: "numeric", minute: "2-digit" })}${b.staffName ? ` with ${b.staffName}` : ""}.`,
+          person: b.staffName, action: "Confirm the booking", dueAt: b.startsAt, overdue: false, mine: false, open: { tab: "bookings" } });
+      } else if ((b.status === "booked" || b.status === "confirmed") && Date.parse(b.endsAt) < now - 3_600_000) {
+        items.push({ key: `booking:${b.id}:close`, kind: "booking", title: `${b.title} — ${who}`, detail: "It has ended. Did they come?",
+          person: b.staffName, action: "Mark it completed or a no-show", dueAt: b.endsAt, overdue: true, mine: false, open: { tab: "bookings" } });
+      }
     }
   }
 

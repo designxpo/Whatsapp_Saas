@@ -11,11 +11,11 @@ import { Notice, useNotice } from "@/components/Notice";
 import { requestReviewFocus } from "@/lib/review-focus";
 import { inp, type GoTo } from "../_shared";
 
-type Kind = "reply" | "ready_to_pay" | "approval" | "unpaid_order" | "task" | "review_case" | "commitment" | "connection";
+type Kind = "reply" | "ready_to_pay" | "approval" | "unpaid_order" | "task" | "review_case" | "commitment" | "connection" | "booking";
 type Item = {
   key: string; kind: Kind; title: string; detail: string; person: string | null; action: string;
   dueAt: string | null; overdue: boolean; mine: boolean; taskId?: string;
-  open: { tab: "livechat"; phone: string } | { tab: "reviews"; reviewId?: string } | { tab: "catalog" | "growth" | "today" | "integrations" | "setup" | "instagram" | "facebook" };
+  open: { tab: "livechat"; phone: string } | { tab: "reviews"; reviewId?: string } | { tab: "catalog" | "growth" | "today" | "integrations" | "setup" | "instagram" | "facebook" | "bookings" };
 };
 type Settings = { replyTargetMinutes: number; alertEmails: boolean; alertHours: { start: number; end: number } | null; unpaidReminder: { enabled: boolean; afterMinutes: number }; integrationEmails: boolean };
 type Times = { days: number; answered: number; medianMinutes: number | null; p90Minutes: number | null; withinTargetPct: number | null; byPeople: { answered: number; medianMinutes: number | null }; partial: boolean };
@@ -28,7 +28,7 @@ type Filter = "all" | "mine" | "unassigned";
 
 const KIND_LABEL: Record<Kind, string> = {
   reply: "Customer waiting", ready_to_pay: "Ready to pay", approval: "Approval", unpaid_order: "Unpaid order",
-  task: "Task", review_case: "Review complaint", commitment: "Promise made", connection: "Connection",
+  task: "Task", review_case: "Review complaint", commitment: "Promise made", connection: "Connection", booking: "Booking",
 };
 
 function dueText(iso: string | null, overdue: boolean): string {

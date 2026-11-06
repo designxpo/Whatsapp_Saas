@@ -1116,6 +1116,13 @@ export async function scheduleBook(tenantId: string, p: { startIso: string; name
     const start = new Date(p.startIso);
     if (!settings || Number.isNaN(start.getTime())) return false;
     const booked = await bookSlot(settings, start, { name: p.name, phone: (p.phone ?? "").replace(/\D/g, ""), channel: p.channel || "WhatsApp" });
+    if (booked && p.phone) {
+      // Also in Talko's Bookings, so it can be confirmed, reminded and marked attended.
+      await import("./bookings").then(m => m.recordExternalBooking(tenantId, {
+        source: "google_calendar", kind: "created", ref: booked.eventId, phone: p.phone!.replace(/\D/g, ""), name: p.name,
+        title: "Appointment", startsAt: start.toISOString(), endsAt: new Date(start.getTime() + settings.slotMinutes * 60_000).toISOString(),
+      })).catch(e => console.warn("[integrations] booking not recorded:", errorMessage(e)));
+    }
     return booked !== null;
   } catch (err) {
     console.error("[integrations] google calendar booking failed:", errorMessage(err));

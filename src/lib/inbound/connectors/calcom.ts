@@ -61,6 +61,8 @@ export const calcomProvider: Provider = {
         meeting: firstText(p, ["title", "eventTitle"]),
         when: when.when, date: when.date, time: when.time, timezone: tz,
         start_time: start,
+        end_time: firstText(p, ["endTime"]),
+        booking_ref: firstText(p, ["uid", "bookingId"]),
         meeting_url: firstText(p, ["metadata.videoCallUrl"]) || (/^https?:\/\//.test(location) ? location : ""),
         location,
         host: firstText(p, ["organizer.name"]),

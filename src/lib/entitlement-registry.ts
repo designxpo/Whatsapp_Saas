@@ -46,7 +46,7 @@ export const FEATURE_META: Record<FeatureKey, { label: string; group: string }> 
 // non-WhatsApp channels gate on their own channel key. Keyed by string to avoid
 // importing the admin Tab type (keeps this module dependency-free).
 export const TAB_FEATURE: Record<string, FeatureKey | null> = {
-  home: null, today: null, results: null, livechat: null, contacts: null, campaigns: null, analytics: null,
+  home: null, today: null, results: null, bookings: null, livechat: null, contacts: null, campaigns: null, analytics: null,
   assistant: null, setup: null, integrations: null, optouts: null, settings: null,
   broadcast: "broadcasts", templates: "broadcasts",
   instagram: "ch_instagram", facebook: "ch_messenger", webchat: "ch_webchat",

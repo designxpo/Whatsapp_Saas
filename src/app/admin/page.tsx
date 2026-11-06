@@ -15,7 +15,7 @@ import { HotLeads } from "./_tabs/HotLeads";
 import { useTabInUrl } from "@/lib/tab-url";
 import { type Tab, type ChatIntent, type GoTo, DEFAULT_TENANT_ID, inp, btnPrimary, railLoading, ChannelSelect, type AnalyticsData, ImageUpload, ConvAvatar, ImgFallback, RailCard, StatRow, RailBar, useAnalytics } from "./_shared";
 import { type Entitlements, type AccountState, tabAllowed, tabRoleAllowed, accountState } from "@/lib/entitlement-registry";
-import { Send, Users, History, Zap, Ban, LogOut, Bot, MessageSquare, Facebook, Youtube, Globe, Database, Sparkles, ShieldCheck, ArrowRight, BarChart3, LayoutTemplate, FlaskConical, Home, Settings, ClipboardList, Megaphone, Instagram, Workflow, ShoppingBag, TrendingUp, ListChecks, ListTodo, Plug, KanbanSquare, AtSign, Star, AlertTriangle, Eye, CreditCard } from "lucide-react";
+import { Send, Users, History, Zap, Ban, LogOut, Bot, MessageSquare, Facebook, Youtube, Globe, Database, Sparkles, ShieldCheck, ArrowRight, BarChart3, LayoutTemplate, FlaskConical, Home, Settings, ClipboardList, Megaphone, Instagram, Workflow, ShoppingBag, TrendingUp, ListChecks, ListTodo, CalendarDays, Plug, KanbanSquare, AtSign, Star, AlertTriangle, Eye, CreditCard } from "lucide-react";
 import { ConfirmProvider } from "@/components/confirm-dialog";
 import { ProductTour } from "@/components/ProductTour";
 import { HoverHelp } from "@/components/HoverHelp";
@@ -44,6 +44,7 @@ const tabLoading = (
 const AdsTab = dynamic(() => import("./_tabs/AdsTab"), { ssr: false, loading: () => tabLoading });
 const TodayTab = dynamic(() => import("./_tabs/TodayTab"), { ssr: false, loading: () => tabLoading });
 const ResultsTab = dynamic(() => import("./_tabs/ResultsTab"), { ssr: false, loading: () => tabLoading });
+const BookingsTab = dynamic(() => import("./_tabs/BookingsTab"), { ssr: false, loading: () => tabLoading });
 const AnalyticsTab = dynamic(() => import("./_tabs/AnalyticsTab"), { ssr: false, loading: () => tabLoading });
 const CampaignsTab = dynamic(() => import("./_tabs/CampaignsTab"), { ssr: false, loading: () => tabLoading });
 const SequencesTab = dynamic(() => import("./_tabs/SequencesTab"), { ssr: false, loading: () => tabLoading });
@@ -116,6 +117,7 @@ const NAV_GROUPS: { group: string; items: { key: Tab; label: string; icon: React
     items: [
       { key: "home", label: "Home", icon: <Home className="w-[18px] h-[18px]" />, hint: "Your dashboard and setup progress" },
       { key: "today", label: "Today", icon: <ListTodo className="w-[18px] h-[18px]" />, hint: "Everything waiting for a person — who should do it and by when" },
+      { key: "bookings", label: "Bookings", icon: <CalendarDays className="w-[18px] h-[18px]" />, hint: "Appointments by day — confirm, remind, take deposits, mark who came" },
       { key: "livechat", label: "Live Chat", icon: <MessageSquare className="w-[18px] h-[18px]" />, hint: "Every conversation from every channel, in one inbox" },
       { key: "contacts", label: "Contacts", icon: <Users className="w-[18px] h-[18px]" />, hint: "Everyone who has ever messaged you" },
       { key: "pipeline", label: "Sales Pipeline", icon: <KanbanSquare className="w-[18px] h-[18px]" />, hint: "Drag leads from new enquiry to won" },
@@ -175,7 +177,7 @@ const NAV_GROUPS: { group: string; items: { key: Tab; label: string; icon: React
   },
 ];
 const TAB_TITLES: Record<Tab, string> = {
-  home: "Home", today: "Today", results: "Results", livechat: "Live Chat", broadcast: "Broadcast", ads: "Meta Ads", instagram: "Instagram", facebook: "Facebook", youtube: "YouTube", webchat: "Website Chat", reviews: "Google Reviews", assistant: "AI Knowledge Base", flows: "Chatbot Flows",
+  home: "Home", today: "Today", results: "Results", bookings: "Bookings", livechat: "Live Chat", broadcast: "Broadcast", ads: "Meta Ads", instagram: "Instagram", facebook: "Facebook", youtube: "YouTube", webchat: "Website Chat", reviews: "Google Reviews", assistant: "AI Knowledge Base", flows: "Chatbot Flows",
   sequences: "Sequences", catalog: "Catalog", growth: "Growth Tools", handlehub: "Links & QR Codes",
   aihub: "AI Hub", templates: "Templates", forms: "WhatsApp Forms", analytics: "Analytics",
   contacts: "Contacts", pipeline: "Sales Pipeline", campaigns: "History", optouts: "Do Not Contact", settings: "Settings", setup: "Setup Guide", integrations: "Integrations", security: "Sign-in security", team: "Team Progress",
@@ -404,6 +406,7 @@ function AdminShell() {
           {tab === "home" && <HomeTab goTo={goTo} />}
           {tab === "today" && <TodayTab goTo={goTo} />}
           {tab === "results" && <ResultsTab />}
+          {tab === "bookings" && <BookingsTab goTo={goTo} />}
           {tab === "livechat" && <LiveChatTab goTo={goTo} intent={chatIntent} clearIntent={clearChatIntent} />}
           {tab === "broadcast" && <BroadcastTab goTo={goTo} />}
           {tab === "ads" && <AdsTab goTo={goTo} />}
