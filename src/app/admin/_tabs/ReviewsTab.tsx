@@ -215,7 +215,7 @@ export default function ReviewsTab({ isAdmin = true }: { isAdmin?: boolean }) {
         <section className="space-y-3 border-t border-line p-4" aria-label="Google Business Profile locations">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">Google locations</p>
-          <div className="flex items-center gap-3 text-[11px] text-ink-500">
+          <div className="flex flex-wrap items-center gap-3 text-[11px] text-ink-500">
             {lastSync && <span>Last successful sync {ago(lastSync)} · checks every ~5 min</span>}
             {isAdmin && (
               <a href="/api/admin/onboarding/google-reviews/start" className="min-h-9 px-3 py-1.5 rounded-control bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold inline-flex items-center gap-1.5">
@@ -328,7 +328,7 @@ export default function ReviewsTab({ isAdmin = true }: { isAdmin?: boolean }) {
           </div>
           <div className="flex items-center gap-2 text-xs font-semibold text-ink-700">Rating <PickStars n={addForm.rating} onPick={v => setAddForm({ ...addForm, rating: v })} /></div>
           <textarea className={`${inp} w-full`} aria-label="Review text" rows={3} placeholder="Paste the review text here…" value={addForm.text} onChange={e => setAddForm({ ...addForm, text: e.target.value })} />
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button onClick={addReview} disabled={adding || (!addForm.text.trim() && !addForm.author.trim())} title={!addForm.text.trim() && !addForm.author.trim() ? "Paste the review text first" : undefined} className="min-h-10 px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{adding ? "Adding…" : "Add review"}</button>
             <button onClick={() => setShowAdd(false)} className="min-h-10 px-2 py-1.5 text-xs font-semibold text-ink-500 hover:text-ink-900">Cancel</button>
             {!addForm.text.trim() && !addForm.author.trim() && !adding && <span className="text-[12px] text-ink-500">Paste the review text first.</span>}

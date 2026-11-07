@@ -748,7 +748,7 @@ function AdTriggersPanel({ flowId, onClose }: { flowId: string; onClose: () => v
   }
 
   return (
-    <div className="absolute right-0 top-9 w-96 bg-white rounded-control border border-line shadow-float p-3 space-y-3 z-30">
+    <div className="absolute right-0 top-9 w-96 max-sm:fixed max-sm:left-4 max-sm:right-4 max-sm:top-32 max-sm:w-auto max-sm:max-h-[70dvh] max-sm:overflow-y-auto bg-white rounded-control border border-line shadow-float p-3 space-y-3 z-30">
       <div className="flex items-center justify-between">
         <p className="text-[11px] font-bold text-ink-400 uppercase">Auto-start from a Meta ad</p>
         <button onClick={onClose} className="text-ink-400 hover:text-ink-900"><X className="w-3.5 h-3.5" /></button>
@@ -960,27 +960,27 @@ function Editor({ flowId }: { flowId: string }) {
     setSimLog(l => [...l, ...entries]);
   }
 
-  if (!loaded) return <div className="h-screen flex items-center justify-center bg-canvas"><Loader2 className="w-6 h-6 animate-spin text-ink-400" /></div>;
+  if (!loaded) return <div className="h-[100dvh] flex items-center justify-center bg-canvas"><Loader2 className="w-6 h-6 animate-spin text-ink-400" /></div>;
 
   const toggleGroup = (g: string) => setClosedGroups(s => { const next = new Set(s); if (next.has(g)) next.delete(g); else next.add(g); return next; });
   const q = search.trim().toLowerCase();
   const simIg = simView === "instagram";
 
   return (
-    <div className="h-screen flex flex-col bg-canvas">
+    <div className="h-[100dvh] flex flex-col bg-canvas">
       {/* Top bar — flow identity + status & actions */}
-      <header className="px-4 h-14 shrink-0 bg-white border-b border-line flex items-center gap-3 z-30">
-        <button onClick={() => router.push("/admin?tab=flows")} className="p-1.5 rounded-lg text-ink-400 hover:bg-canvas hover:text-ink-900" aria-label="Back to flows"><ArrowLeft className="w-4 h-4" /></button>
+      <header className="px-4 h-14 shrink-0 bg-white border-b border-line flex items-center gap-2 sm:gap-3 z-30">
+        <button onClick={() => router.push("/admin?tab=flows")} className="p-1.5 shrink-0 rounded-lg text-ink-400 hover:bg-canvas hover:text-ink-900" aria-label="Back to flows"><ArrowLeft className="w-4 h-4" /></button>
         <span className="text-[13px] text-ink-400 hidden sm:block">Flows<span className="mx-1">/</span></span>
-        <input className="font-semibold text-sm text-ink-900 border-b border-transparent focus:border-brand-600 focus:outline-none flex-1 min-w-[8rem] max-w-[24rem] bg-transparent" placeholder="Untitled flow" value={name} onChange={e => setName(e.target.value)} />
-        <div className="flex-1" />
+        <input className="font-semibold text-sm text-ink-900 border-b border-transparent focus:border-brand-600 focus:outline-none flex-1 min-w-0 sm:min-w-[8rem] max-w-[24rem] bg-transparent" placeholder="Untitled flow" value={name} onChange={e => setName(e.target.value)} />
+        <div className="flex-1 max-sm:hidden" />
         {issues.length > 0 && (
-          <div className="relative">
-            <button onClick={() => setShowIssues(v => !v)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold whitespace-nowrap">
-              <AlertTriangle className="w-3.5 h-3.5" /> {issues.length} issue{issues.length > 1 ? "s" : ""}
+          <div className="relative shrink-0">
+            <button onClick={() => setShowIssues(v => !v)} aria-label={`${issues.length} issue${issues.length > 1 ? "s" : ""} to fix`} className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold whitespace-nowrap">
+              <AlertTriangle className="w-3.5 h-3.5" /> {issues.length}<span className="max-sm:hidden"> issue{issues.length > 1 ? "s" : ""}</span>
             </button>
             {showIssues && (
-              <div className="absolute right-0 top-9 w-80 bg-white rounded-control border border-line shadow-float p-3 space-y-1.5 z-30">
+              <div className="absolute right-0 top-9 w-80 max-sm:fixed max-sm:left-4 max-sm:right-4 max-sm:top-14 max-sm:w-auto bg-white rounded-control border border-line shadow-float p-3 space-y-1.5 z-30">
                 <div className="flex items-center justify-between">
                   <p className="text-[11px] font-bold text-ink-400 uppercase">Fix before going live</p>
                   <button onClick={() => setShowIssues(false)} className="text-ink-400 hover:text-ink-900"><X className="w-3.5 h-3.5" /></button>
@@ -991,24 +991,25 @@ function Editor({ flowId }: { flowId: string }) {
           </div>
         )}
         <div className="h-6 w-px bg-line mx-0.5 hidden sm:block" />
-        <button onClick={() => setActive(a => !a)} title="When ON, this flow can trigger for real conversations on the chosen channels." className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${active ? "bg-brand-100 text-brand-700" : "bg-canvas text-ink-400 hover:text-ink-600"}`}>{active ? "● Active" : "○ Inactive"}</button>
-        <button onClick={() => setSimOpen(s => !s)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-control text-xs font-bold border whitespace-nowrap transition-colors ${simOpen ? "border-ink-950 bg-ink-950 text-white" : "border-line text-ink-600 hover:bg-canvas"}`}><FlaskConical className="w-3.5 h-3.5" /> Test</button>
-        <button onClick={save} disabled={saving} className="flex items-center gap-1.5 px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold whitespace-nowrap disabled:opacity-60 transition-colors">
+        <button onClick={() => setActive(a => !a)} title="When ON, this flow can trigger for real conversations on the chosen channels." className={`shrink-0 px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${active ? "bg-brand-100 text-brand-700" : "bg-canvas text-ink-400 hover:text-ink-600"}`}>{active ? "● Active" : "○ Inactive"}</button>
+        <button onClick={() => setSimOpen(s => !s)} aria-label="Test this flow" aria-pressed={simOpen} className={`shrink-0 flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-control text-xs font-bold border whitespace-nowrap transition-colors ${simOpen ? "border-ink-950 bg-ink-950 text-white" : "border-line text-ink-600 hover:bg-canvas"}`}><FlaskConical className="w-3.5 h-3.5" /><span className="max-sm:hidden">Test</span></button>
+        <button onClick={save} disabled={saving} className="shrink-0 flex items-center gap-1.5 px-3 sm:px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold whitespace-nowrap disabled:opacity-60 transition-colors">
           {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
           {Date.now() - savedAt < 2500 ? "Saved" : "Save"}
         </button>
       </header>
 
       {/* Config strip — how it triggers · where it runs · what it knows */}
-      <div className="px-4 h-11 shrink-0 bg-white border-b border-line flex items-center gap-2.5 z-20">
+      {/* Phone: the strip wraps onto a few short lines instead of running off the screen. */}
+      <div className="px-4 sm:h-11 max-sm:py-2 shrink-0 bg-white border-b border-line flex max-sm:flex-wrap items-center gap-2.5 z-20">
         <span className="text-[11px] font-bold text-ink-400 uppercase tracking-wide shrink-0">Triggers</span>
-        <input className="border border-line rounded-control px-2.5 py-1 text-xs w-[220px] shrink-0 bg-white text-ink-900 placeholder:text-ink-400" placeholder="Keywords: hi, hello, menu" title="A message matching any of these starts the flow. To trigger from a template's quick-reply button, add the button's exact label here." value={keywords} onChange={e => setKeywords(e.target.value)} />
+        <input className="border border-line rounded-control px-2.5 py-1 text-xs w-[220px] shrink-0 max-sm:shrink max-sm:grow max-sm:min-w-0 bg-white text-ink-900 placeholder:text-ink-400" placeholder="Keywords: hi, hello, menu" title="A message matching any of these starts the flow. To trigger from a template's quick-reply button, add the button's exact label here." value={keywords} onChange={e => setKeywords(e.target.value)} />
         <div className="relative shrink-0">
           <button onClick={() => setShowAdTriggers(v => !v)} className="flex items-center gap-1.5 px-2.5 py-1 rounded-control border border-line text-ink-600 hover:bg-canvas text-xs font-semibold whitespace-nowrap"><Flag className="w-3.5 h-3.5" /> Ad triggers</button>
           {showAdTriggers && <AdTriggersPanel flowId={flowId} onClose={() => setShowAdTriggers(false)} />}
         </div>
 
-        <div className="h-5 w-px bg-line shrink-0" />
+        <div className="h-5 w-px bg-line shrink-0 max-sm:hidden" />
 
         <span className="text-[11px] font-bold text-ink-400 uppercase tracking-wide shrink-0">Channels</span>
         <div className="flex items-center gap-1 shrink-0" title="Tick the channels this flow should run on">
@@ -1048,7 +1049,7 @@ function Editor({ flowId }: { flowId: string }) {
               {showChannelPick && (
                 <>
                   <div className="fixed inset-0 z-20" onClick={() => setShowChannelPick(false)} />
-                  <div className="absolute left-0 top-9 w-64 bg-white rounded-control border border-line shadow-float p-1.5 z-30 max-h-80 overflow-y-auto u-scale-in origin-top-left">
+                  <div className="absolute left-0 top-9 w-64 max-sm:fixed max-sm:left-4 max-sm:right-4 max-sm:top-32 max-sm:w-auto bg-white rounded-control border border-line shadow-float p-1.5 z-30 max-h-80 overflow-y-auto u-scale-in origin-top-left">
                     <button type="button" onClick={() => setChannelIds([])}
                       className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${!scoped ? "bg-brand-50 text-brand-700 font-semibold" : "text-ink-600 hover:bg-canvas"}`}>
                       <span className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0 ${!scoped ? "bg-brand-600 border-brand-600" : "border-line"}`}>{!scoped && <Check className="w-2.5 h-2.5 text-white" />}</span>
@@ -1076,23 +1077,24 @@ function Editor({ flowId }: { flowId: string }) {
           );
         })()}
 
-        <div className="h-5 w-px bg-line shrink-0" />
+        <div className="h-5 w-px bg-line shrink-0 max-sm:hidden" />
 
         <span className="text-[11px] font-bold text-ink-400 uppercase tracking-wide shrink-0">Knowledge</span>
-        <select className="border border-line rounded-control px-2 py-1 text-xs bg-white text-ink-900 shrink-0" value={primaryKbTag} onChange={e => setPrimaryKbTag(e.target.value)} title="AI in this flow answers from KB docs with this tag first, then falls back to the default knowledge base. Tag docs in the AI Assistant tab.">
+        <select className="border border-line rounded-control px-2 py-1 text-xs bg-white text-ink-900 shrink-0 max-sm:shrink max-sm:grow max-sm:min-w-0" value={primaryKbTag} onChange={e => setPrimaryKbTag(e.target.value)} title="AI in this flow answers from KB docs with this tag first, then falls back to the default knowledge base. Tag docs in the AI Assistant tab.">
           <option value="">Default knowledge</option>
           {kbTags.map(t => <option key={t} value={t}>{t} first</option>)}
           {primaryKbTag && !kbTags.includes(primaryKbTag) && <option value={primaryKbTag}>{primaryKbTag} first</option>}
         </select>
       </div>
 
-      <div className="flex-1 flex min-h-0">
+      {/* Phone: toolbox becomes a short strip above the canvas; the simulator opens over both. */}
+      <div className="flex-1 flex min-h-0 relative max-sm:flex-col">
         {/* Toolbox */}
-        <aside className="w-56 shrink-0 bg-white border-r border-line flex flex-col">
-          <div className="p-4 pb-2">
+        <aside className="w-56 shrink-0 bg-white border-r border-line flex flex-col max-sm:w-full max-sm:h-44 max-sm:border-r-0 max-sm:border-b">
+          <div className="p-4 pb-2 max-sm:px-4 max-sm:pt-2">
             <p className="text-sm font-bold text-ink-900">Toolbox</p>
-            <p className="text-[11px] text-ink-400 mt-0.5 leading-snug">Click and drag a block to the canvas to build a flow.</p>
-            <div className="relative mt-3">
+            <p className="text-[11px] text-ink-400 mt-0.5 leading-snug max-sm:hidden">Click and drag a block to the canvas to build a flow.</p>
+            <div className="relative mt-3 max-sm:mt-1.5">
               <Search className="w-3.5 h-3.5 text-ink-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
               <input className="w-full border border-line rounded-control pl-8 pr-2 py-1.5 text-xs bg-canvas text-ink-900 placeholder:text-ink-400" placeholder="Search…" value={search} onChange={e => setSearch(e.target.value)} />
             </div>
@@ -1108,7 +1110,7 @@ function Editor({ flowId }: { flowId: string }) {
                     <ChevronDown className={`w-3 h-3 transition-transform ${closed ? "-rotate-90" : ""}`} /> {g.group} blocks
                   </button>
                   {!closed && (
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-2 max-sm:grid-cols-4 gap-2">
                       {types.map(t => (
                         <div key={t} draggable onDragStart={e => e.dataTransfer.setData("application/wa-node", t)} title={BLOCKS[t].hint}
                           className="flex flex-col items-center gap-1.5 py-3 px-1 rounded-control border border-line bg-white text-ink-600 cursor-grab active:cursor-grabbing hover:border-brand-500 hover:text-brand-700 transition-colors">
@@ -1126,7 +1128,7 @@ function Editor({ flowId }: { flowId: string }) {
         </aside>
 
         {/* Canvas */}
-        <div className="flex-1" onDrop={onDrop} onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}>
+        <div className="flex-1 min-h-0" onDrop={onDrop} onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}>
           <IssuesContext.Provider value={issuesByNode}>
             <ReactFlow
               nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
@@ -1137,14 +1139,14 @@ function Editor({ flowId }: { flowId: string }) {
               proOptions={{ hideAttribution: true }}>
               <Background variant={BackgroundVariant.Dots} gap={16} size={1.5} color="#D4D4D8" />
               <Controls />
-              <MiniMap pannable zoomable nodeColor={() => "#DCE6FF"} nodeStrokeColor={() => "#0553ad"} maskColor="rgba(244,245,247,0.7)" />
+              <MiniMap className="max-sm:!hidden" pannable zoomable nodeColor={() => "#DCE6FF"} nodeStrokeColor={() => "#0553ad"} maskColor="rgba(244,245,247,0.7)" />
             </ReactFlow>
           </IssuesContext.Provider>
         </div>
 
         {/* Simulator */}
         {simOpen && (
-          <aside className="w-80 shrink-0 bg-white border-l border-line flex flex-col">
+          <aside className="w-80 shrink-0 bg-white border-l border-line flex flex-col max-sm:absolute max-sm:inset-0 max-sm:w-full max-sm:z-30 max-sm:border-l-0">
             <div className="px-3 py-2 border-b border-line flex items-center justify-between gap-2">
               <p className="text-xs font-bold text-ink-600 uppercase flex items-center gap-1.5"><Play className="w-3.5 h-3.5" /> Simulator</p>
               <div className="flex items-center gap-1.5">

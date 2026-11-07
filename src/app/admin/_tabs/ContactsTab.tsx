@@ -546,8 +546,8 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
                 <button className={chip} onClick={() => setAdvField({ seenFrom: isoDaysAgo(1), seenTo: "" })}>Last 24 hours</button>
                 <button className={chip} onClick={() => setAdvField({ seenFrom: isoStartOf("week"), seenTo: "" })}>This Week</button>
                 <button className={chip} onClick={() => setAdvField({ seenFrom: isoStartOf("month"), seenTo: "" })}>This Month</button>
-                <input type="date" className={inp} aria-label="Last seen from" value={dateVal(adv.seenFrom)} onChange={e => setAdvField({ seenFrom: e.target.value })} />
-                <input type="date" className={inp} aria-label="Last seen to" value={dateVal(adv.seenTo)} onChange={e => setAdvField({ seenTo: endOfDay(e.target.value) })} />
+                <input type="date" className={`${inp} max-sm:min-w-0 max-sm:w-[calc(50%-0.25rem)]`} aria-label="Last seen from" value={dateVal(adv.seenFrom)} onChange={e => setAdvField({ seenFrom: e.target.value })} />
+                <input type="date" className={`${inp} max-sm:min-w-0 max-sm:w-[calc(50%-0.25rem)]`} aria-label="Last seen to" value={dateVal(adv.seenTo)} onChange={e => setAdvField({ seenTo: endOfDay(e.target.value) })} />
               </div>
             </div>
 
@@ -573,8 +573,8 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
                 <button className={chip} onClick={() => setAdvField({ createdFrom: isoStartOf("day"), createdTo: "" })}>Today</button>
                 <button className={chip} onClick={() => setAdvField({ createdFrom: isoStartOf("week"), createdTo: "" })}>This Week</button>
                 <button className={chip} onClick={() => setAdvField({ createdFrom: isoStartOf("month"), createdTo: "" })}>This Month</button>
-                <input type="date" className={inp} aria-label="Added from" value={dateVal(adv.createdFrom)} onChange={e => setAdvField({ createdFrom: e.target.value })} />
-                <input type="date" className={inp} aria-label="Added to" value={dateVal(adv.createdTo)} onChange={e => setAdvField({ createdTo: endOfDay(e.target.value) })} />
+                <input type="date" className={`${inp} max-sm:min-w-0 max-sm:w-[calc(50%-0.25rem)]`} aria-label="Added from" value={dateVal(adv.createdFrom)} onChange={e => setAdvField({ createdFrom: e.target.value })} />
+                <input type="date" className={`${inp} max-sm:min-w-0 max-sm:w-[calc(50%-0.25rem)]`} aria-label="Added to" value={dateVal(adv.createdTo)} onChange={e => setAdvField({ createdTo: endOfDay(e.target.value) })} />
               </div>
             </div>
 
@@ -582,14 +582,14 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
               <p className="text-xs font-bold text-slate-500 mb-1.5">Details saved on the {cLc}</p>
               <div className="space-y-2">
                 {adv.attrs.map((a, i) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <input className={`${inp} w-44`} placeholder="detail, e.g. interest" aria-label="Detail name" value={a.key} onChange={e => setAttr(i, { key: e.target.value })} />
+                  <div key={i} className="flex flex-wrap sm:flex-nowrap items-center gap-2">
+                    <input className={`${inp} w-full sm:w-44`} placeholder="detail, e.g. interest" aria-label="Detail name" value={a.key} onChange={e => setAttr(i, { key: e.target.value })} />
                     <select className={`${inp} w-28`} aria-label="Condition" value={a.op} onChange={e => setAttr(i, { op: e.target.value as AttrFilter["op"] })}>
                       <option value="is">is</option>
                       <option value="is_not">is not</option>
                       <option value="contains">contains</option>
                     </select>
-                    <input className={`${inp} flex-1 max-w-xs`} placeholder="value, e.g. Data Analytics" aria-label="Value" value={a.value} onChange={e => setAttr(i, { value: e.target.value })} />
+                    <input className={`${inp} flex-1 min-w-0 sm:max-w-xs`} placeholder="value, e.g. Data Analytics" aria-label="Value" value={a.value} onChange={e => setAttr(i, { value: e.target.value })} />
                     {i < adv.attrs.length - 1 && <span className="text-xs text-slate-400 font-semibold">and</span>}
                     <button onClick={() => setAdv(x => ({ ...x, attrs: x.attrs.filter((_, j) => j !== i) }))} aria-label="Remove this condition" className="grid place-items-center w-8 h-8 rounded-lg text-slate-400 hover:text-red-500"><X className="w-4 h-4" /></button>
                   </div>
@@ -652,7 +652,7 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
             </>
           ) : (
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap sm:flex-nowrap items-start sm:items-center justify-between gap-2">
                 <p className="text-sm font-bold text-brand-dark">{csvPreview.fileName} — {csvPreview.rows.length.toLocaleString()} {csLc} ready{csvPreview.skipped > 0 ? `, ${csvPreview.skipped} rows skipped (no valid phone)` : ""}</p>
                 {(() => {
                   const found = [...new Set(csvPreview.rows.map(r => r.batchName).filter(Boolean))] as string[];
@@ -670,7 +670,7 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
                           Skip the <b>{blocked}</b> row(s) this file marks blocked
                         </label>
                       )}
-                      <div className="flex items-center gap-2 text-[12px] text-slate-600">
+                      <div className="flex flex-wrap items-center gap-2 text-[12px] text-slate-600">
                         <span>Country code for numbers without one</span>
                         <input value={defaultCc} onChange={e => setDefaultCc(e.target.value.replace(/\D/g, "").slice(0, 4))}
                           className="w-16 px-2 py-1 rounded-lg border border-line text-[12px]" />
@@ -684,7 +684,7 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
               <div className="flex gap-1.5 flex-wrap">
                 {csvPreview.mapping.map(m => <span key={m} className="px-2 py-0.5 rounded-full bg-brand-green/10 text-brand-dark text-[11px] font-semibold">{m}</span>)}
               </div>
-              <div className="border border-slate-100 rounded-lg overflow-hidden">
+              <div className="border border-slate-100 rounded-lg overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead className="bg-slate-50 text-slate-400 text-left"><tr><th className="px-3 py-1.5">Phone</th><th className="px-3 py-1.5">Name</th><th className="px-3 py-1.5">Tags</th><th className="px-3 py-1.5">Attributes</th></tr></thead>
                   <tbody className="divide-y divide-slate-100">

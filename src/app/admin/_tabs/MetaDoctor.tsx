@@ -32,11 +32,11 @@ export function MetaDoctor() {
 
   return (
     <div className="rounded-card border border-line bg-white p-4 space-y-3">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><Stethoscope className="w-4 h-4 text-brand-700" /> Meta connection doctor <span className="text-[11px] font-bold text-slate-500 uppercase">owner</span></p><p className="text-xs text-slate-500 mt-0.5">Why “Connect with Facebook” or a webhook isn’t working — env by env, plus a live Graph credential check.</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-bold text-ink-900 flex flex-wrap items-center gap-1.5"><Stethoscope className="w-4 h-4 text-brand-700" /> Meta connection doctor <span className="text-[11px] font-bold text-slate-500 uppercase">owner</span></p><p className="text-xs text-slate-500 mt-0.5">Why “Connect with Facebook” or a webhook isn’t working — env by env, plus a live Graph credential check.</p>
         </div>
-        <button onClick={run} disabled={busy} className="shrink-0 min-h-9 px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas flex items-center gap-1.5 disabled:opacity-60">
+        <button onClick={run} disabled={busy} className="self-start sm:self-auto shrink-0 min-h-9 px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas flex items-center gap-1.5 disabled:opacity-60">
           {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />} Re-run
         </button>
       </div>
@@ -45,8 +45,8 @@ export function MetaDoctor() {
         <div key={c.key} className="flex items-start gap-2.5 border-t border-line/60 pt-2.5">
           {c.status === "ok" ? <CircleCheck className={`w-4 h-4 mt-0.5 shrink-0 ${tone[c.status]}`} /> : <AlertTriangle className={`w-4 h-4 mt-0.5 shrink-0 ${tone[c.status]}`} />}
           <div className="min-w-0">
-            <p className="text-[13px] font-bold text-ink-900 flex items-center gap-2">{c.title} <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full ${pill[c.status]}`}>{c.status === "ok" ? "Ready" : c.status === "warn" ? "Check" : "Problem"}</span></p>
-            <p className="text-[12px] text-ink-600 mt-0.5 break-all">{c.detail}</p>
+            <p className="text-[13px] font-bold text-ink-900 flex flex-wrap items-center gap-x-2 gap-y-1">{c.title} <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full ${pill[c.status]}`}>{c.status === "ok" ? "Ready" : c.status === "warn" ? "Check" : "Problem"}</span></p>
+            <p className="text-[12px] text-ink-600 mt-0.5 break-all max-sm:[word-break:normal] max-sm:[overflow-wrap:anywhere]">{c.detail}</p>
             {c.hint && <p className="text-[12px] text-slate-500 mt-0.5">{c.hint}</p>}
           </div>
         </div>

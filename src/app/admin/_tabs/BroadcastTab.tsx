@@ -102,7 +102,7 @@ function BroadcastTab({ goTo }: { goTo: (t: Tab) => void }) {
   const seg = (active: boolean) => `px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-1.5 ${active ? "bg-brand-700 text-white" : "bg-white border border-line text-slate-500 hover:bg-slate-50"}`;
   return (
     <div className="space-y-5">
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <button className={seg(sub === "now")} onClick={() => setSub("now")}><Send className="w-4 h-4" />Broadcast now</button>
         <button className={seg(sub === "api")} onClick={() => setSub("api")}><Globe className="w-4 h-4" />API broadcasting</button>
         <button className={seg(sub === "auto")} onClick={() => setSub("auto")}><Zap className="w-4 h-4" />Auto-sends</button>
@@ -412,7 +412,7 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
       <h2 className="text-xl font-extrabold text-brand-dark">Broadcast</h2>
 
       {retargetNote && (
-        <div className="bg-brand-50 border border-brand-100 rounded-card px-4 py-3 text-sm text-brand-700 flex items-center justify-between">
+        <div className="bg-brand-50 border border-brand-100 rounded-card px-4 py-3 text-sm text-brand-700 flex items-center justify-between gap-3">
           <span><b>{retargetNote}</b> — recipients prefilled below. Pick a template and send.</span>
           <button onClick={() => { setRetargetNote(null); setRecipientsText(""); setAudMode("all"); }} className="text-brand-600 font-bold">×</button>
         </div>
@@ -439,7 +439,7 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
         )}
         {audMode === "tag" && <input className={`${inp} w-full`} placeholder="tag (e.g. webinar-june)" value={tag} onChange={e => setTag(e.target.value)} />}
         {audMode === "attribute" && (
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <input className={inp} placeholder="attribute key (e.g. city)" value={attrKey} onChange={e => setAttrKey(e.target.value)} />
             <input className={inp} placeholder="value (e.g. Mumbai)" value={attrValue} onChange={e => setAttrValue(e.target.value)} />
           </div>
@@ -462,9 +462,9 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
       </section>
 
       <section className="bg-white rounded-card border border-line p-5 space-y-3">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
           <p className="text-xs font-bold text-slate-400 uppercase">Message (approved template)</p>
-          <ChannelSelect value={channelId} onChange={setChannelId} allLabel="Send from: default number" className={`${inp} !py-1.5 text-xs`} />
+          <ChannelSelect value={channelId} onChange={setChannelId} allLabel="Send from: default number" className={`${inp} !py-1.5 text-xs min-w-0 max-w-full`} />
         </div>
         {!manualTemplate ? (
           <select className={`${inp} w-full`} value={selected ? `${selected.name}|${selected.language}` : ""} onChange={e => pickTemplate(e.target.value)}>
@@ -478,8 +478,8 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
           </select>
         ) : (
           <div className="grid grid-cols-[1fr_7rem_auto] gap-2 items-center">
-            <input className={inp} placeholder="template name" value={templateName} onChange={e => setTemplateName(e.target.value)} />
-            <input className={inp} placeholder="en_US" value={languageCode} onChange={e => setLanguageCode(e.target.value)} />
+            <input className={`${inp} min-w-0`} placeholder="template name" value={templateName} onChange={e => setTemplateName(e.target.value)} />
+            <input className={`${inp} min-w-0`} placeholder="en_US" value={languageCode} onChange={e => setLanguageCode(e.target.value)} />
             <button onClick={() => { setManualTemplate(false); setTemplateName(""); }} className="text-xs font-bold text-brand-700 hover:underline">use list</button>
           </div>
         )}
@@ -521,8 +521,8 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
             <div className="space-y-1.5">
               {varsArr.map((v, i) => (
                 <div key={i} className="flex items-center gap-2">
-                  <span className="text-xs font-mono text-slate-400 max-w-[9rem] truncate shrink-0" title={varLabel(i)}>{varLabel(i)}</span>
-                  <input className={`${inp} flex-1`} placeholder={i === 0 ? "{name} — fills each contact's first name" : `Value for ${varLabel(i)}`} value={v} onChange={e => setVar(i, e.target.value)} />
+                  <span className="text-xs font-mono text-slate-400 max-w-[6rem] sm:max-w-[9rem] truncate shrink-0" title={varLabel(i)}>{varLabel(i)}</span>
+                  <input className={`${inp} flex-1 min-w-0`} placeholder={i === 0 ? "{name} — fills each contact's first name" : `Value for ${varLabel(i)}`} value={v} onChange={e => setVar(i, e.target.value)} />
                 </div>
               ))}
               <p className="text-[11px] text-slate-400">Tip: <b>{"{name}"}</b> is replaced with each recipient&apos;s first name. For anything else on the contact, use the same tokens as chatbot flows — <code className="bg-slate-100 px-1 rounded">{"{{city}}"}</code> <code className="bg-slate-100 px-1 rounded">{"{{email}}"}</code> <code className="bg-slate-100 px-1 rounded">{"{{fullname}}"}</code> or any collected attribute. A token a contact has no value for sends as empty, and Meta rejects empty template parameters — so only use tokens every contact in the audience actually has.</p>
@@ -535,8 +535,8 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
         {(!selected || needsImage) && (
           <div className="space-y-1">
             {needsImage && <p className="text-[11px] font-bold text-amber-700">This template has an image header — an image is required.</p>}
-            <div className="flex items-center gap-3">
-              <input className={`${inp} flex-1`} placeholder={needsImage ? "Header image URL (required)" : "Header image URL (only if the template has an image header)"} value={headerImageUrl} onChange={e => setHeaderImageUrl(e.target.value)} />
+            <div className="flex flex-wrap sm:flex-nowrap items-center gap-3">
+              <input className={`${inp} flex-1 min-w-0 max-sm:basis-full`} placeholder={needsImage ? "Header image URL (required)" : "Header image URL (only if the template has an image header)"} value={headerImageUrl} onChange={e => setHeaderImageUrl(e.target.value)} />
               <ImageUpload onUploaded={setHeaderImageUrl} />
             </div>
           </div>
@@ -561,9 +561,9 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
 
       <section className="bg-white rounded-card border border-line p-5 space-y-2">
         <p className="text-xs font-bold text-slate-400 uppercase">Test before sending</p><p className="text-xs text-slate-500 mt-0.5">Sends this exact message to one number — not saved as a campaign, contact, or log entry.</p>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2">
           <input
-            className={`${inp} flex-1`} placeholder="919876543210, Name (optional)"
+            className={`${inp} flex-1 min-w-0 max-sm:basis-full`} placeholder="919876543210, Name (optional)"
             value={testPhone} onChange={e => setTestPhone(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter") sendTest(); }}
           />
@@ -576,7 +576,7 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
 
       <section className="bg-white rounded-card border border-line p-5 space-y-3">
         <p className="text-xs font-bold text-slate-400 uppercase">When to send</p>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button onClick={() => setScheduleMode("now")} className={`px-3 py-1.5 rounded-control text-xs font-bold border ${scheduleMode === "now" ? "bg-brand-700 text-white border-brand-700" : "bg-white text-ink-700 border-line hover:bg-canvas"}`}>Send now</button>
           <button onClick={() => setScheduleMode("later")} className={`px-3 py-1.5 rounded-control text-xs font-bold border ${scheduleMode === "later" ? "bg-brand-700 text-white border-brand-700" : "bg-white text-ink-700 border-line hover:bg-canvas"}`}>Schedule for later</button>
         </div>
@@ -746,17 +746,17 @@ function ApiBroadcasting() {
 
   return (
     <div className="max-w-4xl space-y-5">
-      <div className="flex items-start justify-between gap-4">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+        <div className="min-w-0">
           <h2 className="text-xl font-extrabold text-brand-dark">API broadcasting</h2><p className="text-sm text-slate-500">Send a WhatsApp message automatically when something happens in your other software — an order placed, a demo booked, a bill paid. Your software (or your developer) tells us what happened; the rules here decide which approved message goes out, to whom, and when.</p>
         </div>
-        <button onClick={() => openEdit()} className="shrink-0 px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold flex items-center gap-2"><Plus className="w-4 h-4" /> New rule</button>
+        <button onClick={() => openEdit()} className="self-start sm:self-auto shrink-0 px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold flex items-center gap-2"><Plus className="w-4 h-4" /> New rule</button>
       </div>
 
       {notice && <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">Automatic messages from your other systems aren&apos;t set up for your workspace yet. Contact support to turn them on.</div>}
 
       <section className="bg-slate-900 rounded-card p-5 space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs font-bold text-white/60 uppercase">Endpoint — fire from your backend, CRM, or website</p>
           <button onClick={() => { navigator.clipboard.writeText(curl).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }); }}
             className="px-2.5 py-1 rounded-lg bg-white/10 text-white text-[11px] font-bold flex items-center gap-1.5 hover:bg-white/20">
@@ -773,7 +773,7 @@ function ApiBroadcasting() {
       <Drawer open={!!editing} onClose={() => setEditing(null)} width="lg" title={editing?.id ? "Edit rule" : "New rule"}>
         {editing && (<section className="space-y-3">
           <p className="text-xs font-bold text-slate-400 uppercase">{editing.id ? "Edit rule" : "New rule"}</p>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <input className={inp} placeholder="Rule name, e.g. Demo booked → confirmation" value={editing.name} onChange={e => setEd({ name: e.target.value })} />
             <input className={inp} placeholder="event key, e.g. demo_booked" value={editing.eventKey} onChange={e => setEd({ eventKey: e.target.value.toLowerCase().replace(/[^a-z0-9_.-]/g, "_") })} />
           </div>
@@ -781,15 +781,15 @@ function ApiBroadcasting() {
           <div className="space-y-2">
             <p className="text-[11px] font-bold text-slate-400 uppercase">Conditions <span className="font-normal normal-case">— all must pass (leave empty to always fire)</span></p>
             {editing.conditions.map((c, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <select className={`${inp} w-40`} value={c.source} onChange={e => setCond(i, { source: e.target.value as UiCond["source"] })}>
+              <div key={i} className="flex flex-wrap sm:flex-nowrap items-center gap-2 max-sm:pb-2 max-sm:border-b max-sm:border-line">
+                <select className={`${inp} w-40 max-sm:grow min-w-0`} value={c.source} onChange={e => setCond(i, { source: e.target.value as UiCond["source"] })}>
                   {COND_SOURCES.map(s => <option key={s.v} value={s.v}>{s.label}</option>)}
                 </select>
-                <input className={`${inp} w-40`} placeholder={c.source === "payload" ? "field, e.g. product" : c.source === "contact_tag" ? "tag name" : c.source === "contact_field" ? "name | email | source" : "attribute key"} value={c.key} onChange={e => setCond(i, { key: e.target.value })} />
+                <input className={`${inp} w-40 max-sm:grow min-w-0`} placeholder={c.source === "payload" ? "field, e.g. product" : c.source === "contact_tag" ? "tag name" : c.source === "contact_field" ? "name | email | source" : "attribute key"} value={c.key} onChange={e => setCond(i, { key: e.target.value })} />
                 <select className={`${inp} w-28`} value={c.op} onChange={e => setCond(i, { op: e.target.value as UiCond["op"] })}>
                   {COND_OPS.map(o => <option key={o.v} value={o.v}>{o.label}</option>)}
                 </select>
-                {c.op !== "exists" && <input className={`${inp} flex-1`} placeholder="value" value={c.value} onChange={e => setCond(i, { value: e.target.value })} />}
+                {c.op !== "exists" && <input className={`${inp} flex-1 min-w-0`} placeholder="value" value={c.value} onChange={e => setCond(i, { value: e.target.value })} />}
                 <button onClick={() => setEditing(e => (e ? { ...e, conditions: e.conditions.filter((_, j) => j !== i) } : e))} className="p-1 text-slate-300 hover:text-red-500"><X className="w-4 h-4" /></button>
               </div>
             ))}
@@ -798,7 +798,7 @@ function ApiBroadcasting() {
           </div>
 
           <div className="grid grid-cols-[1fr_7rem] gap-2">
-            <div>
+            <div className="min-w-0">
               <p className="text-[11px] font-bold text-slate-400 uppercase mb-1">Template</p>
               <input className={`${inp} w-full`} list="rule-tpls" placeholder="approved template name" value={editing.templateName} onChange={e => setEd({ templateName: e.target.value })} />
               <datalist id="rule-tpls">{templates.filter(t => t.status === "APPROVED").map(t => <option key={`${t.name}-${t.language}`} value={t.name} />)}</datalist>
@@ -859,7 +859,7 @@ function ApiBroadcasting() {
             </div>
             <div>
               <p className="text-[11px] font-bold text-slate-400 uppercase mb-1">Send from</p>
-              <ChannelSelect value={editing.channelId} onChange={v => setEd({ channelId: v })} allLabel="Default number" />
+              <ChannelSelect value={editing.channelId} onChange={v => setEd({ channelId: v })} allLabel="Default number" className={`${inp} min-w-0 max-w-full`} />
             </div>
             <div className="flex-1" />
             <div className="flex gap-2">
@@ -875,7 +875,7 @@ function ApiBroadcasting() {
 
       <div className="space-y-2">
         {rules.map(r => (
-          <div key={r.id} className={`bg-white rounded-card border p-4 flex items-center gap-4 ${r.active ? "border-line" : "border-slate-100 opacity-60"}`}>
+          <div key={r.id} className={`bg-white rounded-card border p-4 flex items-center gap-3 sm:gap-4 ${r.active ? "border-line" : "border-slate-100 opacity-60"}`}>
             <button onClick={() => toggleRule(r)} title={r.active ? "Turn off" : "Turn on"} role="switch" aria-checked={r.active} aria-label={`${r.name}: ${r.active ? "on" : "off"}`}
               className={`w-9 h-5 rounded-full relative transition-colors shrink-0 ${r.active ? "bg-brand-green" : "bg-slate-200"}`}>
               <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${r.active ? "left-4.5 right-0.5" : "left-0.5"}`} style={{ left: r.active ? "1.125rem" : "0.125rem" }} />
@@ -900,7 +900,7 @@ function ApiBroadcasting() {
 
       <section className="bg-white rounded-card border border-line p-5 space-y-3">
         <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-2"><FlaskConical className="w-4 h-4" /> Test an event (dry run — nothing is sent or queued)</p>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <input className={inp} placeholder="event, e.g. demo_booked" value={tEvent} onChange={e => setTEvent(e.target.value)} />
           <input className={inp} placeholder="phone, e.g. 919876543210" value={tPhone} onChange={e => setTPhone(e.target.value)} />
         </div>
@@ -970,7 +970,7 @@ function AutomationsTab() {
 
       <section className="bg-white rounded-card border border-line p-5 space-y-3">
         <p className="text-xs font-bold text-slate-400 uppercase">New automation</p>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <select className={inp} value={trigger} onChange={e => setTrigger(e.target.value)}>
             <option value="contact_added">When {/^[aeiou]/i.test(vocab.contact.one) ? "an" : "a"} {vocab.contact.one.toLowerCase()} is added</option>
             <option value="api_event">On API event (named)</option>
@@ -979,7 +979,7 @@ function AutomationsTab() {
         </div>
         <input className={`${inp} w-full`} placeholder="approved template name" value={templateName} onChange={e => setTemplateName(e.target.value)} />
         <textarea className={`${inp} w-full font-mono`} rows={2} placeholder="{name}" value={variables} onChange={e => setVariables(e.target.value)} />
-        <div className="flex items-center gap-2 text-sm">
+        <div className="flex flex-wrap items-center gap-2 text-sm">
           <span className="text-xs font-semibold text-slate-500">Delay</span>
           <input type="number" min={0} className={`${inp} w-20`} value={delayValue} onChange={e => setDelayValue(parseInt(e.target.value || "0", 10))} />
           <select className={inp} value={delayUnit} onChange={e => setDelayUnit(e.target.value)}><option value="minutes">min</option><option value="hours">hours</option><option value="days">days</option></select>
@@ -989,8 +989,8 @@ function AutomationsTab() {
 
       <div className="space-y-2">
         {list.map(a => (
-          <div key={a.id} className="bg-white rounded-card border border-line p-4 flex items-center justify-between">
-            <div><p className="text-sm font-semibold text-brand-dark">{a.autoSendTrigger}{a.triggerKey ? ` · ${a.triggerKey}` : ""}</p><p className="text-[11px] text-slate-400 font-mono">{a.templateName} · after {a.delayValue} {a.delayUnit}</p></div>
+          <div key={a.id} className="bg-white rounded-card border border-line p-4 flex items-center justify-between gap-3">
+            <div className="min-w-0 break-words"><p className="text-sm font-semibold text-brand-dark">{a.autoSendTrigger}{a.triggerKey ? ` · ${a.triggerKey}` : ""}</p><p className="text-[11px] text-slate-400 font-mono">{a.templateName} · after {a.delayValue} {a.delayUnit}</p></div>
             <button onClick={() => disable(a.id)} aria-label="Turn off this auto-send" className="p-2 text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
           </div>
         ))}

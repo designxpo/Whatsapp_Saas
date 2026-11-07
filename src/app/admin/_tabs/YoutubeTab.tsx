@@ -13,6 +13,7 @@ import { fetchKbTags } from "./SettingsTab";
 import { useConfirm } from "@/components/confirm-dialog";
 import { toast } from "@/components/toast";
 import { Drawer } from "@/components/overlay";
+import { HeaderRow } from "@/components/header-row";
 import { CommentReplies } from "./CommentReplies";
 import { HandoffOption } from "./HandoffOption";
 import { HandoffResults } from "./HandoffResults";
@@ -238,11 +239,13 @@ function YoutubeManager() {
 
   return (
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
+      {/* Wraps, so the buttons drop under the description when it needs the
+          line (on a laptop as before; on a phone they also wrap among themselves). */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><Youtube className="w-3.5 h-3.5 text-red-600" /> YouTube channels</p><p className="text-xs text-slate-500 mt-0.5">Connect a YouTube channel so the AI can reply to comments and hide spam. Public replies only — YouTube has no private messages.</p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 min-w-0">
           {!!channels.length && (
             <button onClick={checkNow} disabled={checking} title="Run the comment check right now instead of waiting for the next automatic run"
               className="min-h-9 px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
@@ -285,9 +288,9 @@ function YoutubeManager() {
       {channels.map(c => {
         const st = status.find(s => s.channelId === c.id);
         return (
-        <div key={c.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2.5">
-          <div className="w-8 h-8 rounded-lg bg-red-50 text-red-600 flex items-center justify-center shrink-0"><Youtube className="w-4 h-4" /></div>
-          <div className="min-w-0 flex-1">
+        <div key={c.id} className="flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-1.5 border border-line rounded-control px-3 py-2.5">
+          <div className="w-8 h-8 rounded-lg bg-red-50 text-red-600 flex items-center justify-center shrink-0 max-sm:self-start"><Youtube className="w-4 h-4" /></div>
+          <div className="min-w-0 flex-1 max-sm:basis-[calc(100%-2.75rem)]">
             <p className="text-sm font-semibold text-ink-900 truncate">{c.name} {c.isDefault && <span className="text-[11px] font-bold text-brand-700">· Default</span>}{!c.active && <span className="text-[11px] font-bold text-red-700"> · Off</span>}</p>
             <p className="text-[11px] text-ink-500 truncate">{c.agentId ? `AI agent: ${agents.find(a => a.id === c.agentId)?.name ?? "custom"}` : "AI agent: your default"} · <span className="font-mono">{c.ytChannelId}</span></p>
             {/* Last background poll — makes a silent failure visible instead of
@@ -310,16 +313,18 @@ function YoutubeManager() {
               </p>
             )}
           </div>
+          <div className="flex items-center gap-3 sm:shrink-0 max-sm:w-full max-sm:justify-end">
           <button onClick={() => { setForm({ id: c.id, name: c.name, ytChannelId: c.ytChannelId ?? "", token: "", agentId: c.agentId ?? "", kbTag: c.kbTag ?? "", commentAi: c.commentAi ?? true, active: c.active, isDefault: c.isDefault }); setMsg(null); }}
             className="min-h-8 px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
           <button onClick={() => remove(c.id)} aria-label={`Disconnect ${c.name}`} title="Disconnect" className="grid place-items-center w-9 h-9 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
+          </div>
         </div>
         );
       })}
 
       <Drawer open={!!form} onClose={() => setForm(null)} width="md" title={form?.id ? "Edit YouTube channel" : "Connect a YouTube channel"}>
         {form && (<div className="space-y-3">
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <input className={inp} placeholder="Name, e.g. My Channel" aria-label="Channel name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
             <input className={inp} placeholder="YouTube channel id (UC…)" aria-label="YouTube channel id" value={form.ytChannelId} onChange={e => setForm({ ...form, ytChannelId: e.target.value.trim() })} />
             <select className={inp} value={form.agentId} onChange={e => setForm({ ...form, agentId: e.target.value })} title="Which AI agent replies on this channel" aria-label="AI agent">
@@ -349,10 +354,11 @@ function YoutubeManager() {
 
       {/* Comment automation — public reply + moderation */}
       <div className="border-t border-line pt-3 mt-1 space-y-3">
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><MessageCircle className="w-3.5 h-3.5" /> Comment automation <span className="text-[11px] font-bold text-red-600 normal-case">· public replies and hiding spam</span></p>
+        <HeaderRow actions={
           <button onClick={() => { setMsg(null); if (!channels.length) { setMsg("Connect a YouTube channel first."); return; } if (channels.length > 1) { setRuleForm(null); setPickChannel(true); } else { setPickChannel(false); setRuleForm({ ...BLANK_RULE, channelId: channels[0]?.id ?? null }); } }} className="shrink-0 min-h-9 px-3 py-1.5 rounded-control bg-red-600 hover:bg-red-500 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New rule</button>
-        </div>
+        }>
+          <p className="text-xs font-bold text-slate-400 uppercase flex flex-wrap items-center gap-x-1.5 gap-y-0.5"><MessageCircle className="w-3.5 h-3.5" /> Comment automation <span className="text-[11px] font-bold text-red-600 normal-case">· public replies and hiding spam</span></p>
+        </HeaderRow>
         <p className="text-[12px] text-ink-500">When someone comments, reply publicly under their comment, hide it, or both. Add a few reply variants and we rotate them so replies stay natural and don&apos;t trip YouTube&apos;s spam filters. Target one video or all videos, and gate by keyword.</p>
         <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-control px-3 py-2">
           <b>Testing a rule?</b> Save the rule first, then post a <b>brand-new comment</b>. Each comment is answered only once, and comments posted before the rule existed are never revisited — so re-testing with the same comment will look like nothing happened. Hit <b>Check now</b> above to run immediately instead of waiting for the next automatic check.
@@ -363,17 +369,19 @@ function YoutubeManager() {
           const thumb = r.videoThumbnail || video?.thumbnail;
           const nReplies = (r.publicReplies ?? []).filter(Boolean).length;
           return (
-            <div key={r.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2.5">
+            <div key={r.id} className="flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-1.5 border border-line rounded-control px-3 py-2.5">
               {thumb
-                ? <img src={thumb} alt="" className="w-14 h-10 rounded-lg object-cover shrink-0" />
-                : <div className="w-14 h-10 rounded-lg bg-red-50 text-red-600 flex items-center justify-center shrink-0"><Youtube className="w-4 h-4" /></div>}
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-ink-900 truncate">{r.name || (r.keyword ? `“${r.keyword}”` : "Any comment")}{channels.length > 1 && r.channelId && <span className="text-[11px] font-bold text-red-600"> · {channels.find(c => c.id === r.channelId)?.name ?? "YouTube"}</span>}{!r.enabled && <span className="text-[11px] font-bold text-red-700"> · Off</span>}</p>
+                ? <img src={thumb} alt="" className="w-14 h-10 rounded-lg object-cover shrink-0 max-sm:self-start" />
+                : <div className="w-14 h-10 rounded-lg bg-red-50 text-red-600 flex items-center justify-center shrink-0 max-sm:self-start"><Youtube className="w-4 h-4" /></div>}
+              <div className="min-w-0 flex-1 max-sm:basis-[calc(100%-4.25rem)]">
+                <p className="text-sm font-semibold text-ink-900 truncate max-sm:whitespace-normal max-sm:line-clamp-2">{r.name || (r.keyword ? `“${r.keyword}”` : "Any comment")}{channels.length > 1 && r.channelId && <span className="text-[11px] font-bold text-red-600"> · {channels.find(c => c.id === r.channelId)?.name ?? "YouTube"}</span>}{!r.enabled && <span className="text-[11px] font-bold text-red-700"> · Off</span>}</p>
                 <p className="text-[11px] text-ink-500 truncate">{r.videoId ? `Video: ${(r.videoTitle || video?.title || r.videoId).slice(0, 34) || r.videoId}` : "All videos"} · {r.keyword ? `keyword “${r.keyword}”` : "any comment"} · {nReplies} repl{nReplies === 1 ? "y" : "ies"}{r.moderate !== "off" ? ` · ${MOD_LABEL[r.moderate]}` : ""} · {r.matchCount ?? 0} done</p>
               </div>
+              <div className="flex items-center gap-3 sm:shrink-0 max-sm:w-full max-sm:justify-end">
               <label className="flex items-center gap-1 min-h-8 text-[12px] text-ink-600 cursor-pointer shrink-0"><input type="checkbox" className="accent-brand-700 w-4 h-4" checked={r.enabled} onChange={() => toggleRule(r)} /> On</label>
               <button onClick={() => { setRuleForm({ ...r, name: r.name ?? "", keyword: r.keyword ?? "", publicReplies: (r.publicReplies ?? []).filter(Boolean), moderate: r.moderate ?? "off" }); setMsg(null); }} className="min-h-8 px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
               <button onClick={() => delRule(r.id)} aria-label="Delete rule" className="grid place-items-center w-9 h-9 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
+              </div>
             </div>
           );
         })}
@@ -383,7 +391,7 @@ function YoutubeManager() {
         {pickChannel && (
           <div className="border-2 border-red-500/30 rounded-control p-3 space-y-2">
             <p className="text-xs font-bold text-ink-700">Which YouTube channel is this rule for?</p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {channels.map(c => (
                 <button key={c.id} type="button" onClick={() => { setRuleForm({ ...BLANK_RULE, channelId: c.id }); setPickChannel(false); }}
                   className="flex items-center gap-2 border border-line rounded-control px-3 py-2 text-left hover:border-red-500 hover:bg-red-50 transition-colors">

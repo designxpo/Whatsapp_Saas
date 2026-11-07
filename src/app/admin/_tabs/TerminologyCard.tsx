@@ -79,17 +79,19 @@ export function TerminologyCard() {
       <select className={`${inp} w-full`} value={industry} onChange={e => { setIndustry(e.target.value); setDraft({}); }} aria-label="Industry">
         {st.industries.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
       </select>
-      <div className="space-y-2">
-        <div className="grid grid-cols-[1fr_1fr_1fr] gap-2 text-[11px] font-bold uppercase text-slate-500"><span>Used for</span><span>Singular</span><span>Plural</span></div>
+      {/* Phones: three columns didn't fit 390px (plural boxes cut off, labels one
+          word per line), so each term's label sits above its singular + plural. */}
+      <div className="space-y-3 sm:space-y-2">
+        <div className="grid grid-cols-2 sm:grid-cols-[1fr_1fr_1fr] gap-2 text-[11px] font-bold uppercase text-slate-500"><span className="hidden sm:block">Used for</span><span>Singular</span><span>Plural</span></div>
         {VOCAB_KEYS.map(k => (
-          <div key={k} className="grid grid-cols-[1fr_1fr_1fr] gap-2 items-center">
-            <span className="text-xs text-slate-500">{ROW_LABEL[k]}</span>
-            <input className={inp} maxLength={32} value={shown(k).one} onChange={e => edit(k, "one", e.target.value)} aria-label={`${ROW_LABEL[k]} — singular`} />
-            <input className={inp} maxLength={32} value={shown(k).many} onChange={e => edit(k, "many", e.target.value)} aria-label={`${ROW_LABEL[k]} — plural`} />
+          <div key={k} className="grid grid-cols-2 sm:grid-cols-[1fr_1fr_1fr] gap-x-2 gap-y-1 sm:gap-2 items-center">
+            <span className="col-span-2 sm:col-span-1 text-xs font-semibold sm:font-normal text-slate-600 sm:text-slate-500">{ROW_LABEL[k]}</span>
+            <input className={`${inp} min-w-0`} maxLength={32} value={shown(k).one} onChange={e => edit(k, "one", e.target.value)} aria-label={`${ROW_LABEL[k]} — singular`} />
+            <input className={`${inp} min-w-0`} maxLength={32} value={shown(k).many} onChange={e => edit(k, "many", e.target.value)} aria-label={`${ROW_LABEL[k]} — plural`} />
           </div>
         ))}
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <button onClick={save} disabled={busy} className="min-h-10 px-4 py-2 rounded-full text-xs font-bold bg-brand-700 text-white disabled:opacity-60">{busy ? "Saving…" : "Save terminology"}</button>
         {draft && Object.keys(draft).length > 0 && <button onClick={() => setDraft({})} className="min-h-8 text-xs text-slate-600 underline">Reset to {pack.label} defaults</button>}
         <Notice notice={note} />

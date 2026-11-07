@@ -101,7 +101,7 @@ export default function TodayTab({ goTo }: { goTo: GoTo }) {
           <h1 className="text-xl font-extrabold text-ink-900">Today</h1>
           <p className="text-sm text-ink-600">Everything waiting for a person — who should do it, and by when. Overdue first.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button onClick={() => setAdding(a => !a)} aria-expanded={adding} className="inline-flex min-h-10 items-center gap-1.5 rounded-control bg-brand-700 px-3 py-2 text-xs font-bold text-white hover:bg-brand-600">
             <Plus className="h-3.5 w-3.5" /> Add a task
           </button>

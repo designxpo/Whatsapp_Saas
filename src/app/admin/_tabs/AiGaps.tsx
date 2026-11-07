@@ -74,12 +74,13 @@ export function AiGaps() {
         ) : (
           <ul className="divide-y divide-line">
             {groups.map(g => (
-              <li key={g.key} className="py-2.5 flex items-start gap-3">
-                <div className="min-w-0 flex-1">
+              <li key={g.key} className="py-2.5 flex flex-wrap sm:flex-nowrap items-start gap-x-3 gap-y-2">
+                {/* The buttons drop under the question on a phone. */}
+                <div className="min-w-0 flex-1 max-sm:basis-full">
                   <p className="text-[13px] text-ink-900 break-words">“{g.question}”</p>
                   <p className="text-[11px] text-slate-500 mt-0.5">Asked {g.count}× · last {ago(g.lastAt)} · {g.platforms.map(p => CHANNEL[p] ?? p).join(", ")}</p>
                 </div>
-                <div className="flex items-center gap-1.5 shrink-0">
+                <div className="flex items-center gap-1.5 sm:shrink-0">
                   <button onClick={() => { setOpen(g); setAnswer(""); setTag(""); sayForm(null); }} className="min-h-8 px-2.5 py-1 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-[12px] font-bold">Add answer</button>
                   <button onClick={async () => { if (await post({ key: g.key, dismiss: true })) { setGroups(x => (x ?? []).filter(y => y.key !== g.key)); toast("Question dismissed"); } }} className="min-h-8 px-2 py-1 rounded-control text-[12px] font-bold text-slate-600 hover:bg-canvas">Dismiss</button>
                 </div>

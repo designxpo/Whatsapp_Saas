@@ -95,12 +95,13 @@ export function HandoffResults({ platform }: { platform: Platform }) {
         ) : (
           <ul className="divide-y divide-line">
             {rows.map(r => (
-              <li key={r.id} className="py-2.5 flex items-start gap-3">
-                <div className="min-w-0 flex-1">
+              <li key={r.id} className="py-2.5 flex flex-wrap sm:flex-nowrap items-start gap-x-3 gap-y-1">
+                {/* On a phone the outcome sits under the invite, so neither is cut short. */}
+                <div className="min-w-0 flex-1 max-sm:basis-full">
                   <p className="text-[12px] text-slate-500 truncate"><b className="text-ink-900">{r.sourceAuthor || "Someone"}</b> · invited {ago(r.createdAt)} · code <code className="text-[11px]">{platform === "youtube" ? r.code : r.code.slice(0, 4) + "…"}</code></p>
                   {r.sourceText && <p className="text-[13px] text-ink-700 truncate">“{r.sourceText}”</p>}
                 </div>
-                <span className={`shrink-0 mt-0.5 px-2 py-0.5 rounded-full text-[11px] font-bold ${r.orders ? "bg-emerald-50 text-emerald-700" : r.claimedAt ? "bg-brand-50 text-brand-700" : "bg-canvas text-slate-500"}`}>
+                <span className={`shrink-0 sm:mt-0.5 px-2 py-0.5 rounded-full text-[11px] font-bold ${r.orders ? "bg-emerald-50 text-emerald-700" : r.claimedAt ? "bg-brand-50 text-brand-700" : "bg-canvas text-slate-500"}`}>
                   {r.orders ? `${r.orders} order${r.orders > 1 ? "s" : ""} · ${rupees(r.revenueCents)}` : r.claimedAt ? `Chat started ${ago(r.claimedAt)}` : "Not yet"}
                 </span>
               </li>
@@ -108,7 +109,7 @@ export function HandoffResults({ platform }: { platform: Platform }) {
           </ul>
         )}
         {rows && rows.length > 0 && (page > 0 || next) && (
-          <nav aria-label="Pages" className="flex items-center justify-between gap-2">
+          <nav aria-label="Pages" className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-[12px] text-slate-500 tabular-nums">{page * PAGE + 1}–{page * PAGE + rows.length}{summary ? ` of ${fmtNum(summary.sent)}` : ""}</span>
             <div className="flex items-center gap-1.5">
               {paging && <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" />}

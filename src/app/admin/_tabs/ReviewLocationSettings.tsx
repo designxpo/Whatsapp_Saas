@@ -110,7 +110,7 @@ export function LocationSettings({ locations, workspace }: { locations: { id: st
             </label>
           </div>
         )}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button type="button" onClick={save} disabled={saving || !id} title={!id ? "Choose a location first" : undefined} className="min-h-10 rounded-control bg-ink-900 px-4 py-2 text-xs font-semibold text-white disabled:opacity-60">{saving ? "Saving…" : `Save for ${name}`}</button>
           {note && <span className={`text-xs ${note.ok ? "text-emerald-700" : "text-red-700"}`} role="status">{note.text}</span>}
         </div>

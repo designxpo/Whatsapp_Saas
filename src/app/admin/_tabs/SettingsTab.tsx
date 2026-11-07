@@ -20,6 +20,20 @@ import { usePromptDialog } from "@/components/prompt-dialog";
 import { TerminologyCard } from "./TerminologyCard";
 import { Drawer } from "@/components/overlay";
 
+// Phone layout for the list rows below (numbers, people, Pages, widgets, canned
+// sends): from 640px up it is one line — icon, name, buttons. On a phone the
+// buttons kept their full width and squeezed the name to "WhatsApp …", so there
+// the name takes the line and the buttons drop to a second line, right-aligned.
+const ROW = "flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-2";
+const ROW_NAME = "min-w-0 flex-1 max-sm:basis-[calc(100%-3.75rem)]";
+const ROW_ACTIONS = "flex items-center gap-2 sm:contents max-sm:w-full max-sm:justify-end";
+// Text buttons and icon-only buttons in those rows get a thumb-sized target on phones.
+const ROW_BTN = "max-sm:min-h-9";
+const ROW_ICON = "max-sm:p-2.5";
+// A card header: title + description, then its buttons. Side by side from 640px;
+// stacked on a phone so the description isn't squeezed into a narrow column.
+const HEAD = "flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between";
+
 function SettingsRail({ goTo }: { goTo: (t: Tab) => void }) {
   const [teamCount, setTeamCount] = useState<number | null>(null);
   const [qrCount, setQrCount] = useState<number | null>(null);
@@ -109,12 +123,12 @@ function TeamManager() {
 
   return (
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className={`${HEAD} sm:gap-0`}>
+        <div className="min-w-0">
           <p className="text-xs font-bold text-slate-400 uppercase">Team members</p><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>Everyone gets their own login. Admins can manage numbers, team, and settings; members get everything else (inbox, broadcasts, flows…).</>}>Optionally group people and numbers into <b>teams</b> so each team only sees its own inbox. All actions are recorded in the activity log.</PageInfo>
         </div>
         <button onClick={() => { setForm({ email: "", name: "", title: "", role: "member", team: null, channelId: null, password: "", active: true }); setMsg(null); }}
-          className="shrink-0 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add member</button>
+          className="self-start sm:self-auto shrink-0 px-3 py-1.5 max-sm:min-h-9 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add member</button>
       </div>
 
       {notice && <p className="text-xs text-amber-800 bg-amber-50 rounded-control px-3 py-2">Team accounts are still being set up for your workspace. If this doesn&apos;t clear in a day, contact Talko support.</p>}
@@ -123,7 +137,7 @@ function TeamManager() {
         <div className="flex items-center gap-3 border border-line rounded-control px-3 py-2.5 bg-canvas/50">
           <div className="w-8 h-8 rounded-full bg-ink-950 text-white flex items-center justify-center text-xs font-bold shrink-0"><Star className="w-4 h-4 fill-current" /></div>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-ink-900 truncate">{owner} <span className="text-[11px] font-bold text-brand-700">· Owner</span></p>
+            <p className="text-sm font-semibold text-ink-900 truncate max-sm:whitespace-normal max-sm:break-words">{owner} <span className="text-[11px] font-bold text-brand-700">· Owner</span></p>
             <p className="text-[11px] text-ink-400">The env account — always admin, managed via ADMIN_USER/ADMIN_PASSWORD</p>
           </div>
         </div>
@@ -163,21 +177,23 @@ function TeamManager() {
         return (<>
           {(q || memberFilter !== "all") && !matched.length && <p className="text-xs text-ink-400">Nobody matches.</p>}
           {shown.map(u => (
-        <div key={u.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2.5">
+        <div key={u.id} className={`${ROW} border border-line rounded-control px-3 py-2.5`}>
           <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${u.active ? "bg-brand-50 text-brand-700" : "bg-canvas text-ink-400"}`}>
             {(u.name || u.email).slice(0, 1).toUpperCase()}
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-ink-900 truncate">
+          <div className={ROW_NAME}>
+            <p className="text-sm font-semibold text-ink-900 truncate max-sm:whitespace-normal max-sm:break-words">
               {u.name || u.email} <span className={`text-[11px] font-bold ${u.role === "admin" ? "text-brand-700" : "text-ink-400"}`}>· {u.role === "lead" ? "TEAM LEAD" : u.role.toUpperCase()}</span>
               {u.team && <span className="text-[11px] font-bold text-blue-600"> · {TEAM_SHORT[u.team].toUpperCase()}</span>}
               {!u.active && <span className="text-[11px] font-bold text-red-500"> · Disabled</span>}
             </p>
             <p className="text-[11px] text-ink-400 truncate">{u.title ? `${u.title} · ` : ""}{u.channelId && numbers.find(n => n.id === u.channelId) ? `works ${numbers.find(n => n.id === u.channelId)!.name} · ` : ""}{u.email}{u.lastLoginAt ? ` · last login ${new Date(u.lastLoginAt).toLocaleString()}` : " · never logged in"}</p>
           </div>
+          <div className={ROW_ACTIONS}>
           <button onClick={() => { setForm({ id: u.id, email: u.email, name: u.name, title: u.title ?? "", role: u.role, team: u.team ?? null, channelId: u.channelId ?? null, password: "", active: u.active }); setMsg(null); }}
-            className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
-          <button onClick={() => remove(u)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
+            className={`px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0 ${ROW_BTN}`}>Edit</button>
+          <button onClick={() => remove(u)} aria-label={`Remove ${u.name || u.email}`} className={`p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0 ${ROW_ICON}`}><Trash2 className="w-4 h-4" /></button>
+          </div>
         </div>
       ))}
           {!showAllMembers && !q && memberFilter === "all" && matched.length > LIMIT && (
@@ -190,7 +206,7 @@ function TeamManager() {
 
       <Drawer open={!!form} onClose={() => setForm(null)} width="md" title={form?.id ? "Edit team member" : "Add team member"}>
         {form && (<div className="space-y-3">
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <input className={inp} placeholder="email@company.com" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} disabled={!!form.id} />
             <input className={inp} placeholder="Full name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
             <input className={inp} placeholder="Role / title — e.g. Sales Executive, Support Lead" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} />
@@ -214,10 +230,10 @@ function TeamManager() {
             </select>
             <input className={inp} type="password" placeholder={form.id ? "New password (blank = keep current)" : "Password"} value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} />
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} /> active</label>
             <div className="flex-1" />
-            <button onClick={save} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save member"}</button>
+            <button onClick={save} disabled={busy} className="px-4 py-1.5 max-sm:min-h-10 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save member"}</button>
             <button onClick={() => setForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
           </div>
           {msg && <p className="text-xs text-red-500">{msg}</p>}
@@ -256,11 +272,11 @@ function ActivityLog() {
 
   return (
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className={`${HEAD} sm:gap-0`}>
+        <div className="min-w-0">
           <p className="text-xs font-bold text-slate-400 uppercase">Activity log</p><p className="text-xs text-slate-500 mt-0.5">Who did what, newest first — logins, broadcasts, template/flow/form changes, inbox replies, settings.</p>
         </div>
-        <button onClick={load} disabled={refreshing} className="shrink-0 px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas flex items-center gap-1.5 disabled:opacity-60">
+        <button onClick={load} disabled={refreshing} className="self-start sm:self-auto shrink-0 px-3 py-1.5 max-sm:min-h-9 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas flex items-center gap-1.5 disabled:opacity-60">
           <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} /> Refresh
         </button>
       </div>
@@ -376,24 +392,24 @@ function ChannelsManager() {
   return (
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="min-w-[240px]">
+        <div className="min-w-0 sm:min-w-[240px]">
           <p className="text-xs font-bold text-slate-400 uppercase">WhatsApp numbers</p><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>Connect multiple WhatsApp numbers — each gets its own AI personality, flows, templates, and broadcasts.</>}>Inbound routes automatically; replies always leave from the same number.</PageInfo>
         </div>
-        <div className="flex items-center gap-2 flex-wrap shrink-0">
+        <div className="flex items-center gap-2 flex-wrap min-w-0 sm:shrink-0">
           {(whatsappSignupReady() || metaPreview()) && (
-            <div className="flex items-center gap-1.5">
-              <button onClick={() => connectWithMeta("new")} disabled={busy} className="px-3 py-1.5 rounded-control bg-[#0783fd] hover:bg-[#0668d6] text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button onClick={() => connectWithMeta("new")} disabled={busy} className="px-3 py-1.5 max-sm:min-h-9 rounded-control bg-[#0783fd] hover:bg-[#0668d6] text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
                 {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Phone className="w-3.5 h-3.5" />} Connect with Facebook
               </button>
               <button onClick={() => connectWithMeta("coex")} disabled={busy}
                 title="Coexistence: bring a number that's on the WhatsApp Business phone app. You'll scan a QR code from the app; the app and its chats keep working, and the number ALSO becomes usable here (AI, broadcasts, Live Chat)."
-                className="px-3 py-1.5 rounded-control border border-[#0783fd] text-[#0783fd] hover:bg-sky-50 text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
+                className="px-3 py-1.5 max-sm:min-h-9 rounded-control border border-[#0783fd] text-[#0783fd] hover:bg-sky-50 text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
                 <Smartphone className="w-3.5 h-3.5" /> Connect existing app number
               </button>
               {!whatsappSignupReady() && <span className="text-[11px] font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">Preview</span>}
             </div>
           )}
-          <button onClick={() => { setForm({ ...EMPTY_CHANNEL }); setMsg(null); }} className="px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add manually</button>
+          <button onClick={() => { setForm({ ...EMPTY_CHANNEL }); setMsg(null); }} className="px-3 py-1.5 max-sm:min-h-9 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add manually</button>
         </div>
       </div>
 
@@ -436,17 +452,19 @@ function ChannelsManager() {
                   </button>
                 )}
                 {!folded && chans.map(c => (
-                  <div key={c.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2.5">
+                  <div key={c.id} className={`${ROW} border border-line rounded-control px-3 py-2.5`}>
                     <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-700 flex items-center justify-center shrink-0"><Phone className="w-4 h-4" /></div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-ink-900 truncate">{c.name} {c.isDefault && <span className="text-[11px] font-bold text-brand-700">· Default</span>}{c.mode === "manual" && <span className="text-[11px] font-bold text-amber-600"> · Manual</span>}{c.coex && <span className="text-[11px] font-bold text-sky-600" title="Coexistence — this number is also active on the WhatsApp Business phone app; replies sent from the app show up here and pause the bot"> · APP+API</span>}{!c.active && <span className="text-[11px] font-bold text-red-500"> · Off</span>}</p>
+                    <div className={ROW_NAME}>
+                      <p className="text-sm font-semibold text-ink-900 truncate max-sm:whitespace-normal max-sm:break-words">{c.name} {c.isDefault && <span className="text-[11px] font-bold text-brand-700">· Default</span>}{c.mode === "manual" && <span className="text-[11px] font-bold text-amber-600"> · Manual</span>}{c.coex && <span className="text-[11px] font-bold text-sky-600" title="Coexistence — this number is also active on the WhatsApp Business phone app; replies sent from the app show up here and pause the bot"> · APP+API</span>}{!c.active && <span className="text-[11px] font-bold text-red-500"> · Off</span>}</p>
                       <p className="text-[11px] text-ink-400 font-mono truncate">phone {c.phoneId} · waba {c.wabaId} · {c.agentId ? `AI: ${agents.find(a => a.id === c.agentId)?.name ?? "custom"}` : "AI: global default"}{c.crmSource ? ` · CRM: ${c.crmSource}` : ""}</p>
                     </div>
+                    <div className={ROW_ACTIONS}>
                     <button onClick={() => { setProfileFor(profileFor?.id === c.id ? null : { id: c.id, name: c.name, coex: !!c.coex }); setForm(null); }}
-                      className={`px-2.5 py-1 rounded-control border text-xs font-bold shrink-0 ${profileFor?.id === c.id ? "border-brand-700 text-brand-700 bg-brand-50" : "border-line text-ink-600 hover:bg-canvas"}`}>Profile</button>
+                      className={`px-2.5 py-1 rounded-control border text-xs font-bold shrink-0 ${ROW_BTN} ${profileFor?.id === c.id ? "border-brand-700 text-brand-700 bg-brand-50" : "border-line text-ink-600 hover:bg-canvas"}`}>Profile</button>
                     <button onClick={() => { setForm({ id: c.id, name: c.name, phoneId: c.phoneId, wabaId: c.wabaId, token: "", appId: c.appId ?? "", agentId: c.agentId ?? "", kbTag: c.kbTag ?? "", crmSource: c.crmSource ?? "", team: (c.team ?? "") as Team | "", mode: c.mode ?? "full", active: c.active, isDefault: c.isDefault }); setMsg(null); setProfileFor(null); }}
-                      className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
-                    <button onClick={() => remove(c.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
+                      className={`px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0 ${ROW_BTN}`}>Edit</button>
+                    <button onClick={() => remove(c.id)} aria-label={`Remove ${c.name}`} className={`p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0 ${ROW_ICON}`}><Trash2 className="w-4 h-4" /></button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -465,7 +483,7 @@ function ChannelsManager() {
 
       <Drawer open={!!form} onClose={() => setForm(null)} width="lg" title={form?.id ? "Edit WhatsApp number" : "Connect a WhatsApp number"}>
         {form && (<div className="space-y-3">
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <input className={inp} placeholder="Label, e.g. Sales India" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
             <input className={inp} placeholder="Phone Number ID (Meta → API Setup)" value={form.phoneId} onChange={e => setForm({ ...form, phoneId: e.target.value.trim() })} />
             <input className={inp} placeholder="WABA ID" value={form.wabaId} onChange={e => setForm({ ...form, wabaId: e.target.value.trim() })} />
@@ -485,11 +503,11 @@ function ChannelsManager() {
             <p className="text-[11px] text-ink-400 mt-1">Optional. A member pinned to a <b>team</b> (Settings → Team) only sees the chats on that team&apos;s numbers. Leave blank and every member sees this number, as before.</p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
-            <select className={inp} value={form.agentId} onChange={e => setForm({ ...form, agentId: e.target.value })} title="Which AI personality answers on this number">
+            <select className={`${inp} max-sm:w-full`} value={form.agentId} onChange={e => setForm({ ...form, agentId: e.target.value })} title="Which AI personality answers on this number">
               <option value="">AI personality: your default</option>
               {agents.map(a => <option key={a.id} value={a.id}>AI personality: {a.name}</option>)}
             </select>
-            <select className={inp} value={form.kbTag} onChange={e => setForm({ ...form, kbTag: e.target.value })} title="AI on this number answers only from knowledge base documents with this tag. With no tag it reads the whole knowledge base, unless business isolation (AI Hub) is on. Tag docs in the AI Knowledge Base tab.">
+            <select className={`${inp} max-sm:w-full`} value={form.kbTag} onChange={e => setForm({ ...form, kbTag: e.target.value })} title="AI on this number answers only from knowledge base documents with this tag. With no tag it reads the whole knowledge base, unless business isolation (AI Hub) is on. Tag docs in the AI Knowledge Base tab.">
               <option value="">Knowledge: global (all docs)</option>
               {kbTags.map(t => <option key={t} value={t}>Knowledge: {t}</option>)}
               {form.kbTag && !kbTags.includes(form.kbTag) && <option value={form.kbTag}>Knowledge: {form.kbTag}</option>}
@@ -568,9 +586,9 @@ function BusinessProfileEditor({ channelId, name, coex, onClose }: { channelId: 
 
   return (
     <div className="border-2 border-brand-700/30 rounded-control p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-xs font-bold text-ink-900">Business profile — <span className="text-brand-700">{name}</span></p>
-        <button onClick={onClose} className="text-xs font-semibold text-ink-400 hover:text-ink-900">Close</button>
+      <div className="flex items-center justify-between gap-3">
+        <p className="min-w-0 text-xs font-bold text-ink-900">Business profile — <span className="text-brand-700 break-words">{name}</span></p>
+        <button onClick={onClose} className="shrink-0 max-sm:min-h-9 max-sm:px-2 text-xs font-semibold text-ink-400 hover:text-ink-900">Close</button>
       </div>
       {loading ? <p className="text-xs text-ink-400">Loading…</p> : (
         <>
@@ -597,7 +615,7 @@ function BusinessProfileEditor({ channelId, name, coex, onClose }: { channelId: 
           </div>
           <input className={`${inp} w-full disabled:opacity-70`} placeholder="About (status, ≤139 chars)" maxLength={139} disabled={coex} value={p.about} onChange={e => setP({ ...p, about: e.target.value })} />
           <textarea className={`${inp} w-full disabled:opacity-70`} rows={2} placeholder="Description (≤512 chars)" maxLength={512} disabled={coex} value={p.description} onChange={e => setP({ ...p, description: e.target.value })} />
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <input className={`${inp} disabled:opacity-70`} placeholder="Email" disabled={coex} value={p.email} onChange={e => setP({ ...p, email: e.target.value })} />
             <input className={`${inp} disabled:opacity-70`} placeholder="Website (https://…)" disabled={coex} value={p.website} onChange={e => setP({ ...p, website: e.target.value })} />
             <input className={`${inp} disabled:opacity-70`} placeholder="Address" disabled={coex} value={p.address} onChange={e => setP({ ...p, address: e.target.value })} />
@@ -606,7 +624,7 @@ function BusinessProfileEditor({ channelId, name, coex, onClose }: { channelId: 
             </select>
           </div>
           {!coex && (
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <button onClick={saveFields} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save profile"}</button>
               <Notice notice={note} />
             </div>
@@ -1088,22 +1106,24 @@ function CannedTemplatesCard() {
   if (list === null) return null;
   return (
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <div>
+      <div className={HEAD}>
+        <div className="min-w-0">
           <p className="text-xs font-bold text-slate-400 uppercase">Canned templates (one-click sends)</p><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>Buttons above the Live Chat composer — one tap sends an approved template (works even when the customer hasn&apos;t messaged you in the last 24 hours) and can move the lead&apos;s CRM stage.</>}>E.g. Follow-up, post-call follow-up.</PageInfo>
         </div>
         <button onClick={() => { setForm({ id: "", label: "", templateName: "", language: "en_US", params: [], stage: "" }); setMsg(null); }}
-          className="px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5 shrink-0"><Plus className="w-3.5 h-3.5" /> Add</button>
+          className="self-start sm:self-auto px-3 py-1.5 max-sm:min-h-9 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5 shrink-0"><Plus className="w-3.5 h-3.5" /> Add</button>
       </div>
 
       {list.map(c => (
-        <div key={c.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2">
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-ink-900 truncate">{c.label}{c.stage && <span className="ml-2 px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 text-[11px] font-bold align-middle">→ {c.stage}</span>}</p>
+        <div key={c.id} className={`${ROW} border border-line rounded-control px-3 py-2`}>
+          <div className={ROW_NAME}>
+            <p className="text-sm font-semibold text-ink-900 truncate max-sm:whitespace-normal max-sm:break-words">{c.label}{c.stage && <span className="ml-2 px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 text-[11px] font-bold align-middle whitespace-nowrap">→ {c.stage}</span>}</p>
             <p className="text-[11px] text-ink-400 font-mono truncate">{c.templateName} · {c.language}{c.params.length ? ` · ${c.params.join(" · ")}` : ""}</p>
           </div>
-          <button onClick={() => { setForm({ ...c, params: [...c.params] }); setMsg(null); }} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
-          <button onClick={async () => { if (await ask({ title: "Delete this canned reply?", tone: "danger", confirmLabel: "Delete reply", message: "The button disappears from Live Chat for your whole team straight away.", facts: [{ label: "Reply", value: c.label }] })) save(list.filter(x => x.id !== c.id)); }} disabled={busy} className="p-1 text-ink-400 hover:text-red-500 shrink-0"><Trash2 className="w-4 h-4" /></button>
+          <div className={ROW_ACTIONS}>
+          <button onClick={() => { setForm({ ...c, params: [...c.params] }); setMsg(null); }} className={`px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0 ${ROW_BTN}`}>Edit</button>
+          <button onClick={async () => { if (await ask({ title: "Delete this canned reply?", tone: "danger", confirmLabel: "Delete reply", message: "The button disappears from Live Chat for your whole team straight away.", facts: [{ label: "Reply", value: c.label }] })) save(list.filter(x => x.id !== c.id)); }} disabled={busy} aria-label={`Delete ${c.label}`} className={`p-1 text-ink-400 hover:text-red-500 shrink-0 ${ROW_ICON}`}><Trash2 className="w-4 h-4" /></button>
+          </div>
         </div>
       ))}
       {!list.length && !form && <p className="text-xs text-ink-400">None yet — add “Follow-up” and “Post-call follow-up” to give your team one-click sends.</p>}
@@ -1111,15 +1131,15 @@ function CannedTemplatesCard() {
       <Drawer open={!!form} onClose={() => setForm(null)} width="md" title="Quick-reply template">
         {form && (<div className="space-y-3">
           {channels.length > 0 && (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="text-[11px] font-bold text-ink-400 uppercase tracking-wide shrink-0">Browse templates on</span>
-              <select className={`${inp} !py-1.5 text-xs`} value={browse} onChange={e => setBrowse(e.target.value)} title="Templates are WABA-scoped — pick the number whose WABA to list. The send always uses the conversation's own number.">
+              <select className={`${inp} !py-1.5 text-xs max-sm:w-full`} value={browse} onChange={e => setBrowse(e.target.value)} title="Templates are WABA-scoped — pick the number whose WABA to list. The send always uses the conversation's own number.">
                 <option value="">Workspace default number</option>
                 {channels.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
           )}
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <input className={inp} placeholder="Button label, e.g. Follow-up" value={form.label} onChange={e => setForm({ ...form, label: e.target.value })} />
             <select className={inp} value={form.templateName} onChange={e => pickTemplate(e.target.value)}>
               <option value="">Pick an approved template…</option>
@@ -1293,11 +1313,11 @@ function OtpServiceCard() {
 
   return (
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
-      <div className="flex items-start justify-between gap-3">
-        <div>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+        <div className="min-w-0">
           <p className="text-xs font-bold text-slate-400 uppercase">OTP service</p><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>Your website calls this workspace to send login codes on WhatsApp and verify them, authenticating with a workspace API key.</>}>Route different areas to different numbers. Codes are stored only as hashes.</PageInfo>
         </div>
-        <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+        <div className="flex items-center gap-1.5 flex-wrap sm:shrink-0 sm:justify-end">
           {st.secretSet && st.tableReady
             ? <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-brand-100 text-brand-700">Ready</span>
             : <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800" title={[!st.secretSet && "OTP_HASH_SECRET missing", !st.tableReady && "migration 0076 not applied"].filter(Boolean).join(" · ")}>Still being set up — contact support</span>}
@@ -1359,7 +1379,7 @@ function OtpServiceCard() {
         return (
           <div className="bg-canvas rounded-control px-3 py-2.5 space-y-2">
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <p className="text-[11px] font-bold text-ink-400 uppercase">Website snippet — create a workspace API key (Settings → API access), set it as <code className="font-mono">OTP_API_KEY</code> on the site, then paste this</p>
+              <p className="min-w-0 text-[11px] font-bold text-ink-400 uppercase">Website snippet — create a workspace API key (Settings → API access), set it as <code className="font-mono">OTP_API_KEY</code> on the site, then paste this</p>
               <div className="flex items-center gap-1 shrink-0">
                 {(["nextjs", "node", "curl"] as const).map(k => (
                   <button key={k} onClick={() => setSnippetKind(k)}
@@ -1376,8 +1396,8 @@ function OtpServiceCard() {
             {numberRows.map(row => {
               const call = buildNumberCall(snippetKind, origin, row.area);
               return (
-                <div key={row.key} className="flex items-center gap-2">
-                  <span className="text-[11px] font-semibold text-ink-700 w-44 shrink-0 truncate" title={row.label}>{row.label}</span>
+                <div key={row.key} className="flex flex-wrap sm:flex-nowrap items-center gap-x-2 gap-y-1">
+                  <span className="text-[11px] font-semibold text-ink-700 w-full sm:w-44 shrink-0 truncate" title={row.label}>{row.label}</span>
                   <code className="text-[11px] font-mono text-ink-600 bg-white border border-line rounded px-2 py-1 flex-1 min-w-0 truncate" title={call}>{call}</code>
                   <button onClick={() => copy(call, "num:" + row.key)} className="px-2 py-1 rounded text-[11px] font-bold bg-white border border-line text-ink-600 hover:bg-canvas shrink-0 inline-flex items-center justify-center gap-1">{copiedKey === "num:" + row.key ? <Check className="w-3 h-3" /> : "Copy"}</button>
                 </div>
@@ -1471,7 +1491,7 @@ function VoiceSettingsCard() {
       {st && <p className="text-[11px] text-slate-500">Voice replies are AI-generated. Share that with customers. Replies containing web links stay as text so customers can open them.</p>}
       {needsKey && <p className="text-[12px] font-medium text-amber-600">Add an OpenAI voice key to enable spoken replies — until then replies stay as text.</p>}
       <Notice notice={note} />
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <button onClick={save} disabled={busy || loading || !st} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save"}</button>
         {st?.keySet && <button onClick={removeKey} disabled={busy || loading} className="px-3 py-1.5 rounded-control border border-red-200 text-xs font-bold text-red-600 hover:bg-red-50 disabled:opacity-60">Remove key</button>}
         {!loading && !st && <button onClick={() => { void load(); }} className="px-3 py-1.5 rounded-control border border-line text-xs font-bold">Try again</button>}
@@ -1664,20 +1684,20 @@ export function MessengerCard() {
 
   return (
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
-      <div className="flex items-center justify-between gap-2">
-        <div>
+      <div className={`${HEAD} sm:gap-2`}>
+        <div className="min-w-0">
           <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><Facebook className="w-3.5 h-3.5 text-blue-600" /> Facebook Messenger</p><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>Connect a Facebook Page to auto-reply to Messenger DMs with your AI — within Meta&apos;s rules (you can reply within 24 hours of their last message, and can&apos;t message people who never wrote to you).</>}>Page DMs land in the same Live Chat inbox.</PageInfo>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 min-w-0 sm:shrink-0">
           {(facebookSignupReady() || metaPreview()) && (
-            <div className="flex items-center gap-1.5">
-              <button onClick={() => connectWithFacebook()} disabled={busy} className="px-3 py-1.5 rounded-control bg-[#0783fd] hover:bg-[#0668d6] text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button onClick={() => connectWithFacebook()} disabled={busy} className="px-3 py-1.5 max-sm:min-h-9 rounded-control bg-[#0783fd] hover:bg-[#0668d6] text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
                 {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Facebook className="w-3.5 h-3.5" />} Connect with Facebook
               </button>
               {!facebookSignupReady() && <span className="text-[11px] font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">Preview</span>}
             </div>
           )}
-          <button onClick={() => { setForm({ ...EMPTY_FB_PAGE }); setMsg(null); }} className="px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add Page</button>
+          <button onClick={() => { setForm({ ...EMPTY_FB_PAGE }); setMsg(null); }} className="px-3 py-1.5 max-sm:min-h-9 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add Page</button>
         </div>
       </div>
 
@@ -1700,26 +1720,28 @@ export function MessengerCard() {
       )}
 
       {pages.map(c => (
-        <div key={c.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2.5">
+        <div key={c.id} className={`${ROW} border border-line rounded-control px-3 py-2.5`}>
           <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0"><Facebook className="w-4 h-4" /></div>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-ink-900 truncate">{c.name}{c.isDefault && <span className="text-[11px] font-bold text-brand-700"> · Default</span>}{!c.active && <span className="text-[11px] font-bold text-red-500"> · Off</span>}</p>
+          <div className={ROW_NAME}>
+            <p className="text-sm font-semibold text-ink-900 truncate max-sm:whitespace-normal max-sm:break-words">{c.name}{c.isDefault && <span className="text-[11px] font-bold text-brand-700"> · Default</span>}{!c.active && <span className="text-[11px] font-bold text-red-500"> · Off</span>}</p>
             <p className="text-[11px] text-ink-400 font-mono truncate">page {c.pageId} · {c.agentId ? `AI: ${agents.find(a => a.id === c.agentId)?.name ?? "custom"}` : "AI: global default"}</p>
           </div>
+          <div className={ROW_ACTIONS}>
           <button onClick={() => { setForm({ id: c.id, name: c.name, pageId: c.pageId ?? "", token: "", agentId: c.agentId ?? "", kbTag: c.kbTag ?? "", active: c.active, isDefault: c.isDefault }); setMsg(null); }}
-            className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
-          <button onClick={() => remove(c.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
+            className={`px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0 ${ROW_BTN}`}>Edit</button>
+          <button onClick={() => remove(c.id)} aria-label={`Remove ${c.name}`} className={`p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0 ${ROW_ICON}`}><Trash2 className="w-4 h-4" /></button>
+          </div>
         </div>
       ))}
 
       <Drawer open={!!form} onClose={() => setForm(null)} width="md" title={form?.id ? "Edit Facebook Page" : "Connect a Facebook Page"}>
         {form && (<div className="space-y-3">
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <input className={inp} placeholder="Label, e.g. Main Page" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
             <input className={inp} placeholder="Facebook Page ID" value={form.pageId} onChange={e => setForm({ ...form, pageId: e.target.value.trim() })} />
           </div>
           <input className={`${inp} w-full font-mono`} placeholder={form.id ? "Page access token — leave blank to keep the current one" : "Page access token (pages_messaging)"} value={form.token} onChange={e => setForm({ ...form, token: e.target.value.trim() })} />
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <select className={inp} value={form.agentId} onChange={e => setForm({ ...form, agentId: e.target.value })} title="Which AI personality answers on this Page">
               <option value="">AI personality: your default</option>
               {agents.map(a => <option key={a.id} value={a.id}>AI personality: {a.name}</option>)}
@@ -1759,7 +1781,7 @@ export function MessengerCard() {
       <>
       {/* Comment-to-DM automation (multiple rules + per-post targeting) */}
       <div className="border-t border-line pt-3 mt-1 space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2 sm:flex-nowrap sm:gap-0">
           <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><MessageCircle className="w-3.5 h-3.5" /> Comment-to-DM automation</p>
           <button onClick={() => { setMsg(null); setPendingReplyOnly(false); if (pages.length > 1) { setRuleForm(null); setPickAccount(true); } else { setPickAccount(false); setRuleForm({ ...BLANK_FB_RULE, replyOnly: false, channelId: pages[0]?.id ?? null }); } }} className="shrink-0 px-3 py-1.5 rounded-control bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New rule</button>
         </div>
@@ -1769,17 +1791,19 @@ export function MessengerCard() {
           const post = posts.find(p => p.id === r.postId);
           const thumb = r.postThumbnail || post?.thumbnail;
           return (
-            <div key={r.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2.5">
+            <div key={r.id} className={`${ROW} border border-line rounded-control px-3 py-2.5`}>
               {thumb
                 ? <img src={thumb} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />
                 : <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0"><MessageCircle className="w-4 h-4" /></div>}
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-ink-900 truncate">{r.name || (r.keyword ? `“${r.keyword}”` : "Any comment")}{pages.length > 1 && r.channelId && <span className="text-[11px] font-bold text-blue-600"> · {pages.find(c => c.id === r.channelId)?.name ?? "Page"}</span>}{!r.enabled && <span className="text-[11px] font-bold text-red-500"> · Off</span>}</p>
+              <div className={ROW_NAME}>
+                <p className="text-sm font-semibold text-ink-900 truncate max-sm:whitespace-normal max-sm:break-words">{r.name || (r.keyword ? `“${r.keyword}”` : "Any comment")}{pages.length > 1 && r.channelId && <span className="text-[11px] font-bold text-blue-600"> · {pages.find(c => c.id === r.channelId)?.name ?? "Page"}</span>}{!r.enabled && <span className="text-[11px] font-bold text-red-500"> · Off</span>}</p>
                 <p className="text-[11px] text-ink-400 truncate">{r.postId ? `Post: ${(r.postCaption || post?.caption || r.postId).slice(0, 38) || r.postId}` : "All posts"} · {r.keyword ? `keyword “${r.keyword}”` : "any comment"}{fbButtonsOf(r).length ? <> · <Link2 className="w-3 h-3 inline-block align-middle" /> {fbButtonsOf(r).length} button{fbButtonsOf(r).length > 1 ? "s" : ""}</> : ""} · {r.matchCount ?? 0} sent</p>
               </div>
-              <label className="flex items-center gap-1 text-[11px] text-ink-500 cursor-pointer shrink-0"><input type="checkbox" className="accent-blue-600" checked={r.enabled} onChange={() => toggleRule(r)} /> on</label>
-              <button onClick={() => { setRuleForm({ ...r, name: r.name ?? "", keyword: r.keyword ?? "", buttons: fbButtonsOf(r), publicReplies: fbRepliesOf(r) }); setMsg(null); }} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
-              <button onClick={() => delRule(r.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
+              <div className={ROW_ACTIONS}>
+              <label className="flex items-center gap-1 text-[11px] text-ink-500 cursor-pointer shrink-0 max-sm:min-h-9 max-sm:px-1"><input type="checkbox" className="accent-blue-600" checked={r.enabled} onChange={() => toggleRule(r)} /> on</label>
+              <button onClick={() => { setRuleForm({ ...r, name: r.name ?? "", keyword: r.keyword ?? "", buttons: fbButtonsOf(r), publicReplies: fbRepliesOf(r) }); setMsg(null); }} className={`px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0 ${ROW_BTN}`}>Edit</button>
+              <button onClick={() => delRule(r.id)} aria-label="Delete rule" className={`p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0 ${ROW_ICON}`}><Trash2 className="w-4 h-4" /></button>
+              </div>
             </div>
           );
         })}
@@ -1787,8 +1811,8 @@ export function MessengerCard() {
 
         {/* Comment-reply-only automation — posts a public reply, never a DM. */}
         <div className="border-t border-line pt-3 mt-1 space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><MessageCircle className="w-3.5 h-3.5" /> Comment reply automation <span className="text-[11px] font-bold text-violet-600 normal-case">· public reply, no DM</span></p>
+          <div className="flex flex-wrap items-center justify-between gap-2 sm:flex-nowrap sm:gap-0">
+            <p className="min-w-0 text-xs font-bold text-slate-400 uppercase flex flex-wrap items-center gap-1.5"><MessageCircle className="w-3.5 h-3.5" /> Comment reply automation <span className="text-[11px] font-bold text-violet-600 normal-case">· public reply, no DM</span></p>
             <button onClick={() => { setMsg(null); setPendingReplyOnly(true); if (pages.length > 1) { setRuleForm(null); setPickAccount(true); } else { setPickAccount(false); setRuleForm({ ...BLANK_FB_RULE, replyOnly: true, channelId: pages[0]?.id ?? null }); } }} className="shrink-0 px-3 py-1.5 rounded-control bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New reply rule</button>
           </div>
           <p className="text-[11px] text-ink-400">When someone comments, publicly reply under their comment — no DM is sent. Add a few reply variants and we rotate them so replies stay natural and don&apos;t trip Meta&apos;s spam filters. Target a post or all posts, and gate by keywords.</p>
@@ -1798,17 +1822,19 @@ export function MessengerCard() {
             const thumb = r.postThumbnail || post?.thumbnail;
             const nReplies = fbRepliesOf(r).length;
             return (
-              <div key={r.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2.5">
+              <div key={r.id} className={`${ROW} border border-line rounded-control px-3 py-2.5`}>
                 {thumb
                   ? <img src={thumb} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />
                   : <div className="w-10 h-10 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center shrink-0"><MessageCircle className="w-4 h-4" /></div>}
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-ink-900 truncate">{r.name || (r.keyword ? `“${r.keyword}”` : "Any comment")}{pages.length > 1 && r.channelId && <span className="text-[11px] font-bold text-violet-600"> · {pages.find(c => c.id === r.channelId)?.name ?? "Page"}</span>}{!r.enabled && <span className="text-[11px] font-bold text-red-500"> · Off</span>}</p>
+                <div className={ROW_NAME}>
+                  <p className="text-sm font-semibold text-ink-900 truncate max-sm:whitespace-normal max-sm:break-words">{r.name || (r.keyword ? `“${r.keyword}”` : "Any comment")}{pages.length > 1 && r.channelId && <span className="text-[11px] font-bold text-violet-600"> · {pages.find(c => c.id === r.channelId)?.name ?? "Page"}</span>}{!r.enabled && <span className="text-[11px] font-bold text-red-500"> · Off</span>}</p>
                   <p className="text-[11px] text-ink-400 truncate">{r.postId ? `Post: ${(r.postCaption || post?.caption || r.postId).slice(0, 38) || r.postId}` : "All posts"} · {r.keyword ? `keyword “${r.keyword}”` : "any comment"} · <MessageCircle className="w-3 h-3 inline-block align-middle" /> {nReplies} repl{nReplies === 1 ? "y" : "ies"} · {r.matchCount ?? 0} sent</p>
                 </div>
-                <label className="flex items-center gap-1 text-[11px] text-ink-500 cursor-pointer shrink-0"><input type="checkbox" className="accent-blue-600" checked={r.enabled} onChange={() => toggleRule(r)} /> on</label>
-                <button onClick={() => { setRuleForm({ ...r, name: r.name ?? "", keyword: r.keyword ?? "", buttons: fbButtonsOf(r), publicReplies: fbRepliesOf(r) }); setMsg(null); }} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
-                <button onClick={() => delRule(r.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
+                <div className={ROW_ACTIONS}>
+              <label className="flex items-center gap-1 text-[11px] text-ink-500 cursor-pointer shrink-0 max-sm:min-h-9 max-sm:px-1"><input type="checkbox" className="accent-blue-600" checked={r.enabled} onChange={() => toggleRule(r)} /> on</label>
+                <button onClick={() => { setRuleForm({ ...r, name: r.name ?? "", keyword: r.keyword ?? "", buttons: fbButtonsOf(r), publicReplies: fbRepliesOf(r) }); setMsg(null); }} className={`px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0 ${ROW_BTN}`}>Edit</button>
+                <button onClick={() => delRule(r.id)} aria-label="Delete rule" className={`p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0 ${ROW_ICON}`}><Trash2 className="w-4 h-4" /></button>
+              </div>
               </div>
             );
           })}
@@ -1824,7 +1850,7 @@ export function MessengerCard() {
                 <button key={c.id} type="button" onClick={() => { setRuleForm({ ...BLANK_FB_RULE, replyOnly: pendingReplyOnly, channelId: c.id }); setPickAccount(false); }}
                   className="flex items-center gap-2 border border-line rounded-control px-3 py-2 text-left hover:border-blue-500 hover:bg-blue-50 transition-colors">
                   <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0"><Facebook className="w-4 h-4" /></div>
-                  <div className="min-w-0"><p className="text-sm font-semibold text-ink-900 truncate">{c.name}</p><p className="text-[11px] text-ink-400 font-mono truncate">{c.pageId}</p></div>
+                  <div className="min-w-0"><p className="text-sm font-semibold text-ink-900 truncate max-sm:whitespace-normal max-sm:break-words">{c.name}</p><p className="text-[11px] text-ink-400 font-mono truncate">{c.pageId}</p></div>
                 </button>
               ))}
             </div>
@@ -2010,23 +2036,25 @@ export function WebchatCard() {
 
   return (
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
-      <div className="flex items-center justify-between gap-2">
-        <div>
+      <div className={`${HEAD} sm:gap-2`}>
+        <div className="min-w-0">
           <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><MessageSquare className="w-3.5 h-3.5 text-brand-600" /> Website web chat</p><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>Add a live-chat bubble to your website with one line of code.</>}>Visitor chats land in the same Live Chat inbox and your AI replies instantly.</PageInfo>
         </div>
-        <button onClick={() => { setForm({ ...BLANK_WC }); setMsg(null); }} className="shrink-0 px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New widget</button>
+        <button onClick={() => { setForm({ ...BLANK_WC }); setMsg(null); }} className="self-start sm:self-auto shrink-0 px-3 py-1.5 max-sm:min-h-9 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New widget</button>
       </div>
 
       {list.map(c => (
         <div key={c.id} className="border border-line rounded-control px-3 py-2.5 space-y-2">
-          <div className="flex items-center gap-3">
+          <div className={ROW}>
             <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center shrink-0"><MessageSquare className="w-4 h-4" /></div>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-ink-900 truncate">{c.name}{!c.active && <span className="text-[11px] font-bold text-red-500"> · Off</span>}</p>
+            <div className={ROW_NAME}>
+              <p className="text-sm font-semibold text-ink-900 truncate max-sm:whitespace-normal max-sm:break-words">{c.name}{!c.active && <span className="text-[11px] font-bold text-red-500"> · Off</span>}</p>
               <p className="text-[11px] text-ink-400 truncate">{(c.allowedOrigins && c.allowedOrigins.length) ? c.allowedOrigins.join(", ") : "any origin (lock this down by adding your domains)"}</p>
             </div>
-            <button onClick={() => { const w = c.widgetConfig ?? {}; setForm({ id: c.id, name: c.name, origins: (c.allowedOrigins ?? []).join("\n"), active: c.active, agentId: c.agentId ?? "", kbTag: c.kbTag ?? "", color: w.color || "#0783fd", title: w.title || "Chat with us", welcome: w.welcome || "", position: w.position === "left" ? "left" : "right", iconUrl: w.iconUrl || "", logoFit: w.logoFit === "contain" ? "contain" : "cover", badgeColor: w.badgeColor || "#ffffff", logoScale: typeof w.logoScale === "number" ? w.logoScale : 100, offsetSide: w.offsetSide != null ? String(w.offsetSide) : "", offsetBottom: w.offsetBottom != null ? String(w.offsetBottom) : "" }); setMsg(null); }} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
-            <button onClick={() => remove(c.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
+            <div className={ROW_ACTIONS}>
+            <button onClick={() => { const w = c.widgetConfig ?? {}; setForm({ id: c.id, name: c.name, origins: (c.allowedOrigins ?? []).join("\n"), active: c.active, agentId: c.agentId ?? "", kbTag: c.kbTag ?? "", color: w.color || "#0783fd", title: w.title || "Chat with us", welcome: w.welcome || "", position: w.position === "left" ? "left" : "right", iconUrl: w.iconUrl || "", logoFit: w.logoFit === "contain" ? "contain" : "cover", badgeColor: w.badgeColor || "#ffffff", logoScale: typeof w.logoScale === "number" ? w.logoScale : 100, offsetSide: w.offsetSide != null ? String(w.offsetSide) : "", offsetBottom: w.offsetBottom != null ? String(w.offsetBottom) : "" }); setMsg(null); }} className={`px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0 ${ROW_BTN}`}>Edit</button>
+            <button onClick={() => remove(c.id)} aria-label={`Remove ${c.name}`} className={`p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0 ${ROW_ICON}`}><Trash2 className="w-4 h-4" /></button>
+            </div>
           </div>
           {c.siteKey && (
             <div className="flex items-center gap-2">
@@ -2048,7 +2076,7 @@ export function WebchatCard() {
           </div>
 
           {/* ── AI ── */}
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <select className={inp} value={form.agentId} onChange={e => setForm({ ...form, agentId: e.target.value })} title="Which AI personality answers in this widget">
               <option value="">AI personality: your default</option>
               {agents.map(a => <option key={a.id} value={a.id}>AI personality: {a.name}</option>)}
@@ -2062,7 +2090,7 @@ export function WebchatCard() {
 
           {/* ── Appearance ── */}
           <p className="text-[11px] font-bold text-slate-400 uppercase pt-1">Appearance</p>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <label className="flex items-center gap-2 text-xs text-ink-600 border border-line rounded-control px-2.5 py-1.5">
               <span className="shrink-0">Brand colour</span>
               <input type="color" className="w-7 h-7 rounded cursor-pointer bg-transparent border-0 p-0" value={/^#[0-9a-fA-F]{6}$/.test(form.color) ? form.color : "#0783fd"} onChange={e => setForm({ ...form, color: e.target.value })} />
@@ -2075,7 +2103,7 @@ export function WebchatCard() {
           </div>
           {/* Bubble offsets — lift/shift the launcher clear of the site's own floating
               buttons (scroll-to-top, call widget). Blank = defaults (20px / 20px). */}
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <label className="flex items-center gap-2 text-xs text-ink-600 border border-line rounded-control px-2.5 py-1.5">
               <span className="shrink-0">Gap from bottom</span>
               <input type="number" min={0} max={600} className={`${inp} flex-1 text-xs !py-1`} placeholder="20" value={form.offsetBottom} onChange={e => setForm({ ...form, offsetBottom: e.target.value })} />
@@ -2107,7 +2135,7 @@ export function WebchatCard() {
             </label>
           )}
           {form.iconUrl && form.logoFit === "contain" && (
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <label className="flex items-center gap-2 text-xs text-ink-600 border border-line rounded-control px-2.5 py-1.5" title="How much of the circular button the logo fills. Above 100% zooms INTO the logo — use this when the logo file has its own built-in padding or bubble.">
                 <span className="shrink-0">Logo size</span>
                 <input type="range" min={30} max={200} step={5} className="flex-1 accent-brand-700" value={form.logoScale} onChange={e => setForm({ ...form, logoScale: Number(e.target.value) })} />
@@ -2167,7 +2195,7 @@ export function WebchatCard() {
             );
           })()}
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} /> active</label>
             <div className="flex-1" />
             <button onClick={save} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save widget"}</button>
@@ -2552,8 +2580,8 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
       {section === "automation" && (<>
       {/* AI auto-replies — the ONE master switch for the AI on every channel */}
       <section className="bg-white rounded-card border border-line p-5 space-y-1">
-        <div className="flex items-center justify-between">
-          <div>
+        <div className="flex items-center justify-between max-sm:gap-3">
+          <div className="min-w-0">
             <p className="text-xs font-bold text-slate-400 uppercase">AI auto-replies</p>
             <p className="text-xs text-slate-500 mt-0.5">
               One switch for the AI assistant everywhere — WhatsApp, Instagram, Facebook Messenger, website chat, and AI follow-ups.
@@ -2562,14 +2590,14 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
           </div>
           {aiOn === null ? <Loader2 className="w-4 h-4 animate-spin text-slate-300" /> : isAdmin ? (
             <button onClick={toggleAi} disabled={saving}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold disabled:opacity-60 ${aiOn ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-500"}`}>
+              className={`px-3 py-1.5 rounded-full text-xs font-bold disabled:opacity-60 max-sm:shrink-0 ${aiOn ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-500"}`}>
               {aiOn ? "ON" : "OFF"}
             </button>
           ) : (
             /* Members can see the switch but not flip it — the API rejects it
                ("Only admins can toggle the AI switch"), and the old optimistic
                button showed the new state over that 403. */
-            <span title="Only an admin can change this" className={`px-3 py-1.5 rounded-full text-xs font-bold ${aiOn ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-500"}`}>
+            <span title="Only an admin can change this" className={`px-3 py-1.5 rounded-full text-xs font-bold max-sm:shrink-0 ${aiOn ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-500"}`}>
               {aiOn ? "ON" : "OFF"}
             </span>
           )}
@@ -2615,9 +2643,9 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
             <button onClick={() => setNudgeVars(a => [...a, ""])} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas">+ Add variation</button>
           )}
         </div>
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
           <p className="text-[11px] text-ink-400">Each box is ONE variation (up to 6, 300 chars, multi-line fine) — the bot rotates through them in order. Remove all to use the built-in defaults.</p>
-          <button onClick={() => void persistNudge(nudgeOn !== false)} disabled={saving} className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60 shrink-0">{saving ? "Saving…" : "Save nudges"}</button>
+          <button onClick={() => void persistNudge(nudgeOn !== false)} disabled={saving} className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60 shrink-0 max-sm:min-h-9">{saving ? "Saving…" : "Save nudges"}</button>
         </div>
       </section>
 
@@ -2641,37 +2669,37 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
         </div>
         <div className="space-y-2">
           {remSteps.map((s, i) => (
-            <div key={i} className="flex items-start gap-2">
+            <div key={i} className="flex flex-wrap sm:flex-nowrap items-start gap-2">
               <span className="text-[11px] font-bold text-slate-400 pt-2 shrink-0 w-4 text-right">{i + 1}.</span>
               <div className="flex items-center gap-1 pt-1 shrink-0" title={i === 0 ? "Minutes after the person goes quiet" : "Minutes after the previous nudge"}>
                 <input type="number" min={1} max={4320} className={`${inp} w-20 text-xs`} value={s.minutes}
                   onChange={e => setRemSteps(a => a.map((x, j) => (j === i ? { ...x, minutes: parseInt(e.target.value) || 0 } : x)))} />
                 <span className="text-[11px] text-ink-400">min</span>
               </div>
-              <textarea className={`${inp} flex-1 resize-none text-xs`} rows={2} maxLength={500} placeholder="Nudge message…" value={s.text}
+              <textarea className={`${inp} flex-1 min-w-0 resize-none text-xs max-sm:order-last max-sm:basis-full`} rows={2} maxLength={500} placeholder="Nudge message…" value={s.text}
                 onChange={e => setRemSteps(a => a.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)))} />
-              <button onClick={() => setRemSteps(a => a.filter((_, j) => j !== i))} className="p-1.5 text-ink-300 hover:text-red-500 shrink-0" aria-label="Remove nudge">×</button>
+              <button onClick={() => setRemSteps(a => a.filter((_, j) => j !== i))} className="p-1.5 text-ink-300 hover:text-red-500 shrink-0 max-sm:ml-auto max-sm:px-3" aria-label="Remove nudge">×</button>
             </div>
           ))}
           {remSteps.length < 5 && (
             <button onClick={() => setRemSteps(a => [...a, { minutes: a.length ? 60 : 10, text: "" }])} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas">+ Add nudge</button>
           )}
         </div>
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
           <p className="text-[11px] text-ink-400">Up to 5 steps, 500 chars each (multi-line fine). Remove all to use the built-in defaults; turn OFF to send no default nudges at all. Nudges only go out within 24 hours of the customer&apos;s last message (a WhatsApp rule).</p>
-          <button onClick={() => void persistReminders(remOn !== false)} disabled={saving} className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60 shrink-0">{saving ? "Saving…" : "Save nudges"}</button>
+          <button onClick={() => void persistReminders(remOn !== false)} disabled={saving} className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60 shrink-0 max-sm:min-h-9">{saving ? "Saving…" : "Save nudges"}</button>
         </div>
       </section>
 
       {/* Welcome message */}
       <section className="bg-white rounded-card border border-line p-5 space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
+        <div className="flex items-center justify-between max-sm:gap-3">
+          <div className="min-w-0">
             <p className="text-xs font-bold text-slate-400 uppercase">Welcome message</p><p className="text-xs text-slate-500 mt-0.5">Sent once, the first time a contact ever messages you (before the AI answers).</p>
           </div>
           {welcome && (
             <button onClick={toggleWelcome} disabled={saving}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold disabled:opacity-60 ${welcome.enabled ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-500"}`}>
+              className={`px-3 py-1.5 rounded-full text-xs font-bold disabled:opacity-60 max-sm:shrink-0 ${welcome.enabled ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-500"}`}>
               {welcome.enabled ? "ON" : "OFF"}
             </button>
           )}
@@ -2683,13 +2711,13 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
 
       {/* Away message */}
       <section className="bg-white rounded-card border border-line p-5 space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
+        <div className="flex items-center justify-between max-sm:gap-3">
+          <div className="min-w-0">
             <p className="text-xs font-bold text-slate-400 uppercase">Away message (outside working hours)</p><p className="text-xs text-slate-500 mt-0.5">Sent at most once per 12h per conversation. The AI keeps answering either way.</p>
           </div>
           {away && (
             <button onClick={toggleAway} disabled={saving}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold disabled:opacity-60 ${away.enabled ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-500"}`}>
+              className={`px-3 py-1.5 rounded-full text-xs font-bold disabled:opacity-60 max-sm:shrink-0 ${away.enabled ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-500"}`}>
               {away.enabled ? "ON" : "OFF"}
             </button>
           )}
@@ -2697,7 +2725,7 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
         {away ? (
           <>
             <textarea className={`${inp} w-full resize-none`} rows={3} value={away.text} onChange={e => setAway({ ...away, text: e.target.value })} />
-            <div className="flex items-center gap-2 text-sm text-slate-600">
+            <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
               <span>Working hours:</span>
               <input type="number" min={0} max={23} className={`${inp} w-20`} value={away.startHour} onChange={e => setAway({ ...away, startHour: parseInt(e.target.value) || 0 })} />
               <span>to</span>
@@ -2723,9 +2751,9 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
         <div>
           <p className="text-xs font-bold text-slate-400 uppercase">Quick replies (canned responses)</p><p className="text-xs text-slate-500 mt-0.5">Available in the Team Inbox composer (<Zap className="w-3.5 h-3.5 inline-block align-middle" /> or type /) and the CRM chat panel.</p>
         </div>
-        <div className="flex gap-2">
-          <input className={`${inp} w-32`} placeholder="shortcut" aria-label="Shortcut" value={qrShortcut} onChange={e => setQrShortcut(e.target.value)} />
-          <input className={`${inp} flex-1`} placeholder="Reply text…" aria-label="Reply text" value={qrBody} onChange={e => setQrBody(e.target.value)} onKeyDown={e => { if (e.key === "Enter") addQr(); }} />
+        <div className="flex flex-wrap sm:flex-nowrap gap-2">
+          <input className={`${inp} w-full sm:w-32`} placeholder="shortcut" aria-label="Shortcut" value={qrShortcut} onChange={e => setQrShortcut(e.target.value)} />
+          <input className={`${inp} flex-1 min-w-0`} placeholder="Reply text…" aria-label="Reply text" value={qrBody} onChange={e => setQrBody(e.target.value)} onKeyDown={e => { if (e.key === "Enter") addQr(); }} />
           <button onClick={addQr} disabled={!!qrMissing} title={qrMissing ?? "Add quick reply"} aria-label="Add quick reply" aria-describedby={qrMissing && (qrShortcut || qrBody) ? "qr-missing" : undefined} className="min-h-10 min-w-10 px-3 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold disabled:opacity-50"><Plus className="w-4 h-4" /></button>
         </div>
         {qrMissing && (qrShortcut || qrBody) && <p id="qr-missing" className="text-[12px] text-ink-500">{qrMissing}</p>}

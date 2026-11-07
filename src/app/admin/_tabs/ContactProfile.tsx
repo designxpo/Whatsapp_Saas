@@ -142,7 +142,7 @@ function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; on
                   </>
                 )}
               </div>
-              <button onClick={onClose} className="p-1.5 text-ink-400 hover:text-ink-900 shrink-0"><X className="w-4 h-4" /></button>
+              <button onClick={onClose} aria-label="Close" className="p-2.5 -m-1.5 sm:p-1.5 sm:m-0 text-ink-400 hover:text-ink-900 shrink-0"><X className="w-4 h-4" /></button>
             </div>
 
             {/* Actions */}
@@ -272,14 +272,14 @@ function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; on
                     <div key={k} className="px-3 py-1.5 flex items-start justify-between gap-3">
                       <span className="text-[11px] font-semibold text-slate-400 pt-0.5">{k}</span>
                       <span className="text-xs text-ink-900 text-right flex-1">{v}</span>
-                      <button disabled={busy} onClick={() => { const next = { ...c.attributes }; delete next[k]; patch({ attributes: next }); }} className="text-ink-300 hover:text-red-500 text-xs">×</button>
+                      <button disabled={busy} onClick={() => { const next = { ...c.attributes }; delete next[k]; patch({ attributes: next }); }} aria-label={`Remove ${k}`} className="-my-1.5 -mr-1.5 grid h-8 w-8 shrink-0 place-items-center text-ink-300 hover:text-red-500 text-xs">×</button>
                     </div>
                   ))}
                 </div>
               )}
               <div className="flex gap-1.5">
                 <input className={`${inp} w-28 !py-1.5 text-xs`} placeholder="field" value={attrKey} onChange={e => setAttrKey(e.target.value)} />
-                <input className={`${inp} flex-1 !py-1.5 text-xs`} placeholder="value (e.g. Mumbai)" value={attrVal} onChange={e => setAttrVal(e.target.value)}
+                <input className={`${inp} flex-1 min-w-0 !py-1.5 text-xs`} placeholder="value (e.g. Mumbai)" value={attrVal} onChange={e => setAttrVal(e.target.value)}
                   onKeyDown={e => { if (e.key === "Enter" && attrKey.trim() && attrVal.trim()) { patch({ attributes: { ...c.attributes, [attrKey.trim()]: attrVal.trim() } }); setAttrKey(""); setAttrVal(""); } }} />
                 <button disabled={busy || !attrKey.trim() || !attrVal.trim()} onClick={() => { patch({ attributes: { ...c.attributes, [attrKey.trim()]: attrVal.trim() } }); setAttrKey(""); setAttrVal(""); }} className="px-2.5 rounded-control bg-brand-700 text-white text-xs font-bold disabled:opacity-50">+</button>
               </div>

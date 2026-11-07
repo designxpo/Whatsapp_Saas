@@ -329,24 +329,55 @@ function CrmChatPill({ status, lastError }: { status: ChatCrmStatus; lastError: 
 // owner preview, a plan notice, an announcement), so it can fill exactly the
 // rest of the screen. A fixed guess made the page taller than the window
 // whenever a banner showed: the page scrolled and the reply box was cut off.
-function useTopOffset(ref: React.RefObject<HTMLElement | null>): number | null {
-  const [top, setTop] = useState<number | null>(null);
+/**
+ * The inbox's height, MEASURED: from where the inbox starts to where the phone
+ * tab bar starts (or the bottom of the window when there is no tab bar).
+ *
+ * It used to be `100dvh - top - 56px - safe area`. On an iPhone, Safari's own
+ * toolbar and the home-indicator inset make that sum come out taller than the
+ * space really left, so the reply box slid under the tab bar. Measuring both
+ * edges is right on every browser. The old calc stays as the first-paint
+ * fallback, before JavaScript has measured.
+ */
+export function fitHeight(frameTopInPage: number, scrollY: number, tabBarTop: number | null, windowHeight: number): number {
+  const bottom = tabBarTop ?? windowHeight;           // viewport coordinates
+  return Math.max(240, Math.floor(bottom - (frameTopInPage - scrollY)));
+}
+
+function useFitHeight(ref: React.RefObject<HTMLElement | null>): number | null {
+  const [h, setH] = useState<number | null>(null);
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
+    const tabBar = () => {
+      const nav = document.querySelector<HTMLElement>('nav[aria-label="Main"]');
+      if (!nav || getComputedStyle(nav).display === "none") return null;
+      const r = nav.getBoundingClientRect();
+      return r.height > 0 ? r.top : null;
+    };
     const measure = () => {
-      const t = Math.round(el.getBoundingClientRect().top + window.scrollY);
-      setTop(prev => (prev === t ? prev : t));
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      const next = fitHeight(top, window.scrollY, tabBar(), window.innerHeight);
+      setH(prev => (prev === next ? prev : next));
     };
     measure();
     window.addEventListener("resize", measure);
+    window.addEventListener("orientationchange", measure);
+    window.visualViewport?.addEventListener("resize", measure);
     // Banners come and go (and fonts load) without a resize; the body's size
     // changes when they do. Our own height change doesn't move our top, so this settles.
     const ro = typeof ResizeObserver === "function" ? new ResizeObserver(measure) : null;
     ro?.observe(document.body);
-    return () => { window.removeEventListener("resize", measure); ro?.disconnect(); };
+    const nav = document.querySelector('nav[aria-label="Main"]');
+    if (nav) ro?.observe(nav);
+    return () => {
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("orientationchange", measure);
+      window.visualViewport?.removeEventListener("resize", measure);
+      ro?.disconnect();
+    };
   }, [ref]);
-  return top;
+  return h;
 }
 
 function useMinWidth(px: number): boolean {
@@ -608,7 +639,7 @@ function fetchProblem(status: number | null): string {
 
 function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIntent | null; clearIntent: () => void }) {
   const frameRef = useRef<HTMLDivElement>(null);
-  const inboxTop = useTopOffset(frameRef);
+  const inboxHeight = useFitHeight(frameRef);
   const { vocab } = useVocab();
   const [convos, setConvos] = useState<Conversation[]>([]);
   // Until the first answer, the list shows placeholders, not "No conversations yet".
@@ -838,8 +869,8 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
     // Fills the screen between where it starts (measured: header + any banner)
     // and the bottom — on phones, the 56px tab bar — cancelling <main>'s
     // padding: p-4 / sm:p-6, pb-24 under md for the bar.
-    <div ref={frameRef} style={inboxTop === null ? undefined : ({ "--inbox-top": `${inboxTop}px` } as React.CSSProperties)}
-      className="-mx-4 -mt-4 -mb-24 sm:-mx-6 sm:-mt-6 md:-mb-6 h-[calc(100dvh-var(--inbox-top,56px)-56px-env(safe-area-inset-bottom))] md:h-[calc(100dvh-var(--inbox-top,56px))] flex flex-col bg-white overflow-hidden">
+    <div ref={frameRef} style={inboxHeight === null ? undefined : { height: inboxHeight }}
+      className="-mx-4 -mt-4 -mb-24 sm:-mx-6 sm:-mt-6 md:-mb-6 h-[calc(100dvh-112px-56px-env(safe-area-inset-bottom))] md:h-[calc(100dvh-64px)] flex flex-col bg-white overflow-hidden">
       <CrmStatusBar />
       <div className="flex-1 flex min-h-0">
       {/* Conversation list */}

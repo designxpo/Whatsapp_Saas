@@ -91,8 +91,8 @@ function FlowsTab() {
 
       <section className="bg-white rounded-card border border-line p-5 space-y-3">
         <p className="text-xs font-bold text-slate-400 uppercase">New flow</p>
-        <div className="flex gap-2">
-          <input className={inp + " flex-1 min-w-0"} aria-label="New flow name" placeholder="Flow name (e.g. Enquiry menu)" value={name} onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === "Enter") create(); }} />
+        <div className="flex flex-wrap sm:flex-nowrap gap-2">
+          <input className={inp + " flex-1 min-w-0 max-sm:basis-full"} aria-label="New flow name" placeholder="Flow name (e.g. Enquiry menu)" value={name} onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === "Enter") create(); }} />
           <button onClick={create} disabled={creating || !name.trim()} title={!name.trim() ? "Type a name for the flow first" : undefined} className="min-h-10 px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold disabled:opacity-50">
             {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : "Create & open builder"}
           </button>
@@ -102,18 +102,21 @@ function FlowsTab() {
 
       <div className="space-y-2">
         {flows.map(f => (
-          <div key={f.id} className="bg-white rounded-card border border-line p-4 flex items-center justify-between gap-3">
-            <button onClick={() => router.push(`/admin/flows/${f.id}`)} className="text-left min-w-0 flex-1">
-              <p className="text-sm font-bold text-brand-dark flex items-center gap-1.5">{f.name}
+          <div key={f.id} className="bg-white rounded-card border border-line p-4 flex flex-wrap sm:flex-nowrap items-center justify-between gap-3">
+            <button onClick={() => router.push(`/admin/flows/${f.id}`)} className="text-left min-w-0 flex-1 max-sm:basis-full">
+              <p className="text-sm font-bold text-brand-dark flex flex-wrap items-center gap-1.5 break-words">{f.name}
                 {(() => { const b = flowPlatformBadge(f.platform); return <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full ${b.cls}`}>{b.label}</span>; })()}
               </p>
               <p className="text-[12px] text-slate-500 truncate">
                 {f.triggerKeywords.length ? `Starts when someone sends: ${f.triggerKeywords.join(", ")}` : "No start words yet"} · {(f.graph?.nodes?.length ?? 1) - 1} steps
               </p>
             </button>
+            {/* Phone: on/off + actions get their own line under the name. Laptop: `contents` = the same single row. */}
+            <div className="flex items-center justify-end gap-3 w-full sm:contents">
             <button onClick={() => toggle(f)} role="switch" aria-checked={f.active} aria-label={`${f.name}: ${f.active ? "on" : "off"}`} className={`min-h-8 px-3 py-1 rounded-full text-[12px] font-bold shrink-0 ${f.active ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-500"}`}>{f.active ? "● On" : "○ Off"}</button>
             <button onClick={() => router.push(`/admin/flows/${f.id}`)} className="min-h-8 px-3 py-1 rounded-lg border border-line text-[12px] font-bold text-slate-600 shrink-0">Edit</button>
             <button onClick={() => remove(f.id, f.name)} aria-label={`Delete ${f.name}`} className="grid place-items-center w-9 h-9 rounded-lg text-red-500 hover:text-red-600 hover:bg-red-50 shrink-0"><Trash2 className="w-4 h-4" /></button>
+            </div>
           </div>
         ))}
         {flows.length === 0 && (

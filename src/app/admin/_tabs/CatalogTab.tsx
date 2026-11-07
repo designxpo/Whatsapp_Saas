@@ -74,11 +74,11 @@ function CatalogTab() {
 
   return (
     <div className="max-w-5xl space-y-5">
-      <div className="flex items-start justify-between gap-3">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><ShoppingBag className="w-5 h-5" /> Catalog</h2><PageInfo className="text-sm text-slate-500" lead={<>What you sell. Send any of these in a chat, and customers can add to cart and pay without leaving WhatsApp.</>}>If someone leaves items in their cart, your cart-reminder {vocab.sequence.one.toLowerCase()} follows up with them automatically.</PageInfo>
         </div>
-        {view === "products" && <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
+        {view === "products" && <div className="flex flex-wrap items-center sm:justify-end gap-2 sm:shrink-0">
           <button onClick={makeCheckout} disabled={checkoutBusy} title="Make a step-by-step checkout form (address, then payment) that opens inside WhatsApp" className="min-h-9 px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas flex items-center gap-1.5 disabled:opacity-60"><Workflow className="w-3.5 h-3.5" /> {checkoutBusy ? "Creating…" : "Create checkout form"}</button>
           <button onClick={() => { setForm({ ...EMPTY_PRODUCT }); setMsg(null); }} className="min-h-9 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add {productLc}</button>
         </div>}
@@ -122,26 +122,26 @@ function CatalogTab() {
       <Modal open={!!form} onClose={() => setForm(null)} size="lg" title={form?.id ? `Edit ${productLc}` : `New ${productLc}`}>
         {form && (<div className="flex flex-col xl:flex-row gap-5">
           <div className="flex-1 space-y-2 min-w-0">
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <input className={inp} placeholder="Product name" aria-label="Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
-            <div className="flex gap-2"><input className={inp} placeholder="Price" aria-label="Price" inputMode="decimal" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} /><input className={`${inp} w-20`} placeholder="INR" aria-label="Currency" value={form.currency} onChange={e => setForm({ ...form, currency: e.target.value.toUpperCase() })} /></div>
-            <div className="col-span-2 flex items-center gap-3">
+            <div className="flex gap-2"><input className={`${inp} min-w-0`} placeholder="Price" aria-label="Price" inputMode="decimal" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} /><input className={`${inp} w-20 shrink-0`} placeholder="INR" aria-label="Currency" value={form.currency} onChange={e => setForm({ ...form, currency: e.target.value.toUpperCase() })} /></div>
+            <div className="sm:col-span-2 flex items-center gap-3">
               <ImgFallback url={form.imageUrl} imgClass="w-14 h-14 rounded-lg object-cover border border-line shrink-0" boxClass="w-14 h-14 rounded-lg bg-canvas flex items-center justify-center shrink-0" icon={<ImageIcon className="w-5 h-5 text-ink-300" />} />
               <div className="flex-1 space-y-1 min-w-0">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <ImageUpload onUploaded={url => setForm({ ...form, imageUrl: url })} />
                   {form.imageUrl && <button onClick={() => setForm({ ...form, imageUrl: "" })} className="min-h-8 px-1 text-[12px] font-semibold text-ink-500 hover:text-red-600">Remove photo</button>}
                 </div>
                 <input className={`${inp} w-full`} placeholder="…or paste an image link" aria-label="Image link" value={form.imageUrl} onChange={e => setForm({ ...form, imageUrl: e.target.value })} />
               </div>
             </div>
-            <textarea className={`${inp} col-span-2`} rows={2} placeholder="Description" aria-label="Description" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
+            <textarea className={`${inp} sm:col-span-2`} rows={2} placeholder="Description" aria-label="Description" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
             <input className={inp} aria-label="Product code (SKU)" placeholder={form.id ? "Your product code (SKU)" : "Product code (SKU) — made for you if blank"} value={form.retailerId} onChange={e => setForm({ ...form, retailerId: e.target.value })} />
             <input className={inp} aria-label="Facebook catalog product id (optional)" placeholder="Facebook catalog product id (optional)" value={form.metaProductId} onChange={e => setForm({ ...form, metaProductId: e.target.value })} />
             <input className={inp} maxLength={20} placeholder='Button label (e.g. "Buy now") — max 20' aria-label="Button label" value={form.buttonText} onChange={e => setForm({ ...form, buttonText: e.target.value })} />
             <input className={inp} placeholder="Button link (https://… — required to use a custom button)" aria-label="Button link" value={form.buttonUrl} onChange={e => setForm({ ...form, buttonUrl: e.target.value })} />
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <label className="flex min-h-8 items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={form.available} onChange={e => setForm({ ...form, available: e.target.checked })} /> Show to customers</label>
             <div className="flex-1" />
             <button onClick={save} disabled={busy} className="min-h-10 px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : `Save ${productLc}`}</button>
@@ -245,9 +245,9 @@ function ConfirmTemplateCard() {
 
   return (
     <section className={`rounded-card border p-3.5 space-y-2 ${tone}`}>
-      <div className="flex items-start gap-3">
+      <div className="flex flex-wrap sm:flex-nowrap items-start gap-3">
         <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${approved ? "bg-emerald-100 text-emerald-700" : "bg-brand-50 text-brand-700"}`}><MessageSquareText className="w-4 h-4" /></div>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 max-sm:basis-[calc(100%-2.75rem)]">
           <p className="text-sm font-bold text-ink-900">WhatsApp order confirmation</p>
           {approved ? (
             <p className="flex items-start gap-1.5 text-[12px] text-emerald-800"><Check className="w-3.5 h-3.5 shrink-0 mt-0.5" /> Live — every paid order gets a WhatsApp confirmation, even if the customer last messaged you more than 24 hours ago.</p>
@@ -261,7 +261,7 @@ function ConfirmTemplateCard() {
           {notice && <p className="text-[11px] text-slate-500 mt-1">{notice}</p>}
         </div>
         {!approved && !pending && (
-          <button onClick={create} disabled={busy} className="min-h-9 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60 shrink-0">
+          <button onClick={create} disabled={busy} className="min-h-9 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60 shrink-0 max-sm:ml-11">
             {busy ? "Submitting…" : rejected ? "Resubmit" : "Set up"}
           </button>
         )}

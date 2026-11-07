@@ -24,6 +24,7 @@ import { inp } from "../_shared";
 import { Drawer } from "@/components/overlay";
 import { toast } from "@/components/toast";
 import { useConfirm } from "@/components/confirm-dialog";
+import { HeaderRow } from "@/components/header-row";
 
 type Report = {
   campaignId: string;
@@ -248,15 +249,18 @@ export default function SocialGrowthTab() {
         <>
           {section === "campaigns" && (
             <>
-              <div className="flex justify-between items-center">
+              <HeaderRow
+                actions={
+                  <button className={button} onClick={() => newCampaign()}>
+                    <Plus className="inline h-4 w-4" /> New campaign
+                  </button>
+                }
+              >
                 <p className="text-sm text-ink-500">
                   Approved facts and qualification questions for a specific
                   account, post or keyword.
                 </p>
-                <button className={button} onClick={() => newCampaign()}>
-                  <Plus className="inline h-4 w-4" /> New campaign
-                </button>
-              </div>
+              </HeaderRow>
               {!data.campaigns.length && (
                 <p className={card}>
                   Create a campaign to connect a social post or incoming keyword
@@ -354,7 +358,7 @@ export default function SocialGrowthTab() {
                   <p className="text-xs text-ink-500">
                     {g.count} occurrences · {g.platforms.join(", ")}
                   </p>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <button
                       className={button}
                       disabled={busy}
@@ -651,7 +655,7 @@ export default function SocialGrowthTab() {
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
               />
             </label>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="text-xs space-y-1">
                 Audience
                 <select
@@ -736,7 +740,7 @@ export default function SocialGrowthTab() {
                 }
               />
             </label>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="text-xs space-y-1">
                 Goal
                 <select
@@ -814,7 +818,7 @@ export default function SocialGrowthTab() {
                   Compare two delivery options on matching comment rules
                 </label>
                 {form.variants?.map((v, i) => (
-                  <div key={v.id} className="grid grid-cols-2 gap-2">
+                  <div key={v.id} className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <input
                       aria-label={`Variant ${v.id} name`}
                       className={inp}
@@ -1118,7 +1122,7 @@ function CommitmentCard({
   return (
     <div className={`${card} ${late ? "!border-amber-400" : ""}`}>
       <div className="flex gap-2 items-center">
-        <Clock3 className="h-4 w-4" />
+        <Clock3 className="h-4 w-4 shrink-0" />
         <h3 className="font-semibold">{c.title}</h3>
         <span className="text-xs text-ink-500">
           {c.status}

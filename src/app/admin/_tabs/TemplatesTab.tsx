@@ -121,7 +121,7 @@ function TplButtonEditor({ btns, max, onChange }: { btns: TplButton[]; max: numb
           {/* Meta rejects a {{1}} URL button submitted without a sample value,
               so this input appears exactly when the URL becomes dynamic. */}
           {isDynamicUrl(b) && (
-            <div className="basis-full pl-32 -mt-1">
+            <div className="basis-full sm:pl-32 -mt-1">
               <input className={`${inp} w-full`} placeholder="Sample value for {{1}} — e.g. 404-0952515-9776314" value={b.example} onChange={e => set(i, { example: e.target.value })} />
               <p className="text-[11px] text-slate-400 mt-1">Per-message link. Meta needs one sample to approve it; the real value comes from your event data (choose it under Broadcast → API broadcasting).</p>
             </div>
@@ -446,8 +446,8 @@ function TemplatesTab() {
         <div className="min-w-0 max-w-xl">
           <h2 className="text-xl font-extrabold text-brand-dark">Template Messages</h2><PageInfo className="text-sm text-slate-500" lead={<>Ready-made messages that WhatsApp checks and approves in advance. You need one to message a customer who hasn&apos;t written to you in the last 24 hours — for broadcasts, reminders and follow-ups.</>}>Build one with text, a photo or video, buttons or a carousel, then send it to Meta for approval. Only approved templates can be sent.</PageInfo>
         </div>
-        <div className="flex gap-2 shrink-0 items-center">
-          <ChannelSelect value={channelId} onChange={setChannelId} allLabel="Number: default" className={`${inp} !py-2 text-xs`} />
+        <div className="flex flex-wrap gap-2 sm:shrink-0 items-center min-w-0 max-sm:w-full">
+          <ChannelSelect value={channelId} onChange={setChannelId} allLabel="Number: default" className={`${inp} !py-2 text-xs max-sm:w-full max-w-full min-w-0`} />
           <button onClick={load} disabled={refreshing} title="Ask Meta for the latest approval status" className="min-h-10 px-4 py-2 rounded-lg border border-brand-dark text-brand-dark text-sm font-bold flex items-center gap-2 disabled:opacity-60 hover:bg-brand-600/5">
             <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} /> Sync Status
           </button>
@@ -500,8 +500,8 @@ function TemplatesTab() {
             </div>
           </div>
 
-          <div className="grid grid-cols-[1fr_7rem_8rem] gap-2">
-            <input className={`${inp} disabled:bg-slate-50 disabled:text-slate-500`} disabled={!!editing} placeholder="name (lowercase_underscores)" aria-label="Template name (lowercase letters, numbers and underscores)" title={editing ? "A template's name can't change after it's created" : undefined} value={name} onChange={e => setName(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_"))} />
+          <div className="grid grid-cols-2 sm:grid-cols-[1fr_7rem_8rem] gap-2">
+            <input className={`${inp} col-span-2 sm:col-span-1 min-w-0 disabled:bg-slate-50 disabled:text-slate-500`} disabled={!!editing} placeholder="name (lowercase_underscores)" aria-label="Template name (lowercase letters, numbers and underscores)" title={editing ? "A template's name can't change after it's created" : undefined} value={name} onChange={e => setName(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_"))} />
             <input className={`${inp} disabled:bg-slate-50 disabled:text-slate-500`} disabled={!!editing} placeholder="en_US" aria-label="Language code" title={editing ? "The language can't change after it's created" : "Language code, e.g. en_US or hi"} value={language} onChange={e => setLanguage(e.target.value)} />
             <select className={`${inp} disabled:bg-slate-50 disabled:text-slate-500`} disabled={editing?.status === "APPROVED"} aria-label="Category" title={editing?.status === "APPROVED" ? "Meta doesn't allow changing the category of an approved template" : "Marketing: offers and news. Utility: updates about an order or booking."} value={category} onChange={e => setCategory(e.target.value as "MARKETING" | "UTILITY")}>
               <option value="MARKETING">Marketing</option>
@@ -520,7 +520,7 @@ function TemplatesTab() {
                 ))}
               </div>
               {headerType === "TEXT" && (
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <input className={inp} placeholder="Header text (60 chars, may use {{1}})" maxLength={60} value={headerText} onChange={e => setHeaderText(e.target.value)} />
                   {/\{\{1\}\}/.test(headerText) && <input className={inp} placeholder="Example for {{1}}" value={headerExample} onChange={e => setHeaderExample(e.target.value)} />}
                 </div>
@@ -560,12 +560,12 @@ function TemplatesTab() {
               <p className="text-xs font-bold text-slate-400 uppercase">Buttons <span className="font-normal normal-case">(up to 10 — max 2 URL, 1 phone)</span></p>
               <TplButtonEditor btns={buttons} max={10} onChange={setButtons} />
               {!editing && buttons.some(b => b.type === "URL") && (
-                <div className="flex items-start gap-3 bg-brand-50 border border-brand-100 rounded-lg px-3 py-2.5">
+                <div className="flex flex-col sm:flex-row items-start gap-2 sm:gap-3 bg-brand-50 border border-brand-100 rounded-lg px-3 py-2.5">
                   <label className="flex items-center gap-2 shrink-0 cursor-pointer pt-0.5">
                     <input type="checkbox" checked={clickTracking} onChange={e => setClickTracking(e.target.checked)} className="accent-brand-700" />
                     <span className="text-xs font-bold text-brand-700 flex items-center gap-1"><MousePointerClick className="w-3.5 h-3.5" />Enable Click Tracking</span>
                   </label>
-                  <p className="text-[11px] text-brand-700">
+                  <p className="text-[11px] text-brand-700 break-words min-w-0">
                     To track clicks we send users a link of the format {(process.env.NEXT_PUBLIC_SITE_URL || "https://your-domain").replace(/\/$/, "")}/r/xxxx which redirects to your URL on click. Click stats show on the campaign dashboard.
                   </p>
                 </div>
@@ -619,14 +619,15 @@ function TemplatesTab() {
       <div className="bg-white rounded-card border border-line overflow-hidden">
         <div className="px-4 pt-4 space-y-3">
           <input className={`${inp} w-full max-w-sm`} placeholder="Search templates (status, name etc.)" value={query} onChange={e => setQuery(e.target.value)} />
-          <div className="flex gap-6 text-sm font-semibold border-b border-slate-100">
+          {/* Phone: the four status tabs scroll sideways instead of running off the card. */}
+          <div className="flex gap-4 sm:gap-6 text-sm font-semibold border-b border-slate-100 max-sm:overflow-x-auto">
             {([["ALL", "All"], ["PENDING", "Pending"], ["APPROVED", "Approved"], ["ACTION", "Action Required"]] as const).map(([k, label]) => {
               const count = k === "ALL" ? templates.length
                 : k === "ACTION" ? templates.filter(t => ACTIONABLE.includes(t.status)).length
                 : templates.filter(t => t.status === k).length;
               return (
                 <button key={k} onClick={() => setStatusTab(k)}
-                  aria-pressed={statusTab === k} className={`min-h-9 pb-2 -mb-px border-b-2 flex items-center gap-1.5 ${statusTab === k ? "border-brand-dark text-brand-dark" : "border-transparent text-slate-400 hover:text-slate-600"}`}>
+                  aria-pressed={statusTab === k} className={`min-h-9 pb-2 sm:-mb-px border-b-2 flex items-center gap-1.5 shrink-0 whitespace-nowrap ${statusTab === k ? "border-brand-dark text-brand-dark" : "border-transparent text-slate-400 hover:text-slate-600"}`}>
                   {label}<span className="text-[11px] bg-slate-100 rounded-full px-1.5 py-0.5 font-bold">{count}</span>
                 </button>
               );
@@ -636,19 +637,20 @@ function TemplatesTab() {
         <div className="divide-y divide-slate-100">
           {visibleTemplates.map(t => (
             <div key={`${t.name}-${t.language}`} onClick={() => setViewing(t)} title="View template"
-              className="px-4 py-3 flex items-center gap-4 hover:bg-slate-50 cursor-pointer">
-              <div className="w-52 min-w-0 shrink-0">
+              className="px-4 py-3 flex flex-wrap sm:flex-nowrap items-center gap-x-4 gap-y-1 hover:bg-slate-50 cursor-pointer">
+              {/* Phone: name + action icons on line one, the details underneath. */}
+              <div className="w-52 min-w-0 shrink-0 max-sm:w-auto max-sm:flex-1 max-sm:basis-[calc(100%-10rem)]">
                 {/* The row click is for mice; the name is a real button so the template opens from the keyboard
                     (the row holds its own buttons, so it can't be one itself). */}
                 <button type="button" onClick={e => { e.stopPropagation(); setViewing(t); }} className="block w-full text-left font-mono text-xs font-semibold text-brand-dark truncate hover:underline">{t.name}</button>
                 {t.status === "REJECTED" && t.rejected_reason && <p className="text-[11px] text-red-700 truncate">Rejected: {t.rejected_reason.replaceAll("_", " ").toLowerCase()}</p>}
               </div>
-              <span className="w-24 shrink-0 text-[11px] font-bold text-slate-500 uppercase">{t.category}</span>
-              <span className={`w-28 shrink-0 text-[11px] font-bold ${t.status === "APPROVED" ? "text-brand-700" : ACTIONABLE.includes(t.status) ? "text-red-700" : "text-amber-700"}`}>{statusLabel(t.status)}</span>
-              <span className="w-20 shrink-0 text-[11px] font-bold text-slate-500 uppercase">{tplType(t)}</span>
-              <span className="w-16 shrink-0 text-[11px] text-slate-400">{t.language}</span>
-              <div className="flex-1" />
-              <div className="flex items-center" onClick={e => e.stopPropagation()}>
+              <span className="w-24 max-sm:w-auto max-sm:order-2 shrink-0 text-[11px] font-bold text-slate-500 uppercase">{t.category}</span>
+              <span className={`w-28 max-sm:w-auto max-sm:order-2 shrink-0 text-[11px] font-bold ${t.status === "APPROVED" ? "text-brand-700" : ACTIONABLE.includes(t.status) ? "text-red-700" : "text-amber-700"}`}>{statusLabel(t.status)}</span>
+              <span className="w-20 max-sm:w-auto max-sm:order-2 shrink-0 text-[11px] font-bold text-slate-500 uppercase">{tplType(t)}</span>
+              <span className="w-16 max-sm:w-auto max-sm:order-2 shrink-0 text-[11px] text-slate-400">{t.language}</span>
+              <div className="flex-1 max-sm:hidden" />
+              <div className="flex items-center max-sm:order-1" onClick={e => e.stopPropagation()}>
               <button onClick={() => toggleFav(t.name)} title="Favourite" aria-label={favs.includes(t.name) ? `Remove ${t.name} from favourites` : `Add ${t.name} to favourites`} aria-pressed={favs.includes(t.name)} className={`grid place-items-center w-9 h-9 rounded-lg hover:bg-slate-100 ${favs.includes(t.name) ? "text-amber-400" : "text-slate-300 hover:text-slate-500"}`}>
                 <Star className="w-4 h-4" fill={favs.includes(t.name) ? "currentColor" : "none"} />
               </button>
@@ -774,7 +776,7 @@ function TemplateViewer({ t, type, onClose, onEdit, onCopy }: {
             </div>
           )}
 
-          <div className="flex items-center gap-2 pt-1">
+          <div className="flex flex-wrap items-center gap-2 pt-1">
             {onEdit && (
               <button onClick={onEdit} className="px-3 py-2 rounded-lg bg-brand-700 text-white text-xs font-bold flex items-center gap-1.5"><Pencil className="w-3.5 h-3.5" /> Edit</button>
             )}

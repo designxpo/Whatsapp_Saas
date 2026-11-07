@@ -252,7 +252,7 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
           <p className="text-xs font-bold text-amber-800">Secret code — copy it now, it won’t be shown again.</p>
           <p className="text-[12px] text-amber-800">Give it to whoever set up the receiving side, so they can check messages really come from {who}. Slack and Teams don’t need it.</p>
           <div className="flex items-center gap-2">
-            <code className="flex-1 text-xs bg-white border border-amber-200 rounded px-2 py-1.5 break-all">{newSecret}</code>
+            <code className="flex-1 min-w-0 text-xs bg-white border border-amber-200 rounded px-2 py-1.5 break-all">{newSecret}</code>
             <button onClick={() => { navigator.clipboard?.writeText(newSecret); toast("Secret copied"); }} aria-label="Copy secret" className="grid place-items-center w-9 h-9 rounded-control border border-amber-300 text-amber-800 hover:bg-amber-100 shrink-0"><Copy className="w-3.5 h-3.5" /></button>
           </div>
           <details className="text-[11px] text-amber-800">
@@ -329,7 +329,7 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
         title={<span className="flex items-center gap-3"><Logo kind={form.kind} logo={CATALOG.find(c => c.kind === form.kind)?.logo ?? null} />Set up {KIND_LABELS[form.kind]}</span>}
         subtitle={CATALOG.find(c => c.kind === form.kind)?.blurb}
         footer={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button onClick={create} disabled={busy || !!addMissing} title={addMissing ?? undefined} aria-describedby={addMissing ? "integration-missing" : undefined} className="min-h-10 px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Add integration"}</button>
             <button onClick={() => { setAdding(false); setMsg(null); }} className="min-h-10 px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-800 hover:bg-canvas">Cancel</button>
             {addMissing && !busy && <span id="integration-missing" className="text-[12px] text-slate-500">{addMissing}</span>}
@@ -428,7 +428,7 @@ function GoogleSetup({ kind, email, form, set }: { kind: "google_sheets" | "goog
       <div className="rounded-card border border-line p-3 space-y-2">
         <p className="text-xs font-bold text-ink-900">First, share your {kind === "google_sheets" ? "sheet" : "calendar"} with the portal</p>
         <div className="flex items-center gap-2">
-          <code className="flex-1 text-xs bg-canvas border border-line rounded px-2 py-1.5 break-all">{email}</code>
+          <code className="flex-1 min-w-0 text-xs bg-canvas border border-line rounded px-2 py-1.5 break-all">{email}</code>
           <button onClick={() => { navigator.clipboard?.writeText(email); setCopied(true); setTimeout(() => setCopied(false), 1500); }} className="px-2 py-1.5 rounded-control border border-line text-xs font-bold text-ink-700 hover:bg-canvas shrink-0">{copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}</button>
         </div>
         <ol className="list-decimal pl-4 space-y-0.5 text-[11px] text-ink-700">{steps.map(s => <li key={s}>{s}</li>)}</ol>
@@ -537,7 +537,7 @@ function PaymentWebhookCard({ integration: i, onSaved }: { integration: Integrat
 
   return (
     <div className="mt-1 pt-3 border-t border-line/70 space-y-2">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <p className="text-[11px] font-bold text-slate-500 uppercase tracking-[0.06em]">Confirm orders automatically when paid</p>
         {i.hasWebhookSecret
           ? <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">Set up</span>
@@ -611,8 +611,8 @@ function LsqInboundCard() {
           </div>
         </div>
       ))}
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] text-ink-400">Set <code className="font-mono">event</code> to <code className="font-mono">lead_created</code> / <code className="font-mono">owner_changed</code> / <code className="font-mono">stage_changed</code> per automation. Owner emails must match your team members&apos; login emails.</p>
+      <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-2">
+        <p className="text-[11px] text-ink-400 min-w-0">Set <code className="font-mono">event</code> to <code className="font-mono">lead_created</code> / <code className="font-mono">owner_changed</code> / <code className="font-mono">stage_changed</code> per automation. Owner emails must match your team members&apos; login emails.</p>
         <button onClick={rotate} disabled={busy} className="min-h-8 px-2.5 py-1 rounded-control border border-line text-[12px] font-bold text-ink-600 hover:bg-canvas shrink-0 disabled:opacity-60">{busy ? "…" : "Rotate secret"}</button>
       </div>
     </section>

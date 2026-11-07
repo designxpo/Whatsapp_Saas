@@ -16,6 +16,7 @@ import { fetchKbTags } from "./SettingsTab";
 import { useConfirm } from "@/components/confirm-dialog";
 import { toast } from "@/components/toast";
 import { Drawer } from "@/components/overlay";
+import { HeaderRow } from "@/components/header-row";
 
 // Dedicated Instagram section (its own nav tab).
 function InstagramTab({ goTo }: { goTo?: GoTo } = {}) {
@@ -301,17 +302,14 @@ function InstagramManager() {
 
   return (
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><Instagram className="w-3.5 h-3.5 text-pink-600" /> Instagram</p><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>Connect an Instagram professional account so the AI can answer messages and comments</>}>Within Meta&apos;s rules: replies only within 24 hours of a customer&apos;s last message, and never to people who haven&apos;t written to you.</PageInfo>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
+      <HeaderRow actions={<>
           <button onClick={connectWithMeta} disabled={busy} className="px-3 py-1.5 rounded-control bg-gradient-to-r from-[#C13584] to-[#F56040] hover:opacity-90 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
             {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Instagram className="w-3.5 h-3.5" />} Connect Instagram
           </button>
           <button onClick={() => { setForm({ ...EMPTY_IG }); setMsg(null); }} className="px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add manually</button>
-        </div>
-      </div>
+        </>}>
+          <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><Instagram className="w-3.5 h-3.5 text-pink-600" /> Instagram</p><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>Connect an Instagram professional account so the AI can answer messages and comments</>}>Within Meta&apos;s rules: replies only within 24 hours of a customer&apos;s last message, and never to people who haven&apos;t written to you.</PageInfo>
+      </HeaderRow>
 
       {/* Both forms render `msg` inside themselves, which meant a failure from
           "Connect with Facebook" — which opens NO form — was written into a
@@ -325,13 +323,17 @@ function InstagramManager() {
         const h = health[c.id];
         return (
         <div key={c.id} className="border border-line rounded-control px-3 py-2.5 space-y-2">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-2">
             <div className="w-8 h-8 rounded-lg bg-pink-50 text-pink-600 flex items-center justify-center shrink-0"><Instagram className="w-4 h-4" /></div>
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 max-sm:basis-[calc(100%-2.75rem)]">
               <p className="text-sm font-semibold text-ink-900 truncate">{c.name} {c.isDefault && <span className="text-[11px] font-bold text-brand-700">· Default</span>}{!c.active && <span className="text-[11px] font-bold text-red-700"> · Off</span>}</p>
               <p className="text-[11px] text-ink-500 truncate">{c.agentId ? `AI agent: ${agents.find(a => a.id === c.agentId)?.name ?? "custom"}` : "AI agent: your default"} · <span className="font-mono">{c.igUserId}</span></p>
             </div>
+            {/* Phones: status chip and buttons share a second line under the
+                name (wrapping if they must), so the name always has the room. */}
+            <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-3 sm:shrink-0 max-sm:w-full">
             {h && <DeliveryChip h={h} />}
+            <div className="ml-auto flex items-center gap-2 sm:gap-3">
             <button onClick={() => recheck(c.id)} disabled={rechecking === c.id} title="Ask Meta again what this account can receive, and reconnect it"
               className="min-h-8 px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0 disabled:opacity-60">
               {rechecking === c.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Recheck"}
@@ -339,6 +341,8 @@ function InstagramManager() {
             <button onClick={() => { setForm({ id: c.id, name: c.name, igUserId: c.igUserId ?? "", pageId: c.pageId ?? "", token: "", agentId: c.agentId ?? "", kbTag: c.kbTag ?? "", commentAi: c.commentAi ?? true, active: c.active, isDefault: c.isDefault }); setMsg(null); }}
               className="min-h-8 px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
             <button onClick={() => remove(c.id)} aria-label={`Disconnect ${c.name}`} title="Disconnect" className="grid place-items-center w-9 h-9 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
+            </div>
+            </div>
           </div>
           {h && h.status !== "ok" && (
             <p className={`text-[11px] leading-snug rounded-control px-2.5 py-1.5 ${h.status === "unverified" ? "bg-sky-50 text-sky-800" : h.status === "dms-only" ? "bg-amber-50 text-amber-800" : "bg-red-50 text-red-700"}`}>{h.detail}</p>
@@ -348,7 +352,7 @@ function InstagramManager() {
 
       <Drawer open={!!form} onClose={() => setForm(null)} width="md" title={form?.id ? "Edit Instagram account" : "Connect an Instagram account"}>
         {form && (<div className="space-y-3">
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <input className={inp} placeholder="Label, e.g. @yourbrand" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
             <input className={inp} placeholder="Instagram account id (IG professional id)" value={form.igUserId} onChange={e => setForm({ ...form, igUserId: e.target.value.trim() })} />
             <input className={inp} placeholder="Facebook Page id (optional)" value={form.pageId} onChange={e => setForm({ ...form, pageId: e.target.value.trim() })} />
@@ -403,10 +407,11 @@ function InstagramManager() {
       <>
       {/* Comment-to-DM automation (multiple rules, per-post, follow-gate) */}
       <div className="border-t border-line pt-3 mt-1 space-y-3">
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><MessageCircle className="w-3.5 h-3.5" /> Comment-to-DM automation</p>
+        <HeaderRow actions={
           <button onClick={() => { setMsg(null); setPendingReplyOnly(false); if (channels.length > 1) { setRuleForm(null); setPickAccount(true); } else { setPickAccount(false); setRuleForm({ ...BLANK_RULE, replyOnly: false, channelId: channels[0]?.id ?? null }); } }} className="shrink-0 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New rule</button>
-        </div>
+        }>
+          <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><MessageCircle className="w-3.5 h-3.5" /> Comment-to-DM automation</p>
+        </HeaderRow>
         <p className="text-[11px] text-ink-400">When someone comments, send them one private DM (Meta allows a single reply per comment). Target a specific post or all posts, gate by keyword, attach a link button, and optionally require a follow first.</p>
 
         {/* A rule on an account Meta isn't sending comments for is a rule that
@@ -434,17 +439,19 @@ function InstagramManager() {
           const post = posts.find(p => p.id === r.postId);
           const thumb = r.postThumbnail || post?.thumbnail;
           return (
-            <div key={r.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2.5">
+            <div key={r.id} className="flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-1.5 border border-line rounded-control px-3 py-2.5">
               {thumb
-                ? <img src={thumb} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />
-                : <div className="w-10 h-10 rounded-lg bg-pink-50 text-pink-600 flex items-center justify-center shrink-0"><MessageCircle className="w-4 h-4" /></div>}
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-ink-900 truncate">{r.name || (r.keyword ? `“${r.keyword}”` : "Any comment")}{channels.length > 1 && r.channelId && <span className="text-[11px] font-bold text-pink-600"> · {channels.find(c => c.id === r.channelId)?.name ?? "Instagram"}</span>}{!r.enabled && <span className="text-[11px] font-bold text-red-700"> · Off</span>}</p>
+                ? <img src={thumb} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0 max-sm:self-start" />
+                : <div className="w-10 h-10 rounded-lg bg-pink-50 text-pink-600 flex items-center justify-center shrink-0 max-sm:self-start"><MessageCircle className="w-4 h-4" /></div>}
+              <div className="min-w-0 flex-1 max-sm:basis-[calc(100%-3.25rem)]">
+                <p className="text-sm font-semibold text-ink-900 truncate max-sm:whitespace-normal max-sm:line-clamp-2">{r.name || (r.keyword ? `“${r.keyword}”` : "Any comment")}{channels.length > 1 && r.channelId && <span className="text-[11px] font-bold text-pink-600"> · {channels.find(c => c.id === r.channelId)?.name ?? "Instagram"}</span>}{!r.enabled && <span className="text-[11px] font-bold text-red-700"> · Off</span>}</p>
                 <p className="text-[11px] text-ink-400 truncate">{r.postId ? `Post: ${(r.postCaption || post?.caption || r.postId).slice(0, 38) || r.postId}` : "All posts"} · {r.keyword ? `keyword “${r.keyword}”` : "any comment"}{ruleButtonsOf(r).length ? ` · ${ruleButtonsOf(r).length} button${ruleButtonsOf(r).length > 1 ? "s" : ""}` : ""}{r.requireFollow ? (r.followCheckMode === "comment" ? " · verify on comment" : " · verify in DM") : ""} · {r.matchCount ?? 0} sent</p>
               </div>
+              <div className="flex items-center gap-3 sm:shrink-0 max-sm:w-full max-sm:justify-end">
               <label className="flex items-center gap-1 min-h-8 text-[12px] text-ink-600 cursor-pointer shrink-0"><input type="checkbox" className="accent-brand-700 w-4 h-4" checked={r.enabled} onChange={() => toggleRule(r)} /> On</label>
               <button onClick={() => { setRuleForm({ ...r, name: r.name ?? "", keyword: r.keyword ?? "", buttons: ruleButtonsOf(r), publicReplies: rulePublicRepliesOf(r), requireFollow: r.requireFollow ?? false, followCheckMode: followCheckMode(r.followCheckMode), followPrompt: r.followPrompt ?? "" }); setMsg(null); }} className="min-h-8 px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
               <button onClick={() => delRule(r.id)} aria-label="Delete rule" className="grid place-items-center w-9 h-9 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
+              </div>
             </div>
           );
         })}
@@ -452,10 +459,11 @@ function InstagramManager() {
 
         {/* Comment-reply-only automation — posts a public reply, never a DM. */}
         <div className="border-t border-line pt-3 mt-1 space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><MessageCircle className="w-3.5 h-3.5" /> Comment reply automation <span className="text-[11px] font-bold text-violet-600 normal-case">· public reply, no private message</span></p>
+          <HeaderRow actions={
             <button onClick={() => { setMsg(null); setPendingReplyOnly(true); if (channels.length > 1) { setRuleForm(null); setPickAccount(true); } else { setPickAccount(false); setRuleForm({ ...BLANK_RULE, replyOnly: true, channelId: channels[0]?.id ?? null }); } }} className="shrink-0 px-3 py-1.5 rounded-control bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New reply rule</button>
-          </div>
+          }>
+            <p className="text-xs font-bold text-slate-400 uppercase flex flex-wrap items-center gap-x-1.5 gap-y-0.5"><MessageCircle className="w-3.5 h-3.5" /> Comment reply automation <span className="text-[11px] font-bold text-violet-600 normal-case">· public reply, no private message</span></p>
+          </HeaderRow>
           <p className="text-[11px] text-ink-400">When someone comments, publicly reply under their comment — no DM is sent. Add a few reply variants and we rotate them so replies stay natural and don&apos;t trip Instagram&apos;s spam filters. Target a post or all posts, and gate by keyword.</p>
 
           {rules.filter(r => r.replyOnly).map(r => {
@@ -463,17 +471,19 @@ function InstagramManager() {
             const thumb = r.postThumbnail || post?.thumbnail;
             const nReplies = rulePublicRepliesOf(r).length;
             return (
-              <div key={r.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2.5">
+              <div key={r.id} className="flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-1.5 border border-line rounded-control px-3 py-2.5">
                 {thumb
-                  ? <img src={thumb} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />
-                  : <div className="w-10 h-10 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center shrink-0"><MessageCircle className="w-4 h-4" /></div>}
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-ink-900 truncate">{r.name || (r.keyword ? `“${r.keyword}”` : "Any comment")}{channels.length > 1 && r.channelId && <span className="text-[11px] font-bold text-violet-600"> · {channels.find(c => c.id === r.channelId)?.name ?? "Instagram"}</span>}{!r.enabled && <span className="text-[11px] font-bold text-red-700"> · Off</span>}</p>
+                  ? <img src={thumb} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0 max-sm:self-start" />
+                  : <div className="w-10 h-10 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center shrink-0 max-sm:self-start"><MessageCircle className="w-4 h-4" /></div>}
+                <div className="min-w-0 flex-1 max-sm:basis-[calc(100%-3.25rem)]">
+                  <p className="text-sm font-semibold text-ink-900 truncate max-sm:whitespace-normal max-sm:line-clamp-2">{r.name || (r.keyword ? `“${r.keyword}”` : "Any comment")}{channels.length > 1 && r.channelId && <span className="text-[11px] font-bold text-violet-600"> · {channels.find(c => c.id === r.channelId)?.name ?? "Instagram"}</span>}{!r.enabled && <span className="text-[11px] font-bold text-red-700"> · Off</span>}</p>
                   <p className="text-[11px] text-ink-400 truncate">{r.postId ? `Post: ${(r.postCaption || post?.caption || r.postId).slice(0, 38) || r.postId}` : "All posts"} · {r.keyword ? `keyword “${r.keyword}”` : "any comment"} · {nReplies} repl{nReplies === 1 ? "y" : "ies"} · {r.matchCount ?? 0} sent</p>
                 </div>
+                <div className="flex items-center gap-3 sm:shrink-0 max-sm:w-full max-sm:justify-end">
                 <label className="flex items-center gap-1 min-h-8 text-[12px] text-ink-600 cursor-pointer shrink-0"><input type="checkbox" className="accent-brand-700 w-4 h-4" checked={r.enabled} onChange={() => toggleRule(r)} /> On</label>
                 <button onClick={() => { setRuleForm({ ...r, name: r.name ?? "", keyword: r.keyword ?? "", buttons: ruleButtonsOf(r), publicReplies: rulePublicRepliesOf(r), requireFollow: r.requireFollow ?? false, followCheckMode: followCheckMode(r.followCheckMode), followPrompt: r.followPrompt ?? "" }); setMsg(null); }} className="min-h-8 px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
                 <button onClick={() => delRule(r.id)} aria-label="Delete rule" className="grid place-items-center w-9 h-9 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
+                </div>
               </div>
             );
           })}
@@ -484,7 +494,7 @@ function InstagramManager() {
         {pickAccount && (
           <div className="border-2 border-pink-500/30 rounded-control p-3 space-y-2">
             <p className="text-xs font-bold text-ink-700">Which Instagram account is this rule for?</p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {channels.map(c => (
                 <button key={c.id} type="button" onClick={() => { setRuleForm({ ...BLANK_RULE, replyOnly: pendingReplyOnly, channelId: c.id }); setPickAccount(false); }}
                   className="flex items-center gap-2 border border-line rounded-control px-3 py-2 text-left hover:border-pink-500 hover:bg-pink-50 transition-colors">

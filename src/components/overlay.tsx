@@ -223,16 +223,20 @@ export function Drawer({ open, onClose, title, subtitle, footer, children, width
       <aside ref={panel} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} {...state} data-dragging={dragging || undefined}
         className={`ov-drawer fixed inset-y-0 right-0 ${WIDTHS[width]} max-w-full bg-white border-l border-line shadow-2xl z-50 flex flex-col outline-none`}>
         <header onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
-          className={`ov-grab flex items-start gap-3 px-5 py-4 border-b shrink-0 transition-colors ${body.edges.above ? "border-line" : "border-transparent"}`}>
+          className={`ov-grab flex flex-wrap sm:flex-nowrap items-start gap-3 px-4 sm:px-5 py-4 border-b shrink-0 transition-colors ${body.edges.above ? "border-line" : "border-transparent"}`}>
           <div className="min-w-0 flex-1">
             <h2 id={titleId} className="text-base font-extrabold text-ink-900 leading-tight">{view.title}</h2>
             {view.subtitle && <div className="text-xs text-slate-500 mt-0.5">{view.subtitle}</div>}
           </div>
-          {view.actions && <div className="flex items-center gap-2 shrink-0">{view.actions}</div>}
-          <button onClick={onClose} aria-label="Close" className="p-1.5 -m-1 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-ink-900"><X className="w-4 h-4" /></button>
+          {/* On a phone the header actions take their own line under the title
+              (the ✕ stays beside it); side by side they squeezed the title
+              into a sliver and pushed the last action off the panel. */}
+          {view.actions && <div className="max-sm:order-last max-sm:w-full flex flex-wrap items-center gap-2 sm:shrink-0">{view.actions}</div>}
+          <button onClick={onClose} aria-label="Close" className="shrink-0 p-2.5 -m-2 sm:p-1.5 sm:-m-1 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-ink-900"><X className="w-4 h-4" /></button>
         </header>
-        <div ref={body.ref} onScroll={body.onScroll} className={`flex-1 overflow-y-auto overscroll-contain px-5 py-4 ${surface === "canvas" ? "bg-canvas" : ""}`}><div className={surface === "canvas" ? "space-y-4" : undefined}>{view.children}</div></div>
-        {view.footer && <footer className={`px-5 py-3 border-t bg-white shrink-0 flex items-center gap-2 transition-colors ${body.edges.below ? "border-line" : "border-transparent"}`}>{view.footer}</footer>}
+        <div ref={body.ref} onScroll={body.onScroll} className={`flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 sm:px-5 py-4 ${surface === "canvas" ? "bg-canvas" : ""}`}><div className={surface === "canvas" ? "space-y-4" : undefined}>{view.children}</div></div>
+        {/* Wraps instead of running off a phone; clears the home indicator. */}
+        {view.footer && <footer className={`px-4 sm:px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] border-t bg-white shrink-0 flex flex-wrap items-center gap-2 transition-colors ${body.edges.below ? "border-line" : "border-transparent"}`}>{view.footer}</footer>}
       </aside>
     </>,
     document.body,
@@ -252,16 +256,16 @@ export function Modal({ open, onClose, title, subtitle, footer, children, size =
     <div className="ov-frame fixed inset-0 z-50 flex items-start sm:items-center justify-center p-4 overflow-y-auto" {...state}>
       <div className="ov-scrim fixed inset-0 bg-ink-950/30" {...state} onClick={onClose} aria-hidden />
       <div ref={panel} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} {...state}
-        className={`ov-modal relative w-full ${SIZES[size]} bg-white rounded-card border border-line shadow-2xl flex flex-col max-h-[calc(100vh-2rem)] outline-none`}>
-        <header className={`flex items-start gap-3 px-5 py-4 border-b shrink-0 transition-colors ${body.edges.above ? "border-line" : "border-transparent"}`}>
+        className={`ov-modal relative w-full ${SIZES[size]} bg-white rounded-card border border-line shadow-2xl flex flex-col max-h-[calc(100dvh-2rem)] outline-none`}>
+        <header className={`flex items-start gap-3 px-4 sm:px-5 py-4 border-b shrink-0 transition-colors ${body.edges.above ? "border-line" : "border-transparent"}`}>
           <div className="min-w-0 flex-1">
             <h2 id={titleId} className="text-base font-extrabold text-ink-900 leading-tight">{view.title}</h2>
             {view.subtitle && <p className="text-xs text-slate-500 mt-0.5">{view.subtitle}</p>}
           </div>
-          <button onClick={onClose} aria-label="Close" className="p-1.5 -m-1 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-ink-900"><X className="w-4 h-4" /></button>
+          <button onClick={onClose} aria-label="Close" className="shrink-0 p-2.5 -m-2 sm:p-1.5 sm:-m-1 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-ink-900"><X className="w-4 h-4" /></button>
         </header>
-        <div ref={body.ref} onScroll={body.onScroll} className="flex-1 overflow-y-auto overscroll-contain px-5 py-4"><div>{view.children}</div></div>
-        {view.footer && <footer className={`px-5 py-3 border-t shrink-0 flex items-center gap-2 transition-colors ${body.edges.below ? "border-line" : "border-transparent"}`}>{view.footer}</footer>}
+        <div ref={body.ref} onScroll={body.onScroll} className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 sm:px-5 py-4"><div>{view.children}</div></div>
+        {view.footer && <footer className={`px-4 sm:px-5 py-3 border-t shrink-0 flex flex-wrap items-center gap-2 transition-colors ${body.edges.below ? "border-line" : "border-transparent"}`}>{view.footer}</footer>}
       </div>
     </div>,
     document.body,

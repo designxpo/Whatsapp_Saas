@@ -170,12 +170,12 @@ function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
 
   const campaignCard = (c: AdsData["campaigns"][number]) => (
     <div key={c.id} className="bg-white rounded-card border border-line p-4 space-y-2.5">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-bold text-ink-900 truncate">{c.name}</p>
+          <p className="text-sm font-bold text-ink-900 break-words sm:truncate">{c.name}</p>
           <p className="text-[11px] text-slate-400">{c.objective.toLowerCase().replace(/_/g, " ")}</p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
           <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${deliveryPill(c.delivery).cls}`}>{deliveryPill(c.delivery).label}</span>
           {isAdmin && (c.effectiveStatus === "ACTIVE"
             ? <button disabled={busy === c.id} onClick={() => act(c.id, "pause")} className="px-3 py-1 rounded-lg border border-line text-[11px] font-bold text-ink-600 hover:bg-canvas disabled:opacity-50">Pause</button>
@@ -280,11 +280,11 @@ function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
           <p className="text-xs font-bold text-slate-400 uppercase pt-1 border-t border-line">Or set it up by hand — 3 steps, one time</p>
           <div className="flex gap-3">
             <div className="w-7 h-7 rounded-full bg-brand-700 text-white text-xs font-bold flex items-center justify-center shrink-0">1</div>
-            <div className="flex-1 space-y-2">
+            <div className="flex-1 min-w-0 space-y-2">
               <p className="text-sm font-semibold text-ink-900">Paste your ad account ID</p><p className="text-xs text-slate-500 mt-0.5">Open <b>adsmanager.facebook.com</b> — the ID is the number after <code className="bg-canvas px-1 rounded">act=</code> in the address bar.</p>
               <div className="flex gap-2">
-                <input className={`${inp} flex-1`} placeholder="e.g. 1234567890" value={accountInput} onChange={e => setAccountInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") connect(); }} />
-                <button onClick={connect} disabled={busy === "connect" || !accountInput.trim()} className="px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold disabled:opacity-50">
+                <input className={`${inp} flex-1 min-w-0`} placeholder="e.g. 1234567890" value={accountInput} onChange={e => setAccountInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") connect(); }} />
+                <button onClick={connect} disabled={busy === "connect" || !accountInput.trim()} className="shrink-0 whitespace-nowrap px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold disabled:opacity-50">
                   {busy === "connect" ? <Loader2 className="w-4 h-4 animate-spin" /> : "Connect"}
                 </button>
               </div>
@@ -292,17 +292,17 @@ function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
           </div>
           <div className="flex gap-3">
             <div className="w-7 h-7 rounded-full bg-canvas text-ink-600 text-xs font-bold flex items-center justify-center shrink-0">2</div>
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-ink-900">Give the system user access to the ad account</p><p className="text-xs text-slate-500 mt-0.5">In <b>your own</b> Meta Business settings → Users → System users → pick (or add) a system user → Assign assets → <b>Ad accounts</b> → your account → <b>Full control</b>.</p>
             </div>
           </div>
           <div className="flex gap-3">
             <div className="w-7 h-7 rounded-full bg-canvas text-ink-600 text-xs font-bold flex items-center justify-center shrink-0">3</div>
-            <div className="flex-1 space-y-2">
+            <div className="flex-1 min-w-0 space-y-2">
               <p className="text-sm font-semibold text-ink-900">Paste that system user&apos;s access token</p><p className="text-xs text-slate-500 mt-0.5">Same screen → <b>Generate new token</b>, tick <code className="bg-canvas px-1 rounded">ads_read</code> and <code className="bg-canvas px-1 rounded">ads_management</code>, and paste the token here. It is encrypted and used only for this workspace&apos;s ads.</p>
               <div className="flex gap-2">
-                <input className={`${inp} flex-1 font-mono`} type="password" autoComplete="off" placeholder={data.token?.own ? `Saved: ${data.token.hint} — paste a new one to replace it` : "EAAG…"} value={tokenInput} onChange={e => setTokenInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") saveToken(); }} />
-                <button onClick={saveToken} disabled={busy === "token" || !tokenInput.trim()} className="px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold disabled:opacity-50">
+                <input className={`${inp} flex-1 min-w-0 font-mono`} type="password" autoComplete="off" placeholder={data.token?.own ? `Saved: ${data.token.hint} — paste a new one to replace it` : "EAAG…"} value={tokenInput} onChange={e => setTokenInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") saveToken(); }} />
+                <button onClick={saveToken} disabled={busy === "token" || !tokenInput.trim()} className="shrink-0 whitespace-nowrap px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold disabled:opacity-50">
                   {busy === "token" ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save token"}
                 </button>
               </div>
@@ -342,13 +342,13 @@ function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
           <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Megaphone className="w-5 h-5" /> Meta Ads</h2>
           {data?.account && <p className="text-sm text-slate-500">{data.account.name} · {data.account.currency} · {data.account.status === 1 ? <span className="text-brand-700 font-semibold">● active</span> : <span className="text-amber-600 font-semibold" title={data.account.statusLabel}>{data.account.statusLabel}</span>}</p>}
         </div>
-        <div className="flex gap-2 items-center">
+        <div className="flex flex-wrap gap-2 items-center">
           {([["today", "Today"], ["last_7d", "7 days"], ["last_30d", "30 days"]] as ["today" | "last_7d" | "last_30d", string][]).map(([k, label]) => (
-            <button key={k} onClick={() => { setPreset(k); setData(null); }} className={`px-3 py-1.5 rounded-full text-xs font-bold ${preset === k ? "bg-ink-950 text-white" : "bg-white border border-line text-slate-500 hover:bg-slate-50"}`}>{label}</button>
+            <button key={k} onClick={() => { setPreset(k); setData(null); }} className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap ${preset === k ? "bg-ink-950 text-white" : "bg-white border border-line text-slate-500 hover:bg-slate-50"}`}>{label}</button>
           ))}
           <button onClick={() => { setData(null); load(); }} className="p-2 rounded-control border border-line text-ink-600 hover:bg-canvas"><RefreshCw className="w-3.5 h-3.5" /></button>
-          {isAdmin && <button onClick={() => setAiBuilding(true)} className="px-4 py-2 rounded-control border border-brand-300 bg-brand-50 text-brand-700 text-[13px] font-semibold flex items-center gap-1.5 hover:bg-brand-100 transition active:scale-[0.97]"><Sparkles className="w-4 h-4" /> AI campaign</button>}
-          {isAdmin && <button onClick={newAd} className={btnPrimary}><Plus className="w-4 h-4" /> Create ad</button>}
+          {isAdmin && <button onClick={() => setAiBuilding(true)} className="px-4 py-2 rounded-control border border-brand-300 bg-brand-50 text-brand-700 text-[13px] font-semibold flex items-center gap-1.5 whitespace-nowrap hover:bg-brand-100 transition active:scale-[0.97]"><Sparkles className="w-4 h-4" /> AI campaign</button>}
+          {isAdmin && <button onClick={newAd} className={`${btnPrimary} whitespace-nowrap`}><Plus className="w-4 h-4" /> Create ad</button>}
         </div>
       </div>
 
@@ -377,7 +377,7 @@ function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
           onBack={() => setDetail(null)}
           onOpen={(level, id, name) => setDetail({ level, id, name })} />
       ) : !data ? <Loader2 className="w-5 h-5 animate-spin text-slate-300" /> : <>
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
           { label: "Spend", value: money(totals.spend) },
           { label: "Impressions", value: totals.impressions.toLocaleString() },
@@ -400,11 +400,11 @@ function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
               <div key={dr.id} className="flex items-center gap-3 px-4 py-2.5">
                 <FileText className="w-4 h-4 text-slate-400 shrink-0" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-ink-900 truncate">{dr.name}</p>
+                  <p className="text-sm font-semibold text-ink-900 break-words max-sm:line-clamp-2 sm:truncate">{dr.name}</p>
                   <p className="text-[11px] text-slate-400">Last edited {timeAgo(dr.updatedAt)}</p>
                 </div>
-                <button onClick={() => openDraft(dr.id)} className="px-3 py-1 rounded-lg bg-brand-700 text-white text-[11px] font-bold">Continue</button>
-                <button onClick={async () => { if (await ask({ title: "Delete this draft?", tone: "danger", confirmLabel: "Delete draft", facts: [{ label: "Draft", value: dr.name }] })) deleteDraft(dr.id); }} className="px-2 py-1 rounded-lg border border-line text-[11px] font-bold text-slate-500 hover:text-red-600 hover:border-red-200"><Trash2 className="w-3 h-3" /></button>
+                <button onClick={() => openDraft(dr.id)} className="px-3 py-1 rounded-lg bg-brand-700 text-white text-[11px] font-bold shrink-0">Continue</button>
+                <button onClick={async () => { if (await ask({ title: "Delete this draft?", tone: "danger", confirmLabel: "Delete draft", facts: [{ label: "Draft", value: dr.name }] })) deleteDraft(dr.id); }} aria-label="Delete draft" className="px-2 py-1 max-sm:p-2 rounded-lg border border-line text-[11px] font-bold text-slate-500 hover:text-red-600 hover:border-red-200 shrink-0"><Trash2 className="w-3 h-3" /></button>
               </div>
             ))}
           </div>
@@ -424,7 +424,7 @@ function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
           <section className="space-y-3">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <p className="text-xs font-bold text-slate-400 uppercase">Campaigns — click any card for full analytics</p>
-              <div className="flex gap-1">
+              <div className="flex flex-wrap gap-1">
                 {([["all", `All ${data.campaigns.length}`], ["active", `Active ${activeCount}`], ["paused", `Paused ${pausedCount}`]] as const).map(([k, label]) => (
                   <button key={k} onClick={() => setStatusFilter(k)} className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${statusFilter === k ? "bg-ink-950 text-white" : "bg-white border border-line text-slate-500 hover:bg-slate-50"}`}>{label}</button>
                 ))}
@@ -456,7 +456,7 @@ function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
       })()}
 
       <section className="bg-white rounded-card border border-line p-5 space-y-2">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
           <p className="text-xs font-bold text-slate-400 uppercase">Leads from your ads — our data, not Meta&apos;s</p>
           {leadsTotal > 0 && <button onClick={() => goTo("contacts")} className="text-[11px] font-bold text-brand-700 hover:underline">View in Contacts →</button>}
         </div>
@@ -466,10 +466,10 @@ function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
           </p>
         ) : (
           <div className="divide-y divide-line">
-            <div className="grid grid-cols-[1fr_5rem_5rem_5rem] gap-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase"><span>Ad</span><span className="text-right">Chats</span><span className="text-right">Leads</span><span className="text-right">Lead rate</span></div>
+            <div className="grid grid-cols-3 sm:grid-cols-[1fr_5rem_5rem_5rem] gap-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase"><span className="hidden sm:block">Ad</span><span className="text-right">Chats</span><span className="text-right">Leads</span><span className="text-right">Lead rate</span></div>
             {data.attribution.map(a => (
-              <div key={a.adId} className="grid grid-cols-[1fr_5rem_5rem_5rem] gap-2 py-2 text-sm items-center">
-                <span className="font-semibold text-ink-900 truncate">{a.headline}</span>
+              <div key={a.adId} className="grid grid-cols-3 sm:grid-cols-[1fr_5rem_5rem_5rem] gap-x-2 gap-y-1 py-2 text-sm items-center">
+                <span className="col-span-3 sm:col-span-1 font-semibold text-ink-900 break-words sm:truncate">{a.headline}</span>
                 <span className="text-right">{a.contacts}</span>
                 <span className="text-right font-bold text-brand-700">{a.leads}</span>
                 <span className="text-right text-slate-500">{a.contacts ? Math.round((a.leads / a.contacts) * 100) : 0}%</span>
@@ -1339,7 +1339,7 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
                 <p className={lbl}>Website URL</p>
                 <input className={`${inp} w-full`} placeholder="https://yoursite.com/landing" value={websiteUrl} onChange={e => setWebsiteUrl(e.target.value)} />
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div className={field}>
                   <p className={lbl}>Button</p>
                   <select className={`${inp} w-full`} value={ctaType} onChange={e => setCtaType(e.target.value)}>{WEB_CTAS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
@@ -1363,7 +1363,7 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
           )}
           {destination === "INSTANT_FORM" && (
             <div className="rounded-control border border-line p-3 space-y-2">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                 <p className={lbl}>Lead form</p>
                 <button type="button" onClick={() => { setShowFormBuilder(v => !v); setFormErr(null); }} className="text-[11px] font-semibold text-brand-700 hover:underline">
                   {showFormBuilder ? "Cancel" : "＋ Create a new form"}
@@ -1411,7 +1411,7 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
           {existingCbo ? (
             <div className="bg-canvas rounded-control px-3 py-2 text-[11px] text-slate-500">This campaign uses a shared <b>Advantage campaign budget (CBO)</b> — Meta splits it across ad sets automatically, so this ad set doesn&apos;t take its own budget.</div>
           ) : <>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div className={field}>
                 <p className={lbl}>Budget control</p>
                 {addingToExisting ? (
@@ -2140,7 +2140,7 @@ function AdNodeDetail({ node, preset, currency, isAdmin, onBack, onOpen }: {
               ? <img src={c.thumbnailUrl} alt="" className="w-7 h-7 rounded object-cover shrink-0" />
               : <div className="w-7 h-7 rounded bg-canvas shrink-0" />)}
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-bold text-ink-900 truncate">{c.name}</p>
+              <p className="text-xs font-bold text-ink-900 break-words max-sm:line-clamp-2 sm:truncate">{c.name}</p>
               {kind === "adset" && <p className="text-[10px] text-slate-400 truncate">{c.optimizationGoal}{c.dailyBudget != null ? ` · ${money(c.dailyBudget)}/day` : ""}</p>}
             </div>
             {wasteful && <span className="text-[9px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full shrink-0">REVIEW</span>}
@@ -2180,10 +2180,10 @@ function AdNodeDetail({ node, preset, currency, isAdmin, onBack, onOpen }: {
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div className="min-w-0">
               <p className="text-[11px] font-bold text-slate-400 uppercase">{levelLabel}{full.objective ? ` · ${full.objective.toLowerCase().replace(/_/g, " ")}` : ""}</p>
-              <h3 className="text-lg font-extrabold text-ink-900">{full.name}</h3>
+              <h3 className="text-lg font-extrabold text-ink-900 break-words">{full.name}</h3>
               <p className="text-[11px] text-slate-400">{full.dateStart && full.dateStop ? `${full.dateStart} → ${full.dateStop}` : ""}{full.dailyBudget != null ? ` · ${money(full.dailyBudget)}/day` : ""}</p>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
               <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${deliveryPill(full.delivery).cls}`}>{deliveryPill(full.delivery).label}</span>
               {isAdmin && <button disabled={busy === full.id} onClick={() => act(full.id, full.effectiveStatus === "ACTIVE" ? "pause" : "resume")} className="px-3 py-1 rounded-lg border border-line text-[11px] font-bold text-ink-600 hover:bg-canvas">{full.effectiveStatus === "ACTIVE" ? "Pause" : "Resume"}</button>}
               {isAdmin && node.level === "campaign" && <button disabled={busy === full.id} onClick={async () => { if (await ask({ title: "Duplicate this campaign?", tone: "neutral", confirmLabel: "Duplicate", message: "The copy is created paused, so nothing spends until you start it.", facts: [{ label: "Campaign", value: full.name }] })) act(full.id, "duplicate"); }} className="px-2 py-1 rounded-lg border border-line text-[11px] font-bold text-ink-600 hover:bg-canvas"><Copy className="w-3 h-3" /></button>}
@@ -2191,7 +2191,7 @@ function AdNodeDetail({ node, preset, currency, isAdmin, onBack, onOpen }: {
           </div>
 
           {/* Full metric grid */}
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {tiles.map(t => (
               <div key={t.label} className="bg-white border border-line rounded-card p-3">
                 <p className="text-base font-extrabold text-ink-900 truncate">{t.value}</p>
@@ -2206,12 +2206,12 @@ function AdNodeDetail({ node, preset, currency, isAdmin, onBack, onOpen }: {
             <section className="bg-white rounded-card border border-line p-4">
               <p className="text-[11px] font-bold text-slate-400 uppercase mb-2">All results Meta tracked</p>
               <div className="divide-y divide-line">
-                <div className="grid grid-cols-[1fr_5rem_6rem] gap-2 py-1 text-[10px] font-bold text-slate-400 uppercase"><span>Action</span><span className="text-right">Count</span><span className="text-right">Cost each</span></div>
+                <div className="grid grid-cols-[1fr_3.5rem_4.5rem] sm:grid-cols-[1fr_5rem_6rem] gap-2 py-1 text-[10px] font-bold text-slate-400 uppercase"><span>Action</span><span className="text-right">Count</span><span className="text-right">Cost each</span></div>
                 {full.actions.map(a => {
                   const cost = full.costPerAction.find(c => c.type === a.type)?.value;
                   return (
-                    <div key={a.type} className="grid grid-cols-[1fr_5rem_6rem] gap-2 py-1.5 text-sm">
-                      <span className="text-ink-900 truncate">{humanizeAction(a.type)}</span>
+                    <div key={a.type} className="grid grid-cols-[1fr_3.5rem_4.5rem] sm:grid-cols-[1fr_5rem_6rem] gap-2 py-1.5 text-sm">
+                      <span className="text-ink-900 break-words sm:truncate">{humanizeAction(a.type)}</span>
                       <span className="text-right font-semibold">{a.value.toLocaleString()}</span>
                       <span className="text-right text-slate-500">{cost != null ? money(cost) : "—"}</span>
                     </div>
@@ -2235,13 +2235,13 @@ function AdNodeDetail({ node, preset, currency, isAdmin, onBack, onOpen }: {
               {node.level === "campaign" && (
                 <section className="space-y-2">
                   <p className="text-[11px] font-bold text-slate-400 uppercase">Ad sets ({adsets.length}) — click to drill in</p>
-                  <div className="grid grid-cols-2 gap-2">{[...adsets].sort((a, b) => b.spend - a.spend).map(s => childCard(s, "adset"))}</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">{[...adsets].sort((a, b) => b.spend - a.spend).map(s => childCard(s, "adset"))}</div>
                   {adsets.length === 0 && <p className="text-[11px] text-slate-400">No ad sets.</p>}
                 </section>
               )}
               <section className="space-y-2">
                 <p className="text-[11px] font-bold text-slate-400 uppercase">Ads ({ads.length}) — click to drill in</p>
-                <div className="grid grid-cols-2 gap-2">{[...ads].sort((a, b) => b.spend - a.spend).map(a => childCard(a, "ad"))}</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">{[...ads].sort((a, b) => b.spend - a.spend).map(a => childCard(a, "ad"))}</div>
                 {ads.length === 0 && <p className="text-[11px] text-slate-400">No ads.</p>}
               </section>
             </>
@@ -2294,24 +2294,24 @@ function AdRulesPanel({ campaigns, isAdmin, currency }: { campaigns: { id: strin
 
   return (
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <p className="text-xs font-bold text-slate-400 uppercase">Automated rules — your budget guardian</p>
           <p className="text-[11px] text-slate-400 mt-0.5">Checked every few minutes. Unlike Meta&apos;s rules, these can watch <b>your real leads</b> — e.g. pause anything that spends {currency === "INR" ? "₹" : ""}1,000 with zero leads.</p>
         </div>
-        {isAdmin && <button onClick={() => { setForm({ name: "", scopeCampaignId: "", metric: "cost_per_lead", op: "gt", threshold: "", windowPreset: "today", action: "pause" }); setMsg(null); }} className="px-3 py-1.5 rounded-lg bg-brand-700 text-white text-xs font-bold shrink-0"><Plus className="w-3.5 h-3.5 inline" /> Rule</button>}
+        {isAdmin && <button onClick={() => { setForm({ name: "", scopeCampaignId: "", metric: "cost_per_lead", op: "gt", threshold: "", windowPreset: "today", action: "pause" }); setMsg(null); }} className="self-start sm:self-auto px-3 py-1.5 rounded-lg bg-brand-700 text-white text-xs font-bold shrink-0"><Plus className="w-3.5 h-3.5 inline" /> Rule</button>}
       </div>
 
       {rules === null ? railLoading : rules.map(r => (
-        <div key={r.id} className="flex items-center gap-2 border border-slate-100 rounded-control px-3 py-2">
-          <div className="min-w-0 flex-1">
+        <div key={r.id} className="flex flex-wrap sm:flex-nowrap items-center gap-2 border border-slate-100 rounded-control px-3 py-2">
+          <div className="min-w-0 flex-1 max-sm:basis-full">
             <p className="text-xs font-bold text-ink-900">{r.name}</p>
             <p className="text-[11px] text-slate-500">{sentence(r)}</p>
-            {r.lastResult && <p className="text-[10px] text-amber-700 truncate">Last: {r.lastResult}{r.lastTriggeredAt ? ` (${new Date(r.lastTriggeredAt).toLocaleString()})` : ""}</p>}
+            {r.lastResult && <p className="text-[10px] text-amber-700 break-words sm:truncate">Last: {r.lastResult}{r.lastTriggeredAt ? ` (${new Date(r.lastTriggeredAt).toLocaleString()})` : ""}</p>}
           </div>
           {isAdmin && <>
-            <button onClick={() => toggle(r)} className={`px-2.5 py-1 rounded-full text-[10px] font-bold shrink-0 ${r.active ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-500"}`}>{r.active ? "● ON" : "○ OFF"}</button>
-            <button onClick={async () => { if (await ask({ title: "Delete this ad rule?", tone: "danger", confirmLabel: "Delete rule", facts: [{ label: "Rule", value: r.name }] })) { await fetch("/api/admin/meta/rules", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: r.id }) }); load(); } }} className="p-1 text-red-400 hover:text-red-600 shrink-0"><Trash2 className="w-3.5 h-3.5" /></button>
+            <button onClick={() => toggle(r)} className={`max-sm:ml-auto px-2.5 py-1 rounded-full text-[10px] font-bold shrink-0 ${r.active ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-500"}`}>{r.active ? "● ON" : "○ OFF"}</button>
+            <button onClick={async () => { if (await ask({ title: "Delete this ad rule?", tone: "danger", confirmLabel: "Delete rule", facts: [{ label: "Rule", value: r.name }] })) { await fetch("/api/admin/meta/rules", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: r.id }) }); load(); } }} aria-label="Delete rule" className="p-1 max-sm:p-2.5 text-red-400 hover:text-red-600 shrink-0"><Trash2 className="w-3.5 h-3.5" /></button>
           </>}
         </div>
       ))}
@@ -2320,7 +2320,7 @@ function AdRulesPanel({ campaigns, isAdmin, currency }: { campaigns: { id: strin
       {form && (
         <div className="border-t border-slate-100 pt-3 space-y-2">
           <input className={`${inp} w-full`} placeholder="Rule name — e.g. CPL guard" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <select className={inp} value={form.action} onChange={e => setForm({ ...form, action: e.target.value })}>
               <option value="pause">Pause the campaign</option>
               <option value="notify">Alert only (activity log)</option>

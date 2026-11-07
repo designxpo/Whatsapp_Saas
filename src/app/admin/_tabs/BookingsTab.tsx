@@ -98,8 +98,8 @@ export default function BookingsTab({ goTo }: { goTo: GoTo }) {
           <h1 className="flex items-center gap-2 text-xl font-extrabold text-ink-900"><CalendarDays className="h-5 w-5" /> Bookings</h1>
           <p className="max-w-2xl text-sm text-ink-600">Who&apos;s coming, for what and with whom. Bookings made in any chat — WhatsApp, Instagram, Facebook, web chat — and from Cal.com, Calendly and Mezvaan show up here on their own.</p>
         </div>
-        <div className="flex flex-col items-end gap-1">
-          <div className="flex gap-2">
+        <div className="flex flex-col items-start sm:items-end gap-1">
+          <div className="flex flex-wrap gap-2">
             <button onClick={() => setAdding(a => !a)} disabled={!!addBlocked} title={addBlocked ?? undefined} aria-describedby={addBlocked ? "add-booking-why" : undefined} className="inline-flex min-h-10 items-center gap-1.5 rounded-control bg-brand-700 px-3 py-2 text-xs font-bold text-white hover:bg-brand-600 disabled:opacity-50"><Plus className="h-3.5 w-3.5" /> Add booking</button>
             {setup?.canManage && <button onClick={() => setShowSetup(s => !s)} className="inline-flex min-h-10 items-center gap-1.5 rounded-control border border-line bg-white px-3 py-2 text-xs font-bold text-ink-700 hover:bg-canvas"><Settings2 className="h-3.5 w-3.5" /> Services &amp; staff</button>}
           </div>

@@ -45,7 +45,7 @@ export function usePromptDialog(): [Ask, React.ReactNode] {
   const dialog = (
     <Modal open={!!opts} onClose={() => finish(null)} title={opts?.title ?? ""} size="sm"
       footer={opts && (
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
           <button type="button" onClick={() => finish(null)} className="min-h-10 px-4 rounded-control border border-line text-sm font-semibold text-ink-700 hover:bg-canvas">{opts.cancelLabel ?? "Cancel"}</button>
           <button type="submit" form="prompt-dialog-form" disabled={blocked}
             className={`min-h-10 px-4 rounded-control text-sm font-semibold text-white disabled:opacity-50 ${opts.tone === "danger" ? "bg-red-600 hover:bg-red-700" : "bg-brand-700 hover:bg-brand-800"}`}>{opts.confirmLabel ?? "Save"}</button>

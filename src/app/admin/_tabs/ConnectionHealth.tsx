@@ -49,11 +49,11 @@ export function ConnectionHealth({ goTo }: { goTo: (t: Tab) => void }) {
   return (
     <section aria-label="Connection health" className="space-y-3 rounded-card border border-line bg-white p-4">
       <div className="flex items-center justify-between gap-2">
-        <p className="flex items-center gap-1.5 text-sm font-bold text-ink-900">
+        <p className="flex min-w-0 items-center gap-1.5 text-sm font-bold text-ink-900">
           {problems.length ? <ShieldAlert className="h-4 w-4 text-amber-600" /> : <CheckCircle2 className="h-4 w-4 text-emerald-600" />}
           {problems.length ? `${problems.length} connection${problems.length === 1 ? "" : "s"} need${problems.length === 1 ? "s" : ""} attention` : "All connections are working"}
         </p>
-        <button onClick={() => void load()} className="inline-flex min-h-8 items-center gap-1 rounded-control px-2 text-[12px] font-semibold text-ink-600 hover:bg-canvas hover:text-ink-900"><RefreshCw className="h-3 w-3" aria-hidden /> Check again</button>
+        <button onClick={() => void load()} className="inline-flex min-h-8 shrink-0 whitespace-nowrap items-center gap-1 rounded-control px-2 text-[12px] font-semibold text-ink-600 hover:bg-canvas hover:text-ink-900"><RefreshCw className="h-3 w-3" aria-hidden /> Check again</button>
       </div>
       {r && <p className="text-[11px] text-ink-500">{okCount} of {r.checked.length} connected accounts and tools look healthy. Based on what Meta, Google and your tools last reported.</p>}
       {err && <p role="alert" className="rounded-control border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">{err}</p>}
@@ -61,15 +61,15 @@ export function ConnectionHealth({ goTo }: { goTo: (t: Tab) => void }) {
       {problems.length > 0 && (
         <ul className="divide-y divide-line rounded-control border border-line">
           {problems.map(p => (
-            <li key={p.key} className="flex items-start gap-3 px-3 py-2.5">
+            <li key={p.key} className="flex flex-wrap sm:flex-nowrap items-start gap-x-3 gap-y-2 px-3 py-2.5">
               <AlertTriangle className={`mt-0.5 h-4 w-4 shrink-0 ${p.severity === "critical" ? "text-red-600" : "text-amber-600"}`} aria-label={p.severity === "critical" ? "Urgent" : "Warning"} />
-              <div className="min-w-0 flex-1">
+              <div className="min-w-0 flex-1 max-sm:basis-[calc(100%-1.75rem)]">
                 <p className="text-[13px] font-semibold text-ink-900">{p.title}</p>
                 <p className="text-[12px] text-ink-600">{p.detail}</p>
               </div>
               {p.area === "deliveries"
-                ? <button onClick={() => void act({ action: "retry_deliveries" }, p.key, "")} disabled={busy === p.key} className="min-h-8 shrink-0 rounded-control bg-brand-700 px-2.5 py-1 text-[12px] font-bold text-white disabled:opacity-50">{busy === p.key ? "Retrying…" : "Retry them"}</button>
-                : <button onClick={() => goTo(p.fix.tab)} className="min-h-8 shrink-0 rounded-control border border-line px-2.5 py-1 text-[12px] font-bold text-ink-900 hover:bg-canvas">{p.fix.label}</button>}
+                ? <button onClick={() => void act({ action: "retry_deliveries" }, p.key, "")} disabled={busy === p.key} className="min-h-8 shrink-0 max-sm:ml-7 rounded-control bg-brand-700 px-2.5 py-1 text-[12px] font-bold text-white disabled:opacity-50">{busy === p.key ? "Retrying…" : "Retry them"}</button>
+                : <button onClick={() => goTo(p.fix.tab)} className="min-h-8 shrink-0 max-sm:ml-7 rounded-control border border-line px-2.5 py-1 text-[12px] font-bold text-ink-900 hover:bg-canvas">{p.fix.label}</button>}
             </li>
           ))}
         </ul>

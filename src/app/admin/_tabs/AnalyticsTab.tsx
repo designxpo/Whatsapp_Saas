@@ -392,8 +392,8 @@ function AnalyticsTab({ isAdmin = false, goTo }: { isAdmin?: boolean; goTo?: GoT
               ) : (
                 <ul className="divide-y divide-line">
                   {data.recentCampaigns.map((c, i) => (
-                    <li key={i} className="py-2 flex items-center justify-between gap-2">
-                      <span className="text-[13px] font-medium text-ink-900 truncate">{c.name}</span>
+                    <li key={i} className="py-2 flex flex-col items-start gap-0.5 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
+                      <span className="text-[13px] font-medium text-ink-900 truncate max-w-full">{c.name}</span>
                       <span className="text-[12px] text-ink-500 tnum shrink-0">{fmtNum(c.sent)} of {fmtNum(c.total)} sent · {STATUS_WORDS[c.status] ?? c.status}</span>
                     </li>
                   ))}

@@ -176,7 +176,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
             aria-modal="true"
             aria-labelledby="confirm-title"
             {...state}
-            className="ov-modal relative w-full max-w-[420px] bg-white rounded-card shadow-float border border-line overflow-hidden"
+            className="ov-modal relative w-full max-w-[420px] max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain bg-white rounded-card shadow-float border border-line"
           >
             <div className="p-5 pb-4 flex gap-3.5">
               <span className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${tone.ring}`}>
@@ -227,7 +227,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
               </div>
             )}
 
-            <div className="px-5 py-3.5 bg-canvas border-t border-line flex items-center justify-end gap-2">
+            <div className="sticky bottom-0 px-5 py-3.5 bg-canvas border-t border-line flex flex-wrap items-center justify-end gap-2">
               <button
                 ref={cancelRef}
                 onClick={() => close(false)}

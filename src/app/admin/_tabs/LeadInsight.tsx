@@ -127,7 +127,7 @@ export function ApprovalCard({ conversationId, onDecided }: { conversationId: st
           <label className="block text-[11px] font-bold text-ink-600" htmlFor={`approval-msg-${req.id}`}>Message to the customer</label>
           <textarea id={`approval-msg-${req.id}`} rows={3} value={text} onChange={e => setText(e.target.value)} className="w-full rounded-[8px] border border-line bg-white px-3 py-2 text-base md:text-[13px]" />
           {mode === "approve" && req.kind === "discount" && <p className="text-[11px] text-ink-500">If they have items in their cart, the order is placed at the reduced price and its payment link is added to this message.</p>}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button onClick={() => decide(mode)} disabled={busy || !text.trim()} className={`h-11 md:h-8 px-3 rounded-[8px] text-white text-[13px] font-semibold inline-flex items-center gap-1.5 disabled:opacity-60 ${mode === "approve" ? "bg-emerald-700 hover:bg-emerald-800" : "bg-red-700 hover:bg-red-800"}`}>
               {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />} {mode === "approve" ? "Approve & send" : "Decline & send"}
             </button>

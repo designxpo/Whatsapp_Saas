@@ -175,9 +175,9 @@ export function ReviewCase({ review, team, canManage, onChanged }: { review: Cas
                 ))}
               </ol>
             )}
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             <label className="sr-only" htmlFor={`case-note-${review.id}`}>Private note</label>
-            <textarea id={`case-note-${review.id}`} rows={2} className={`${inp} flex-1`} placeholder="Private note for your team — never shown to the customer" value={note} onChange={e => setNote(e.target.value)} />
+            <textarea id={`case-note-${review.id}`} rows={2} className={`${inp} flex-1 min-w-0`} placeholder="Private note for your team — never shown to the customer" value={note} onChange={e => setNote(e.target.value)} />
             <button onClick={addNote} disabled={busy || !note.trim()} title={!note.trim() ? "Type a note first" : undefined} className="self-end min-h-9 px-3 py-1.5 rounded-control bg-ink-900 text-white text-xs font-bold disabled:opacity-50">Add note</button>
           </div>
         </div>

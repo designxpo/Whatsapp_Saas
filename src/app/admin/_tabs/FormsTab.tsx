@@ -80,7 +80,7 @@ function FormResponsesPanel() {
   const badge = (s: string) => s === "submitted" ? "bg-emerald-50 text-emerald-700" : s === "abandoned" ? "bg-amber-50 text-amber-700" : "bg-canvas text-ink-400";
   return (
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
-      <button onClick={() => setOpen(o => !o)} aria-expanded={open} className="w-full min-h-10 flex items-center justify-between gap-2">
+      <button onClick={() => setOpen(o => !o)} aria-expanded={open} className="w-full min-h-10 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-left">
         <span className="text-sm font-bold text-ink-900 flex items-center gap-2"><ClipboardList className="w-4 h-4 text-brand-700" /> Form responses</span>
         <span className="text-[12px] text-ink-500">{submitted} submitted · {abandoned} not finished · {open ? "hide" : "show"}</span>
       </button>
@@ -275,12 +275,12 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
   return (
     <div className="flex gap-6 items-start">
     <div className="flex-1 min-w-0 max-w-4xl space-y-5">
-      <div className="flex items-start justify-between gap-4">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+        <div className="min-w-0">
           <h2 className="text-xl font-semibold text-ink-900">WhatsApp Forms</h2><PageInfo className="text-sm text-slate-500" lead={<>Native forms that open inside WhatsApp — collect name, email, choices and dates without the customer leaving the chat.</>}>Answers save to {vocab.contact.one.toLowerCase()} attributes automatically.</PageInfo>
         </div>
-        <div className="flex gap-2 shrink-0 items-center">
-          <ChannelSelect value={channelId} onChange={setChannelId} allLabel="Number: default" className={`${inp} !py-2 text-xs`} />
+        <div className="flex flex-wrap gap-2 sm:shrink-0 items-center min-w-0">
+          <ChannelSelect value={channelId} onChange={setChannelId} allLabel="Number: default" className={`${inp} !py-2 text-xs max-sm:w-full max-w-full min-w-0`} />
           <button onClick={load} disabled={refreshing} className="px-4 py-2 rounded-control border border-brand-700 text-brand-700 text-[13px] font-semibold flex items-center gap-2 disabled:opacity-60 hover:bg-brand-50">
             <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} /> Sync
           </button>
@@ -300,20 +300,20 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
           <section className="bg-white rounded-card border border-line p-5 space-y-4">
             <p className="text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em]">{editingId ? "Edit form" : cloneNote ? "Edit a copy" : "New form"}</p>
             {cloneNote && <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-control px-3 py-2">Editing a copy of <b>{cloneNote}</b>. Published forms can&apos;t be changed on WhatsApp, so this saves as a <b>new</b> form.</p>}
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <input className={inp} placeholder="Form name (internal)" value={name} onChange={e => setName(e.target.value)} />
               <input className={inp} maxLength={30} placeholder="Title shown on the form (30 chars)" value={title} onChange={e => setTitle(e.target.value)} />
             </div>
             <div className="space-y-2">
               <p className="text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em]">Fields</p>
               {fields.map((f, i) => (
-                <div key={i} className="flex items-center gap-2">
+                <div key={i} className="flex flex-wrap sm:flex-nowrap items-center gap-2 max-sm:pb-2 max-sm:border-b max-sm:border-line">
                   <select className={`${inp} w-32 shrink-0`} value={f.type} onChange={e => setField(i, { type: e.target.value as UiFormFieldType })}>
                     {FORM_FIELD_TYPES.map(t => <option key={t.v} value={t.v}>{t.label}</option>)}
                   </select>
-                  <input className={`${inp} flex-1`} maxLength={f.type === "optin" ? 120 : 30} placeholder={f.type === "optin" ? "Opt-in text, e.g. Send me updates on WhatsApp" : "Field label, e.g. What are you looking for?"} value={f.label} onChange={e => setField(i, { label: e.target.value })} />
-                  {isChoice(f.type) && <input className={`${inp} flex-1`} placeholder="Options, comma-separated" value={f.options} onChange={e => setField(i, { options: e.target.value })} />}
-                  <label className="flex items-center gap-1 text-[12px] text-ink-500 shrink-0 cursor-pointer min-h-8">
+                  <input className={`${inp} flex-1 min-w-0 max-sm:min-w-[9rem]`} maxLength={f.type === "optin" ? 120 : 30} placeholder={f.type === "optin" ? "Opt-in text, e.g. Send me updates on WhatsApp" : "Field label, e.g. What are you looking for?"} value={f.label} onChange={e => setField(i, { label: e.target.value })} />
+                  {isChoice(f.type) && <input className={`${inp} flex-1 min-w-0 max-sm:basis-full`} placeholder="Options, comma-separated" value={f.options} onChange={e => setField(i, { options: e.target.value })} />}
+                  <label className="flex items-center gap-1 text-[12px] text-ink-500 shrink-0 cursor-pointer min-h-8 max-sm:mr-auto">
                     <input type="checkbox" className="accent-brand-700" checked={f.required} onChange={e => setField(i, { required: e.target.checked })} /> Required
                   </label>
                   <button onClick={() => setFields(fs => fs.filter((_, j) => j !== i))} aria-label={`Remove field ${f.label || i + 1}`} className="grid place-items-center w-8 h-8 text-ink-400 hover:text-red-500 shrink-0 rounded-control"><X className="w-4 h-4" /></button>
@@ -325,7 +325,7 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
                 </button>
               )}
             </div>
-            <div className="flex gap-2 pt-1">
+            <div className="flex flex-wrap gap-2 pt-1">
               <button onClick={() => (editingId ? update(true) : create(true))} disabled={!!busy} className={btnPrimary}>
                 {busy === "publish" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} {editingId ? "Update & publish" : "Create & publish"}
               </button>
@@ -367,12 +367,14 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
 
       <div className="bg-white rounded-card border border-line divide-y divide-line">
         {forms.map(f => (
-          <div key={f.id} className="px-4 py-3 flex items-center gap-3">
+          <div key={f.id} className="px-4 py-3 flex flex-wrap sm:flex-nowrap items-center gap-3">
             <div className="w-9 h-9 rounded-control bg-brand-50 text-brand-700 flex items-center justify-center shrink-0"><ClipboardList className="w-[18px] h-[18px]" /></div>
-            <div className="min-w-0 flex-1">
-              <button onClick={() => renameForm(f)} disabled={busy === "rename:" + f.id} title="Click to rename" className="text-sm font-semibold text-ink-900 truncate text-left hover:underline disabled:opacity-60">{f.name}</button>
+            <div className="min-w-0 flex-1 max-sm:basis-[calc(100%-3rem)]">
+              <button onClick={() => renameForm(f)} disabled={busy === "rename:" + f.id} title="Click to rename" className="max-w-full text-sm font-semibold text-ink-900 truncate text-left hover:underline disabled:opacity-60">{f.name}</button>
               {f.validationErrors.length > 0 && <p className="text-[11px] text-red-700 truncate">Fix before publishing: {f.validationErrors.join(" · ")}</p>}
             </div>
+            {/* Phone: the status + actions take their own line under the name. Laptop: `contents` = same single row as before. */}
+            <div className="flex flex-wrap items-center gap-2 w-full pl-12 sm:contents">
             <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold shrink-0 ${statusPill(f.status)}`}>{f.status === "PUBLISHED" ? "Live" : f.status === "DRAFT" ? "Draft" : f.status === "DEPRECATED" ? "Retired" : f.status.charAt(0) + f.status.slice(1).toLowerCase()}</span>
             {f.previewUrl && (
               <a href={f.previewUrl} target="_blank" rel="noreferrer" title="Open Meta's interactive preview"
@@ -398,6 +400,7 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
               </button>
             )}
             <button onClick={() => remove(f)} aria-label={`${f.status === "PUBLISHED" ? "Retire" : "Delete"} ${f.name}`} title={f.status === "PUBLISHED" ? "Retire" : "Delete"} className="grid place-items-center w-9 h-9 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
+            </div>
           </div>
         ))}
         {forms.length === 0 && (notice

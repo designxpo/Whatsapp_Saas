@@ -136,7 +136,7 @@ export function ReviewBooster() {
             <label key={e} className="flex items-center gap-2 text-[13px] text-ink-700"><input type="checkbox" className="accent-brand-700" checked onChange={() => edit({ triggers: { ...cfg.triggers, events: cfg.triggers.events.filter(x => x !== e) } })} /> After the event <code className="text-[12px]">{e}</code></label>
           ))}
           <div className="flex gap-2">
-            <input className={`${inp} flex-1`} placeholder="Another event from your tools, e.g. appointment.completed" value={customEvent} onChange={e => setCustomEvent(e.target.value)} aria-label="Custom event name" />
+            <input className={`${inp} flex-1 min-w-0`} placeholder="Another event from your tools, e.g. appointment.completed" value={customEvent} onChange={e => setCustomEvent(e.target.value)} aria-label="Custom event name" />
             <button type="button" disabled={!/^[a-z0-9_.:-]{2,80}$/i.test(customEvent.trim())} onClick={() => { edit({ triggers: { ...cfg.triggers, events: [...new Set([...cfg.triggers.events, customEvent.trim()])] } }); setCustomEvent(""); }} title={!/^[a-z0-9_.:-]{2,80}$/i.test(customEvent.trim()) ? "Type the event name first — letters, numbers, dots or dashes, no spaces" : undefined} className="min-h-9 rounded-control border border-line px-3 text-xs font-semibold text-ink-700 disabled:opacity-50">Add</button>
           </div>
           <div className="grid sm:grid-cols-2 gap-2">

@@ -423,7 +423,7 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
             <div className="px-3.5 pb-3.5 space-y-2 border-t border-line pt-3">
               <p className="text-[11px] text-slate-500 leading-snug">Save your business basics once — brand, tone, standing offers, do&apos;s &amp; don&apos;ts. The AI reuses this in every future campaign chat, so you never re-type it. Stored as a single setting — no extra database load.</p>
               <textarea className={`${inp} w-full`} rows={4} placeholder="e.g. We're LumiSkincare — vegan skincare for women 25–45. Warm, friendly tone. Never promise medical results. Always mention free delivery over ₹999." value={adCtx} onChange={e => setAdCtx(e.target.value.slice(0, 4000))} />
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button onClick={saveContext} disabled={ctxSaving} className={`${btnPrimary} !py-1.5 !text-[12px]`}>{ctxSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />} Save context</button>
                 {ctxSaved && <span className="text-[11px] font-semibold text-emerald-700">Saved — the AI will use this from now on.</span>}
                 <span className="ml-auto text-[10px] text-slate-400 tabular-nums">{adCtx.length}/4000</span>
@@ -484,7 +484,7 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
           <div>
             <label className="text-xs font-bold text-ink-500 uppercase tracking-wide">Ad image</label>
             <div className="flex items-center gap-3 mt-1.5">
-              <label className={`cursor-pointer px-3 py-2 rounded-control border border-line text-xs font-bold text-ink-700 hover:bg-canvas flex items-center gap-1.5 ${uploading ? "opacity-60 pointer-events-none" : ""}`}>
+              <label className={`cursor-pointer shrink-0 whitespace-nowrap px-3 py-2 rounded-control border border-line text-xs font-bold text-ink-700 hover:bg-canvas flex items-center gap-1.5 ${uploading ? "opacity-60 pointer-events-none" : ""}`}>
                 {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ImagePlus className="w-3.5 h-3.5" />} {imageHash ? "Change image" : "Upload image"}
                 <input type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadImage(f); }} />
               </label>
@@ -527,7 +527,8 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
           )}
           <div className="grid lg:grid-cols-[340px_1fr] gap-5 items-start">
           {/* LEFT — live ad preview, fills in as the AI drafts */}
-          <div className="lg:sticky lg:top-4 space-y-3">
+          {/* On a phone the conversation comes first; the preview follows it. */}
+          <div className="max-lg:order-last lg:sticky lg:top-4 space-y-3">
             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.06em]">Live preview</p>
             <AdPreview plan={plan} goalFallback={goal} imagePreview={imagePreview} />
             {plan ? (
@@ -626,8 +627,8 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
             <div key={i} className="bg-white rounded-card border border-line p-4 space-y-2.5">
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand-50 text-brand-700">Ad set {i + 1}</span>
-                <p className="text-sm font-bold text-ink-900 truncate flex-1">{s.audienceLabel}</p>
-                {plan.adSets.length > 1 && <button onClick={() => removeSet(i)} className="p-1 text-ink-400 hover:text-red-600 rounded" title="Remove this ad set"><Trash2 className="w-4 h-4" /></button>}
+                <p className="text-sm font-bold text-ink-900 min-w-0 flex-1 break-words sm:truncate">{s.audienceLabel}</p>
+                {plan.adSets.length > 1 && <button onClick={() => removeSet(i)} className="p-1 max-sm:p-2 shrink-0 text-ink-400 hover:text-red-600 rounded" aria-label="Remove this ad set" title="Remove this ad set"><Trash2 className="w-4 h-4" /></button>}
               </div>
               <p className="text-[11px] text-slate-500">{genderLabel(s.genders)} · age {s.ageMin}–{s.ageMax}</p>
               {(s.interests?.length ?? 0) > 0 && (
@@ -647,7 +648,7 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
                 <label className="text-[10px] font-bold text-ink-400 uppercase">Primary text</label>
                 <textarea className={`${inp} w-full mt-1`} rows={2} value={s.primaryText} onChange={e => patchSet(i, { primaryText: e.target.value })} />
               </div>
-              <div className="grid grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <div>
                   <label className="text-[10px] font-bold text-ink-400 uppercase">Headline</label>
                   <input className={`${inp} w-full mt-1`} maxLength={40} value={s.headline} onChange={e => patchSet(i, { headline: e.target.value })} />
@@ -735,10 +736,10 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
             </ul>
           )}
 
-          <div className="flex items-center gap-3 border-t border-line pt-4">
-            <button onClick={publish} disabled={busy} className={btnPrimary}>{busy ? <><Loader2 className="w-4 h-4 animate-spin" /> Publishing…</> : <><Megaphone className="w-4 h-4" /> Approve &amp; publish live</>}</button>
+          <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 border-t border-line pt-4">
+            <button onClick={publish} disabled={busy} className={`${btnPrimary} whitespace-nowrap`}>{busy ? <><Loader2 className="w-4 h-4 animate-spin" /> Publishing…</> : <><Megaphone className="w-4 h-4" /> Approve &amp; publish live</>}</button>
             <button onClick={() => setStep("brief")} className="px-3 py-2 rounded-control border border-line text-xs font-bold text-ink-700 hover:bg-canvas">Back</button>
-            <span className="text-[11px] text-slate-400">Publishing sets the campaign live on Meta and starts spending your budget.</span>
+            <span className="text-[11px] text-slate-400 max-sm:basis-full">Publishing sets the campaign live on Meta and starts spending your budget.</span>
           </div>
         </div>
       )}

@@ -133,8 +133,8 @@ export default function SecurityTab() {
       </div>
       {/* ── Passkeys ── */}
       <section className="bg-white rounded-card border border-line p-5 space-y-3">
-        <div className="flex items-start justify-between gap-3">
-          <div>
+        <div className="flex flex-col items-start gap-3 sm:flex-row sm:justify-between">
+          <div className="min-w-0">
             <p className="text-xs font-bold text-slate-400 uppercase">Passkeys</p><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>Sign in with your fingerprint, face or device PIN</>}>Sign in with your fingerprint, face or device PIN — nothing to type, and nothing a fake sign-in page can capture, because your browser only offers a passkey to this exact site.</PageInfo>
           </div>
           {canPasskey && pkAvailable && (
@@ -155,9 +155,9 @@ export default function SecurityTab() {
           <div key={p.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2.5">
             <div className="w-8 h-8 rounded-full bg-ink-900 text-white flex items-center justify-center shrink-0"><KeyRound className="w-4 h-4" /></div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-ink-900 truncate">
+              <p className="text-sm font-semibold text-ink-900 sm:truncate">
                 {p.deviceName}
-                <span className="ml-2 text-[11px] font-bold text-ink-500">{p.backedUp ? "· Synced to your other devices" : "· This device only"}</span>
+                <span className="max-sm:block sm:ml-2 text-[11px] font-bold text-ink-500"><span className="max-sm:hidden" aria-hidden>· </span>{p.backedUp ? "Synced to your other devices" : "This device only"}</span>
               </p>
               <p className="text-[11px] text-ink-500">
                 Added {new Date(p.createdAt).toLocaleDateString()}
@@ -201,7 +201,7 @@ export default function SecurityTab() {
             </details>
             <div className="flex gap-2">
               <input value={code} onChange={e => setCode(e.target.value)} placeholder="000000" inputMode="numeric" maxLength={6} aria-label="6-digit code from the app" autoComplete="one-time-code"
-                className="flex-1 border border-line rounded-control px-3 py-2 text-sm bg-white text-ink-900 placeholder:text-ink-400" />
+                className="flex-1 min-w-0 border border-line rounded-control px-3 py-2 text-sm bg-white text-ink-900 placeholder:text-ink-400" />
               <button onClick={confirmTotp} disabled={busy || !code.trim()} title={!code.trim() ? "Enter the 6-digit code first" : undefined}
                 className="shrink-0 min-h-10 px-3 py-2 rounded-control bg-gradient-to-br from-brand-600 to-brand-900 text-white text-xs font-bold disabled:opacity-60">Turn it on</button>
             </div>

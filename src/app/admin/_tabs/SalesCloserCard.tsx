@@ -76,7 +76,7 @@ export function SalesCloserCard() {
           <span><b>Discounts</b> — when a customer negotiates, the AI asks you; it never offers one itself.</span>
         </label>
         {ap.discounts.enabled && (
-          <label className="ml-6 flex items-center gap-2 text-[12px] text-ink-600">
+          <label className="ml-6 flex flex-wrap items-center gap-2 text-[12px] text-ink-600">
             Most it may ask for
             <input type="number" min={1} max={90} className="w-20 rounded-control border border-line px-2 py-1 text-sm" value={ap.discounts.maxPercent} onChange={e => setS({ ...s, approvals: { ...ap, discounts: { ...ap.discounts, maxPercent: Number(e.target.value) } } })} />
             % <span className="text-ink-500">(bigger asks still reach you, marked over the limit; customers never see it)</span>

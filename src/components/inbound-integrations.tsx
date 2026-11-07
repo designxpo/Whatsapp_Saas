@@ -154,9 +154,9 @@ export default function InboundIntegrations({ extras = [], accountLinks = {}, on
       {error && <p className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-control px-3 py-2">{error}</p>}
 
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative">
+        <div className="relative w-full sm:w-auto">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input className={`${inp} pl-9 w-60`} placeholder="Search integrations" value={query} onChange={e => setQuery(e.target.value)} />
+          <input className={`${inp} pl-9 w-full sm:w-60`} placeholder="Search integrations" value={query} onChange={e => setQuery(e.target.value)} />
         </div>
         {chips.map(c => (
           <button key={c} onClick={() => setCategory(c)}
@@ -360,7 +360,7 @@ function IntegrationPanel({ entry, connection, accountLink, googleEmail = null, 
                   {f.hint && <span className="block text-[11px] text-slate-400">{f.hint}</span>}
                 </label>
               ))}
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button onClick={connect} disabled={busy} className="px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold flex items-center gap-2 disabled:opacity-60">
                   {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plug className="w-4 h-4" />} {connection ? "Save" : "Connect"}
                 </button>
@@ -389,7 +389,7 @@ function IntegrationPanel({ entry, connection, accountLink, googleEmail = null, 
                 ? <p className="text-xs text-slate-400">Nothing received yet. Once {entry.name} sends its first event it shows here, with what the portal did.</p>
                 : connection.events.map(ev => (
                   <div key={ev.id} className="text-xs border-b border-line last:border-0 py-1.5">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                       <span className={`text-[11px] font-bold uppercase px-1.5 py-0.5 rounded ${ev.outcome === "processed" ? "bg-brand-50 text-brand-700" : ev.outcome === "failed" ? "bg-red-50 text-red-600" : "bg-slate-100 text-slate-500"}`}>{ev.outcome}</span>
                       <span className="font-mono text-ink-700">{entry.events?.find(x => x.key === ev.eventKey)?.label ?? ev.eventKey}</span>
                       {ev.phoneLast4 && <span className="text-slate-400">· …{ev.phoneLast4}</span>}
@@ -458,7 +458,7 @@ function EventMessages({ entry, connection }: { entry: CatalogEntry; connection:
         return (
           <div key={ev.key} className="border border-line rounded-card p-3 space-y-2">
             <div className="flex items-start justify-between gap-2">
-              <div>
+              <div className="min-w-0">
                 <p className="text-xs font-bold text-ink-900">{ev.label}</p>
                 <p className="text-[11px] text-slate-400">Idea: {ev.suggestion}</p>
               </div>
@@ -467,13 +467,13 @@ function EventMessages({ entry, connection }: { entry: CatalogEntry; connection:
               )}
             </div>
             {mine.map(r => (
-              <div key={r.id} className="flex items-center gap-2 text-xs bg-canvas rounded-lg px-2.5 py-1.5">
+              <div key={r.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs bg-canvas rounded-lg px-2.5 py-1.5">
                 <span className={`w-2 h-2 rounded-full ${r.active ? "bg-brand-500" : "bg-slate-300"}`} />
-                <span className="font-mono text-ink-700 truncate">{r.templateName}</span>
+                <span className="font-mono text-ink-700 truncate min-w-0">{r.templateName}</span>
                 <span className="text-slate-400 shrink-0">{r.delayValue ? `after ${r.delayValue} ${r.delayUnit}` : "right away"}</span>
                 <span className="flex-1" />
                 <button onClick={() => toggle(r)} className="text-[11px] font-bold text-slate-500 hover:text-ink-900">{r.active ? "Pause" : "Turn on"}</button>
-                <button onClick={() => remove(r)} aria-label="Delete message" className="p-1 text-slate-300 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
+                <button onClick={() => remove(r)} aria-label="Delete message" className="p-2 -m-1 sm:p-1 sm:m-0 text-slate-300 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
               </div>
             ))}
             {adding === ev.key && <MessageForm event={withSheetColumns(ev, connection)} entry={entry} templates={templates} onDone={() => { setAdding(null); load(); }} />}
@@ -541,7 +541,7 @@ function MessageForm({ event, entry, templates, onDone }: { event: CatalogEvent;
           ))}
         </div>
       )}
-      <div className="flex items-center gap-2 text-xs">
+      <div className="flex flex-wrap items-center gap-2 text-xs">
         <span className="text-slate-500">Send</span>
         <input type="number" min={0} className={`${inp} w-20 text-xs`} value={delay} onChange={e => setDelay(Math.max(0, Number(e.target.value) || 0))} />
         <select className={`${inp} text-xs`} value={unit} onChange={e => setUnit(e.target.value)}>

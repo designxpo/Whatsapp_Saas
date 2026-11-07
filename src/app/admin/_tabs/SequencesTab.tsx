@@ -209,7 +209,7 @@ function SeqTemplatePicker({ channelId, action, onChange }: {
   if (manual) {
     return (
       <div className="space-y-2">
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <input className={inp} placeholder="Template name" value={name} onChange={e => onChange({ templateName: e.target.value })} />
           <input className={inp} placeholder="Language (e.g. en_US)" value={lang} onChange={e => onChange({ languageCode: e.target.value })} />
         </div>
@@ -439,11 +439,11 @@ function LeadWelcomePanel() {
     <div className="bg-white rounded-card border border-line p-4 space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><Zap className="w-4 h-4 text-brand-700" /> Landing-page form → WhatsApp flow</p><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>When a form {lead1} arrives from LeadSquared, send an approved <b>template</b> and start your <b>question flow</b> the moment they reply.</>}>WhatsApp only lets you message a new web {lead1} with an approved template. Once they reply, you have 24 hours to chat freely, and the flow runs.</PageInfo>
+          <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><Zap className="w-4 h-4 text-brand-700 shrink-0" /> Landing-page form → WhatsApp flow</p><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>When a form {lead1} arrives from LeadSquared, send an approved <b>template</b> and start your <b>question flow</b> the moment they reply.</>}>WhatsApp only lets you message a new web {lead1} with an approved template. Once they reply, you have 24 hours to chat freely, and the flow runs.</PageInfo>
         </div>
         <label className="flex items-center gap-1.5 text-xs font-semibold text-ink-700 cursor-pointer shrink-0"><input type="checkbox" className="accent-brand-700" checked={cfg.enabled} onChange={e => set({ enabled: e.target.checked })} /> On</label>
       </div>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <input className={`${inp} !py-1.5 text-xs`} placeholder="Approved template name" value={cfg.templateName} onChange={e => set({ templateName: e.target.value })} />
         <input className={`${inp} !py-1.5 text-xs`} placeholder="Template language (e.g. en / en_US)" value={cfg.languageCode} onChange={e => set({ languageCode: e.target.value })} />
         <select className={`${inp} !py-1.5 text-xs`} value={cfg.flowId} onChange={e => set({ flowId: e.target.value })}>
@@ -585,7 +585,7 @@ function StagePollPanel({ seqs }: { seqs: SeqRow[] }) {
       <div className="flex items-center gap-2 flex-wrap">
         <label className="text-[11px] text-ink-400">Stage</label>
         <input
-          className={`${inp} !py-1.5 text-xs w-44`} placeholder="e.g. Qualified"
+          className={`${inp} !py-1.5 text-xs w-44 min-w-0`} placeholder="e.g. Qualified"
           defaultValue={cfg.stage}
           onBlur={e => { if (e.target.value.trim() !== cfg.stage) void save({ stage: e.target.value.trim() }, "Stage changed — the next check starts fresh and adds nobody yet."); }}
         />
@@ -701,10 +701,10 @@ function StageDripsPanel({ seqs }: { seqs: SeqRow[] }) {
       </div>
       {drips.map((d, i) => (
         <div key={i} className="flex items-center gap-2 flex-wrap">
-          <input className={`${inp} !py-1.5 text-xs w-44`} placeholder="CRM stage, e.g. Contacted" value={d.stage}
+          <input className={`${inp} !py-1.5 text-xs w-44 min-w-0 max-sm:grow`} placeholder="CRM stage, e.g. Contacted" value={d.stage}
             onChange={e => setDrips(a => (a ?? []).map((x, j) => (j === i ? { ...x, stage: e.target.value } : x)))} />
           <span className="text-[11px] text-ink-400">→</span>
-          <select className={`${inp} !py-1.5 text-xs`} value={d.sequenceId}
+          <select className={`${inp} !py-1.5 text-xs min-w-0 max-w-full max-sm:grow max-sm:max-w-[calc(100%-2.5rem)]`} value={d.sequenceId}
             onChange={e => setDrips(a => (a ?? []).map((x, j) => (j === i ? { ...x, sequenceId: e.target.value } : x)))}>
             <option value="">Select {seq1}…</option>
             {waSeqs.map(s => <option key={s.id} value={s.id}>{s.name}{s.active ? "" : " (inactive)"}</option>)}
@@ -807,10 +807,10 @@ function ScoreDripsPanel({ seqs }: { seqs: SeqRow[] }) {
       <datalist id="lsq-scores">{KNOWN_SCORES.map(v => <option key={v} value={v} />)}</datalist>
       {drips.map((d, i) => (
         <div key={i} className="flex items-center gap-2 flex-wrap">
-          <input list="lsq-scores" className={`${inp} !py-1.5 text-xs w-44`} placeholder="Lead Score, e.g. Hot" value={d.score}
+          <input list="lsq-scores" className={`${inp} !py-1.5 text-xs w-44 min-w-0 max-sm:grow`} placeholder="Lead Score, e.g. Hot" value={d.score}
             onChange={e => setDrips(a => (a ?? []).map((x, j) => (j === i ? { ...x, score: e.target.value } : x)))} />
           <span className="text-[11px] text-ink-400">→</span>
-          <select className={`${inp} !py-1.5 text-xs`} value={d.sequenceId}
+          <select className={`${inp} !py-1.5 text-xs min-w-0 max-w-full max-sm:grow max-sm:max-w-[calc(100%-2.5rem)]`} value={d.sequenceId}
             onChange={e => setDrips(a => (a ?? []).map((x, j) => (j === i ? { ...x, sequenceId: e.target.value } : x)))}>
             <option value="">Select {seq1}…</option>
             {waSeqs.map(s => <option key={s.id} value={s.id}>{s.name}{s.active ? "" : " (inactive)"}</option>)}
@@ -876,10 +876,10 @@ function LsqDripPanel({ seqs }: { seqs: SeqRow[] }) {
       </div>
       <div className="space-y-1.5">
         {conds.map((c, i) => (
-          <div key={i} className="flex items-center gap-1.5">
-            <input list="lsq-fields" className={`${inp} flex-1`} placeholder="Field (e.g. ProspectStage)" value={c.field} onChange={e => setCond(i, { field: e.target.value })} />
+          <div key={i} className="flex flex-wrap sm:flex-nowrap items-center gap-1.5">
+            <input list="lsq-fields" className={`${inp} flex-1 min-w-0 max-sm:basis-full`} placeholder="Field (e.g. ProspectStage)" value={c.field} onChange={e => setCond(i, { field: e.target.value })} />
             <select className={`${inp} w-32 shrink-0`} value={c.op} onChange={e => setCond(i, { op: e.target.value })}>{LSQ_OPS.map(o => <option key={o[0]} value={o[0]}>{o[1]}</option>)}</select>
-            <input className={`${inp} flex-1`} placeholder="Value (e.g. Prospect)" value={c.value} onChange={e => setCond(i, { value: e.target.value })} />
+            <input className={`${inp} flex-1 min-w-0`} placeholder="Value (e.g. Prospect)" value={c.value} onChange={e => setCond(i, { value: e.target.value })} />
             {conds.length > 1 && <button onClick={() => setConds(cs => cs.filter((_, j) => j !== i))} className="p-1 text-ink-400 hover:text-red-500 shrink-0"><X className="w-4 h-4" /></button>}
           </div>
         ))}
@@ -887,8 +887,8 @@ function LsqDripPanel({ seqs }: { seqs: SeqRow[] }) {
         {conds.length < 6 && <button onClick={() => setConds(cs => [...cs, { field: "", op: "eq", value: "" }])} className="text-xs font-semibold text-brand-700 flex items-center gap-1 hover:underline"><Plus className="w-3.5 h-3.5" /> Add condition</button>}
       </div>
       {!hasAnchor && valid.length > 0 && <p className="text-[11px] text-amber-700">Add at least one <b>equals</b> condition — LeadSquared needs it to search.</p>}
-      <div className="flex items-center gap-2">
-        <select className={`${inp} flex-1`} value={seqId} onChange={e => setSeqId(e.target.value)}>
+      <div className="flex flex-wrap sm:flex-nowrap items-center gap-2">
+        <select className={`${inp} flex-1 min-w-0 max-sm:basis-full`} value={seqId} onChange={e => setSeqId(e.target.value)}>
           <option value="">Start them on {seq1}…</option>
           {seqs.filter(s => s.active).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
@@ -1122,7 +1122,7 @@ function SeqAnalyticsPanel({
           <Filter className="w-3.5 h-3.5 text-brand-700" /> Filters:
         </div>
 
-        <select className={`${inp} !py-1 text-xs max-w-xs`} value={selectedSeq} onChange={e => setSelectedSeq(e.target.value)}>
+        <select className={`${inp} !py-1 text-xs max-w-xs max-sm:max-w-full min-w-0`} value={selectedSeq} onChange={e => setSelectedSeq(e.target.value)}>
           <option value="all">All {seqN} ({seqs.length})</option>
           {seqs.map(s => (
             <option key={s.id} value={s.id}>{s.name} ({s.platform === "instagram" ? "IG" : "WA"})</option>
@@ -1241,12 +1241,12 @@ function SeqAnalyticsPanel({
       {currentSeq ? (
         <div className="space-y-4 pt-1">
           <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-line">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               <div className="w-7 h-7 rounded-lg bg-brand-50 text-brand-700 flex items-center justify-center shrink-0">
                 <Workflow className="w-4 h-4" />
               </div>
-              <div>
-                <div className="flex items-center gap-2">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                   <h4 className="text-sm font-bold text-ink-900">{currentSeq.name}</h4>
                   <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${currentSeq.platform === "instagram" ? "bg-pink-50 text-pink-600" : "bg-emerald-50 text-emerald-700"}`}>
                     {currentSeq.platform === "instagram" ? "Instagram" : "WhatsApp"}
@@ -1260,7 +1260,7 @@ function SeqAnalyticsPanel({
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {selectedSeq !== "all" && seqs.length > 1 && (
                 <button onClick={() => setSelectedSeq("all")} className="text-xs text-brand-700 hover:underline font-semibold">
                   ← Compare all {seqN}
@@ -1278,7 +1278,7 @@ function SeqAnalyticsPanel({
           </div>
 
           <div className="space-y-3">
-            <div className="flex items-center justify-between text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 text-xs">
               <span className="font-bold text-slate-400 uppercase tracking-wider">Step-by-step drop-off &amp; retention</span>
               <span className="text-ink-400 text-[11px]">A step counts as reached once it has actually been sent</span>
             </div>
@@ -1302,13 +1302,13 @@ function SeqAnalyticsPanel({
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="w-6 h-6 rounded-full bg-brand-50 text-brand-700 font-bold flex items-center justify-center text-xs shrink-0">#{st.stepNumber}</span>
                           <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700 uppercase">{st.type}</span>
-                          <span className="font-semibold text-ink-900 truncate max-w-xs" title={st.label}>
+                          <span className="font-semibold text-ink-900 truncate max-w-xs min-w-0" title={st.label}>
                             {st.templateName ? `template "${st.templateName}"` : st.label}
                           </span>
                           <span className="text-ink-400 text-[11px]">({fmtDripDelay(st.delayMinutes)})</span>
                         </div>
 
-                        <div className="flex items-center gap-2 shrink-0 text-[11px]">
+                        <div className="flex flex-wrap items-center gap-2 sm:shrink-0 text-[11px]">
                           <span className="font-bold text-ink-900">
                             {st.reachedCount.toLocaleString()} <span className="text-ink-400 font-normal">reached ({st.retentionRate}%)</span>
                           </span>
@@ -1370,7 +1370,7 @@ function SeqAnalyticsPanel({
         </div>
       ) : (
         <div className="space-y-3 pt-1">
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5">
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Every {seq1} — comparison</p>
             <p className="text-[11px] text-ink-400">Click any row to inspect its step drop-off</p>
           </div>
@@ -1543,12 +1543,12 @@ function SeqMonitorPanel({ seqs, filterFromAnalytics }: { seqs: SeqRow[]; filter
         </select>
         {selSeq && <span className={`px-2 py-1.5 rounded-control text-[11px] font-bold shrink-0 ${platform === "instagram" ? "bg-pink-50 text-pink-600" : "bg-emerald-50 text-emerald-700"}`}>sends on {platform === "instagram" ? "Instagram" : "WhatsApp"}</span>}
         {seqId && (
-          <select className={`${inp} w-48`} value="" onChange={e => { if (e.target.value) setPhone(e.target.value); }}>
+          <select className={`${inp} w-48 max-sm:grow min-w-0`} value="" onChange={e => { if (e.target.value) setPhone(e.target.value); }}>
             <option value="">{contacts.length ? `Select ${ct1} who messaged you…` : `No ${ctN} on this platform yet`}</option>
             {contacts.map(c => <option key={c.phone} value={c.phone}>{c.name}{c.withinWindow ? " ✅" : ""}</option>)}
           </select>
         )}
-        <input className={`${inp} w-44`} placeholder={platform === "instagram" ? "IG id — pick a contact ↑" : "WhatsApp number"} value={phone} onChange={e => setPhone(e.target.value)} />
+        <input className={`${inp} w-44 max-sm:grow min-w-0`} placeholder={platform === "instagram" ? "IG id — pick a contact ↑" : "WhatsApp number"} value={phone} onChange={e => setPhone(e.target.value)} />
         <button onClick={testEnroll} disabled={busy !== "" || !seqId} title={!seqId ? `Pick a ${seq1} to test first` : undefined} className="min-h-9 px-3 py-2 rounded-control border border-brand-700 text-brand-700 text-xs font-bold hover:bg-brand-50 disabled:opacity-50 shrink-0 flex items-center gap-1.5">{busy === "test" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-3.5 h-3.5" />} Start &amp; send</button>
         <button onClick={runNow} disabled={busy !== ""} className="min-h-9 px-3 py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-50 shrink-0 flex items-center gap-1.5">{busy === "run" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-3.5 h-3.5" />} Run due steps now</button>
         <button onClick={() => loadEnr()} aria-label="Refresh the list" className="grid place-items-center w-9 h-9 rounded-control border border-line text-ink-500 hover:bg-canvas shrink-0" title="Refresh"><RefreshCw className="w-3.5 h-3.5" /></button>
@@ -1567,7 +1567,7 @@ function SeqMonitorPanel({ seqs, filterFromAnalytics }: { seqs: SeqRow[]; filter
             onChange={e => { setSearch(e.target.value); setOffset(0); }}
           />
         </div>
-        <select className={`${inp} !py-1 text-xs`} value={filterSeq} onChange={e => { setFilterSeq(e.target.value); setOffset(0); }}>
+        <select className={`${inp} !py-1 text-xs min-w-0 max-w-full`} value={filterSeq} onChange={e => { setFilterSeq(e.target.value); setOffset(0); }}>
           <option value="all">All {seqN}</option>
           {seqs.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
@@ -1595,6 +1595,8 @@ function SeqMonitorPanel({ seqs, filterFromAnalytics }: { seqs: SeqRow[]; filter
 
       {/* Enrollment monitor */}
       <div id="seq-enrollment-monitor" className="border border-line rounded-control overflow-hidden">
+        {/* Phone: the five columns keep a readable width and scroll sideways together. */}
+        <div className="overflow-x-auto"><div className="max-sm:min-w-[560px]">
         <div className="grid grid-cols-12 gap-2 px-3 py-1.5 bg-canvas text-[11px] font-bold text-ink-400 uppercase">
           <div className="col-span-3">{vocab.sequence.one}</div><div className="col-span-3">{vocab.contact.one}</div><div className="col-span-2">Step</div><div className="col-span-2">Status</div><div className="col-span-2">Next / error</div>
         </div>
@@ -1616,8 +1618,9 @@ function SeqMonitorPanel({ seqs, filterFromAnalytics }: { seqs: SeqRow[]; filter
             <div className="col-span-2 truncate text-[11px]">{e.lastError ? <span className="text-red-600" title={e.lastError}>⚠ {e.lastError}</span> : <span className="text-ink-400">{e.status === "active" ? fmtWhen(e.nextRunAt) : fmtWhen(e.updatedAt)}</span>}</div>
           </div>
         ))}
+        </div></div>
         {total > 0 && (
-          <div className="flex items-center justify-between px-3 py-2 border-t border-line text-xs text-ink-500">
+          <div className="flex flex-wrap items-center justify-between gap-x-3 px-3 py-2 border-t border-line text-xs text-ink-500">
             <span>{offset + 1}–{Math.min(offset + perPage, total)} of {total.toLocaleString()}</span>
             <div className="flex items-center gap-3">
               <select className="border border-line rounded-lg px-2 py-1 text-xs" value={perPage} onChange={e => { setPerPage(Number(e.target.value)); setOffset(0); }}>
@@ -1676,11 +1679,11 @@ export default function SequencesTab() {
 
   return (
     <div className="max-w-5xl space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Workflow className="w-5 h-5" /> {vocab.sequence.many}</h2><PageInfo className="text-sm text-slate-500" lead={<>Follow-up messages that go out on their own over hours or days — for example a reminder the next morning and an offer three days later. Each one starts when a customer does something: sends a keyword, opts in, replies to a story or leaves a cart</>}>Timed multi-step follow-ups. Triggered by keywords, opt-ins, story replies, abandoned carts, and more — they run automatically and respect the 24-hour window.</PageInfo>
         </div>
-        <button onClick={() => { setForm({ ...EMPTY_SEQ }); setMsg(null); }} className="shrink-0 min-h-9 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New {seq1}</button>
+        <button onClick={() => { setForm({ ...EMPTY_SEQ }); setMsg(null); }} className="self-start sm:self-auto shrink-0 min-h-9 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New {seq1}</button>
       </div>
 
       {/* How a sequence actually fires — the part that's easy to miss. */}
@@ -1714,7 +1717,7 @@ export default function SequencesTab() {
       <Drawer open={!!form} onClose={() => setForm(null)} width="xl" title={form?.id ? "Edit sequence" : "New sequence"}>
         {form && (<div className="flex flex-col xl:flex-row gap-5">
           <div className="flex-1 min-w-0 space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <SeqField label="Name it" hint="Only you see this.">
               <input className={`${inp} w-full`} placeholder="Brochure follow-up" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
             </SeqField>
@@ -1732,7 +1735,7 @@ export default function SequencesTab() {
             </SeqField>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <SeqField label="Which team runs this" hint={`Marketing speaks to ${leadN} nobody owns yet. Sales speaks to ${leadN} someone already owns. A journey never reaches the other team's ${leadN}.`}>
               <select className={`${inp} w-full`} value={form.team ?? ""}
                 onChange={e => setForm({ ...form, team: (e.target.value || null) as Lane | null })}>
@@ -1791,7 +1794,7 @@ export default function SequencesTab() {
             );
           })()}
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <SeqField label={form.platform === "instagram" ? "Which account it sends from" : "Which number it sends from"}
               hint="Templates only work on the account they were approved for.">
               <ChannelSelect kind={form.platform} value={form.channelId} onChange={v => setForm({ ...form, channelId: v })} allLabel={form.platform === "instagram" ? "Account: default" : "Number: default"} className={`${inp} w-full`} />
@@ -1848,7 +1851,7 @@ export default function SequencesTab() {
           );})}
           <button onClick={() => setForm({ ...form, steps: [...form.steps, { delayMinutes: 60, action: { type: "text", text: "" } }] })} className="text-xs font-bold text-brand-700 hover:text-brand-600 flex items-center gap-1"><Plus className="w-3.5 h-3.5" /> Add step</button>
 
-          <div className="flex items-center gap-2 pt-1">
+          <div className="flex flex-wrap items-center gap-2 pt-1">
             <button onClick={save} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : `Save ${seq1}`}</button>
             <button onClick={() => setForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
             {msg && <span className="text-xs text-red-700">{msg}</span>}

@@ -59,8 +59,8 @@ function SetupTab({ goTo }: { goTo: (t: Tab) => void }) {
 
   return (
     <div className="max-w-3xl space-y-5">
-      <div className="flex items-start justify-between gap-3">
-        <div>
+      <div className="flex flex-col items-start gap-3 sm:flex-row sm:justify-between">
+        <div className="min-w-0">
           <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><ListChecks className="w-5 h-5" /> Setup Guide</h2><p className="text-sm text-slate-500">Everything you need to go live, in order: connect your WhatsApp and other channels, add your AI, then test each one. We check every step for you as you go.</p>
         </div>
         <button onClick={load} disabled={busy} className="shrink-0 min-h-9 px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas flex items-center gap-1.5 disabled:opacity-60">

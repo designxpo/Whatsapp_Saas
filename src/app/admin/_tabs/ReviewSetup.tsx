@@ -49,15 +49,17 @@ export function ReviewSetup({ locations, settingsSaved, lastSync, onOpenSettings
       </div>
       <ol className="space-y-2">
         {steps.map((s, i) => (
-          <li key={i} className="flex items-start gap-2.5">
+          <li key={i} className="flex flex-wrap sm:flex-nowrap items-start gap-x-2.5 gap-y-1.5">
             <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${s.done ? "bg-emerald-600 text-white" : "border border-line text-ink-500"}`} aria-hidden>{s.done ? <Check className="h-3 w-3" /> : i + 1}</span>
-            <div className="min-w-0 flex-1">
+            {/* On a phone the step's button drops under its text instead of
+                squeezing the text into a narrow column beside it. */}
+            <div className="min-w-0 flex-1 max-sm:basis-[calc(100%-1.875rem)]">
               <p className={`text-[13px] font-semibold ${s.done ? "text-ink-500" : "text-ink-900"}`}>{s.title}<span className="sr-only">{s.done ? " — done" : " — to do"}</span></p>
               {!s.done && <p className="text-[12px] text-ink-600">{s.body}</p>}
             </div>
             {!s.done && s.action && (s.action.href
-              ? <a href={s.action.href} className="inline-flex min-h-8 shrink-0 items-center rounded-control bg-blue-600 px-2.5 py-1 text-[12px] font-bold text-white hover:bg-blue-500">{s.action.label}</a>
-              : <button onClick={s.action.onClick} className="min-h-8 shrink-0 rounded-control border border-line px-2.5 py-1 text-[12px] font-semibold text-ink-700 hover:bg-canvas">{s.action.label}</button>)}
+              ? <a href={s.action.href} className="inline-flex min-h-8 shrink-0 max-sm:ml-[1.875rem] items-center rounded-control bg-blue-600 px-2.5 py-1 text-[12px] font-bold text-white hover:bg-blue-500">{s.action.label}</a>
+              : <button onClick={s.action.onClick} className="min-h-8 shrink-0 max-sm:ml-[1.875rem] rounded-control border border-line px-2.5 py-1 text-[12px] font-semibold text-ink-700 hover:bg-canvas">{s.action.label}</button>)}
           </li>
         ))}
       </ol>

@@ -169,8 +169,8 @@ function AssistantTab({ goTo }: { goTo: (t: Tab) => void }) {
   return (
     <div className="flex gap-6 items-start">
     <div className="flex-1 min-w-0 max-w-4xl space-y-6">
-      <div className="flex items-center justify-between gap-3">
-        <div>
+      <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+        <div className="min-w-0">
           <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Bot className="w-5 h-5" /> AI Knowledge Base</h2><PageInfo className="text-sm text-slate-500" lead={<>Teach the AI about your business with your own documents, then test what it would reply.</>}>Customer conversations live in <b>Live Chat</b>.</PageInfo>
         </div>
         <span className={statusBadge(enabled ? "active" : enabled === false ? "paused" : "processing")}>
@@ -188,14 +188,16 @@ function AssistantTab({ goTo }: { goTo: (t: Tab) => void }) {
       {/* Pipeline */}
       <section className="bg-white rounded-card border border-line p-5">
         <p className="text-xs font-bold text-slate-400 uppercase mb-4">How a reply is produced</p>
-        <div className="flex items-stretch gap-1 overflow-x-auto">
+        {/* A row of steps on wider screens; on a phone a column, so each step
+            gets the full width instead of a sideways strip of 144px cards. */}
+        <div className="flex flex-col sm:flex-row sm:items-stretch gap-1 sm:overflow-x-auto">
           {PIPELINE.map((s, i) => (
-            <div key={s.title} className="flex items-stretch gap-1 shrink-0">
-              <div className="w-36 shrink-0 rounded-lg border border-line bg-slate-50 p-3 flex flex-col gap-1.5">
+            <div key={s.title} className="flex flex-col sm:flex-row items-stretch gap-1 sm:shrink-0">
+              <div className="sm:w-36 sm:shrink-0 rounded-lg border border-line bg-slate-50 p-3 flex flex-col gap-1.5">
                 <div className="flex items-center gap-2 text-brand-dark font-bold text-sm">{s.icon}{s.title}</div>
                 <p className="text-[11px] leading-snug text-slate-500">{s.desc}</p>
               </div>
-              {i < PIPELINE.length - 1 && <div className="flex items-center text-slate-300"><ArrowRight className="w-4 h-4" /></div>}
+              {i < PIPELINE.length - 1 && <div className="flex items-center justify-center text-slate-300"><ArrowRight className="w-4 h-4 rotate-90 sm:rotate-0" /></div>}
             </div>
           ))}
         </div>
@@ -246,15 +248,17 @@ function AssistantTab({ goTo }: { goTo: (t: Tab) => void }) {
         {docNote && <p role="status" className={`text-xs rounded-lg px-3 py-2 ${docNote.ok ? "bg-brand-50 text-brand-700" : "bg-red-50 text-red-600"}`}>{docNote.text}</p>}
         <div className="divide-y divide-slate-100 border-t border-slate-100 pt-1">
           {docs.map(d => (
-            <div key={d.id} className="flex items-center justify-between py-2.5">
-              <div className="flex items-center gap-2.5 min-w-0">
+            <div key={d.id} className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-x-2 gap-y-1 py-2.5">
+              <div className="flex items-center gap-2.5 min-w-0 flex-1">
                 {d.sourceType === "url" ? <Globe className="w-4 h-4 text-slate-400 shrink-0" /> : <FileText className="w-4 h-4 text-slate-400 shrink-0" />}
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-brand-dark truncate">{d.title}</p>
                   <p className="text-[11px] text-slate-500">{d.sourceType === "url" ? "Web page" : d.sourceType === "text" ? "Text" : d.sourceType.toUpperCase()}{d.tag ? ` · #${d.tag}` : ""} · {fmtNum(d.chunkCount)} section{d.chunkCount === 1 ? "" : "s"}{d.sourceType === "url" ? ` · updates itself${d.lastSyncedAt ? ` · checked ${fmtDay(d.lastSyncedAt)}` : ""}` : ""}{d.error ? ` · ${d.error}` : ""}</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
+              {/* On a phone the status and buttons sit on their own line under the
+                  name, so the name isn't cut to "glowstudio.ex…". */}
+              <div className="flex items-center gap-2 max-sm:w-full max-sm:pl-[26px] sm:shrink-0">
                 <input className="hidden sm:block w-24 min-h-8 border border-line rounded px-1.5 py-0.5 text-[12px] text-ink-700 placeholder:text-ink-400" placeholder="+ topic tag" aria-label={`Topic tag for ${d.title}`} title="Tag this document so a flow or a number can use it as its main knowledge (Enter to save)" defaultValue={d.tag ?? ""}
                   onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
                   onBlur={e => { const v = e.target.value.trim(); if (v !== (d.tag ?? "")) void retag(d, v); }} />
@@ -596,8 +600,8 @@ function KbReviewQueue({ items, onResolved }: { items: ReviewItem[]; onResolved:
       <div className="space-y-3">
         {items.map(it => (
           <div key={it.incoming.id} className="rounded-lg border border-line overflow-hidden">
-            <div className="px-3 py-2 bg-slate-50 border-b border-line flex items-center justify-between gap-2">
-              <code className="text-[11px] text-slate-500 truncate">{it.incoming.path}</code>
+            <div className="px-3 py-2 bg-slate-50 border-b border-line flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5">
+              <code className="text-[11px] text-slate-500 truncate max-w-full">{it.incoming.path}</code>
               <span className="text-[11px] text-slate-400 shrink-0">from {it.incoming.sources.join(", ") || "unknown"}</span>
             </div>
 

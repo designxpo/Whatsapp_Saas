@@ -121,8 +121,8 @@ function CampaignsTab({ goTo }: { goTo: (t: Tab) => void }) {
     return (
       <div className="max-w-4xl space-y-5">
         <div className="flex items-center gap-3">
-          <button type="button" onClick={() => setDetailId(null)} aria-label="Back to all campaigns" className="grid place-items-center w-9 h-9 rounded-lg hover:bg-slate-100"><ArrowLeft className="w-5 h-5 text-slate-500" aria-hidden /></button>
-          <h2 className="text-xl font-extrabold text-brand-dark uppercase tracking-wide">{stats?.info.name ?? "Campaign"}</h2>
+          <button type="button" onClick={() => setDetailId(null)} aria-label="Back to all campaigns" className="grid place-items-center w-9 h-9 shrink-0 rounded-lg hover:bg-slate-100"><ArrowLeft className="w-5 h-5 text-slate-500" aria-hidden /></button>
+          <h2 className="min-w-0 break-words text-xl font-extrabold text-brand-dark uppercase tracking-wide">{stats?.info.name ?? "Campaign"}</h2>
         </div>
 
         {!stats ? <div className="py-16 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-slate-300" /></div> : (
@@ -137,12 +137,12 @@ function CampaignsTab({ goTo }: { goTo: (t: Tab) => void }) {
             </div>
 
             <div className="grid md:grid-cols-[1fr_200px] gap-5">
-              <div className="bg-white rounded-card border border-line p-5 grid grid-cols-2 gap-x-6 gap-y-4">
-                <div><p className="text-[12px] font-semibold text-ink-500">Template</p><p className="text-sm font-semibold text-brand-dark font-mono">{stats.info.templateName}</p></div>
+              <div className="bg-white rounded-card border border-line p-5 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 min-w-0">
+                <div><p className="text-[12px] font-semibold text-ink-500">Template</p><p className="text-sm font-semibold text-brand-dark font-mono break-all">{stats.info.templateName}</p></div>
                 <div><p className="text-[12px] font-semibold text-ink-500">Sent on</p><p className="text-sm font-semibold text-brand-dark">{fmtDateTime(stats.info.sentOn)}</p></div>
-                <div><p className="text-[12px] font-semibold text-ink-500">Button link</p><p className="text-sm font-semibold text-brand-dark truncate">{stats.info.ctaUrl ?? "—"}</p></div>
+                <div className="min-w-0"><p className="text-[12px] font-semibold text-ink-500">Button link</p><p className="text-sm font-semibold text-brand-dark truncate">{stats.info.ctaUrl ?? "—"}</p></div>
                 <div><p className="text-[12px] font-semibold text-ink-500">Recipients</p><p className="text-sm font-semibold text-brand-dark">{fmtNum(stats.info.totalRecipients)} · {stats.info.status}</p></div>
-                {!stats.info.clickTracking && <p className="col-span-2 text-[12px] text-ink-500">Click data appears for templates submitted with click tracking enabled.</p>}
+                {!stats.info.clickTracking && <p className="sm:col-span-2 text-[12px] text-ink-500">Click data appears for templates submitted with click tracking enabled.</p>}
               </div>
               <div className="bg-white rounded-card border border-line p-4 flex items-center">
                 <ClickShare pct={total ? (stats.clicked / total) * 100 : 0} />
@@ -184,9 +184,9 @@ function CampaignsTab({ goTo }: { goTo: (t: Tab) => void }) {
       </div>
       <div className="space-y-2">
         {campaigns.map(c => (
-          <button key={c.id} onClick={() => openDetail(c.id)} className="w-full bg-white rounded-card border border-line p-4 flex items-center justify-between text-left hover:border-brand-dark/40">
-            <div><p className="font-mono text-sm font-semibold text-brand-dark">{c.templateName}</p><p className="text-[12px] text-ink-500">{fmtDateTime(c.createdAt)}</p></div>
-            <div className="text-right text-xs text-slate-600 flex items-center gap-3">
+          <button key={c.id} onClick={() => openDetail(c.id)} className="w-full bg-white rounded-card border border-line p-4 flex flex-wrap sm:flex-nowrap items-center justify-between gap-x-3 gap-y-2 text-left hover:border-brand-dark/40">
+            <div className="min-w-0 max-sm:basis-full"><p className="font-mono text-sm font-semibold text-brand-dark break-all">{c.templateName}</p><p className="text-[12px] text-ink-500">{fmtDateTime(c.createdAt)}</p></div>
+            <div className="text-right text-xs text-slate-600 flex items-center gap-3 shrink-0 max-sm:w-full max-sm:justify-between max-sm:text-left">
               <div><span className="px-2 py-0.5 rounded-full bg-slate-100 font-semibold">{c.status}</span><p className="mt-1 tabular-nums">{fmtNum(c.sentCount)} of {fmtNum(c.totalRecipients)} sent{c.failedCount ? ` · ${fmtNum(c.failedCount)} failed` : ""}</p></div>
               <ChevronRight className="w-4 h-4 text-slate-300" aria-hidden />
             </div>

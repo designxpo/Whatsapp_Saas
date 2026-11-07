@@ -130,9 +130,9 @@ function HandleHubTab() {
           const src = sourceDraft[ep.id] ?? { label: "", kind: "qr" };
           return (
             <div key={ep.id} className="bg-white rounded-card border border-line p-4 space-y-4">
-              <div className="flex items-start justify-between gap-2">
+              <div className="flex flex-wrap sm:flex-nowrap items-start justify-between gap-2">
                 {draft ? (
-                  <div className="grid sm:grid-cols-3 gap-2 flex-1">
+                  <div className="grid sm:grid-cols-3 gap-2 flex-1 max-sm:basis-full min-w-0">
                     <input className={`${inp}`} aria-label="Label" placeholder="Label" value={draft.label} onChange={e => setEditDraft(d => ({ ...d, [ep.id]: { ...draft, label: e.target.value } }))} />
                     <input className={`${inp}`} aria-label="Number" inputMode="tel" placeholder="Number" value={draft.number} onChange={e => setEditDraft(d => ({ ...d, [ep.id]: { ...draft, number: e.target.value.replace(/\D/g, "") } }))} />
                     <input className={`${inp}`} aria-label="Greeting" placeholder="Greeting" value={draft.greeting} onChange={e => setEditDraft(d => ({ ...d, [ep.id]: { ...draft, greeting: e.target.value } }))} />
@@ -143,7 +143,7 @@ function HandleHubTab() {
                     <p className="text-[12px] text-slate-500 mt-0.5">{ep.number}{ep.greeting ? <> · &ldquo;{ep.greeting}&rdquo;</> : null}</p>
                   </div>
                 )}
-                <div className="flex gap-2 shrink-0">
+                <div className="flex gap-2 shrink-0 max-sm:ml-auto">
                   {draft ? (
                     <>
                       <button onClick={() => saveEdit(ep.id)} className="min-h-8 px-2 text-xs font-bold text-brand-700 hover:underline">{saved === ep.id ? "Saved" : "Save"}</button>
@@ -158,7 +158,7 @@ function HandleHubTab() {
 
               {/* Add a source for this number */}
               <div className="flex flex-wrap gap-2">
-                <input className={`${inp} flex-1 min-w-0`} aria-label="Where this link will be shared" placeholder='Where it lives — e.g. "Instagram bio", "Store counter QR", "Diwali ad"' value={src.label} onChange={e => setSourceDraft(s => ({ ...s, [ep.id]: { ...src, label: e.target.value } }))} onKeyDown={e => { if (e.key === "Enter") addSource(ep.id); }} />
+                <input className={`${inp} flex-1 min-w-0 max-sm:basis-full`} aria-label="Where this link will be shared" placeholder='Where it lives — e.g. "Instagram bio", "Store counter QR", "Diwali ad"' value={src.label} onChange={e => setSourceDraft(s => ({ ...s, [ep.id]: { ...src, label: e.target.value } }))} onKeyDown={e => { if (e.key === "Enter") addSource(ep.id); }} />
                 <select className={inp} aria-label="Kind of link" value={src.kind} onChange={e => setSourceDraft(s => ({ ...s, [ep.id]: { ...src, kind: e.target.value } }))}>
                   <option value="qr">QR</option>
                   <option value="link">Link</option>
@@ -173,14 +173,14 @@ function HandleHubTab() {
               {/* Sources for this number */}
               <div className="space-y-3">
                 {ep.sources.map(s => (
-                  <div key={s.id} className="border border-line rounded-card p-4 flex gap-4 items-start">
+                  <div key={s.id} className="border border-line rounded-card p-4 flex flex-wrap sm:flex-nowrap gap-x-4 gap-y-1 items-start">
                     {s.qr
                       ? <a href={s.qr} download={`handle-${s.label.replace(/\s+/g, "-").toLowerCase()}.png`} title="Download QR" aria-label={`Download the QR code for ${s.label}`}><img src={s.qr} alt={`QR code for ${s.label}`} className="w-24 h-24 rounded-lg border border-line shrink-0" /></a>
                       : <div className="w-24 h-24 rounded-lg border border-dashed border-line grid place-items-center text-[11px] text-slate-500 text-center shrink-0">No link yet</div>}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
+                    <div className="min-w-0 flex-1 max-sm:basis-[calc(100%-7rem)]">
+                      <div className="flex items-center gap-2 min-w-0">
                         <p className="text-sm font-bold text-ink-900 truncate">{s.label}</p>
-                        <span className="text-[11px] bg-slate-100 text-slate-600 rounded px-1.5 py-0.5">{KIND_LABEL[s.kind] ?? s.kind}</span>
+                        <span className="text-[11px] bg-slate-100 text-slate-600 rounded px-1.5 py-0.5 shrink-0">{KIND_LABEL[s.kind] ?? s.kind}</span>
                       </div>
                       <p className="text-[12px] text-slate-500 mt-0.5">{fmtNum(s.touches)} chat{s.touches === 1 ? "" : "s"} started{s.lastTouchAt ? ` · last ${fmtDay(s.lastTouchAt)}` : ""}</p>
                       {s.link && (
@@ -190,7 +190,7 @@ function HandleHubTab() {
                         </div>
                       )}
                     </div>
-                    <button onClick={() => removeSource(s.id, s.label)} aria-label={`Delete the link ${s.label}`} className="min-h-8 px-2 text-xs text-red-700 hover:underline shrink-0">Delete</button>
+                    <button onClick={() => removeSource(s.id, s.label)} aria-label={`Delete the link ${s.label}`} className="min-h-8 px-2 text-xs text-red-700 hover:underline shrink-0 max-sm:ml-auto">Delete</button>
                   </div>
                 ))}
                 {ep.sources.length === 0 && <p className="text-center text-slate-500 text-sm py-6 px-4 border border-line rounded-card">No links yet for this number. Type where you&apos;ll share it above — like &ldquo;Instagram bio&rdquo; — and press <b>Add link</b> to get its link and QR code.</p>}

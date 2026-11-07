@@ -38,10 +38,10 @@ function StageRow({ stage, seqs, first, last, onReorder, onSaved }: { stage: PSt
   return (
     <div className="flex flex-wrap items-center gap-2 border border-line rounded-control p-2">
       <input type="color" className="w-7 h-7 rounded cursor-pointer bg-transparent border-0 p-0 shrink-0" value={/^#[0-9a-fA-F]{6}$/.test(s.color || "") ? s.color! : "#64748b"} onChange={e => setS({ ...s, color: e.target.value })} />
-      <input className={`${inp} w-32`} value={s.name} maxLength={40} onChange={e => setS({ ...s, name: e.target.value })} placeholder="Stage name" />
-      <input className={`${inp} w-36`} value={s.lsqStage ?? ""} onChange={e => setS({ ...s, lsqStage: e.target.value })} placeholder="LeadSquared stage" title="Maps to a LeadSquared ProspectStage (optional)" />
-      <input className={`${inp} w-28`} value={s.onEnterTag ?? ""} onChange={e => setS({ ...s, onEnterTag: e.target.value })} placeholder="Tag on enter" />
-      <select className={`${inp} w-40`} value={s.onEnterSequenceId ?? ""} onChange={e => setS({ ...s, onEnterSequenceId: e.target.value || null })} title={`Enrol into this ${vocab.sequence.one.toLowerCase()} on entry`}>
+      <input className={`${inp} w-32 max-sm:min-w-32 max-sm:flex-1`} value={s.name} maxLength={40} onChange={e => setS({ ...s, name: e.target.value })} placeholder="Stage name" />
+      <input className={`${inp} w-36 max-sm:min-w-32 max-sm:flex-1`} value={s.lsqStage ?? ""} onChange={e => setS({ ...s, lsqStage: e.target.value })} placeholder="LeadSquared stage" title="Maps to a LeadSquared ProspectStage (optional)" />
+      <input className={`${inp} w-28 max-sm:min-w-28 max-sm:flex-1`} value={s.onEnterTag ?? ""} onChange={e => setS({ ...s, onEnterTag: e.target.value })} placeholder="Tag on enter" />
+      <select className={`${inp} w-40 max-sm:min-w-40 max-sm:flex-1`} value={s.onEnterSequenceId ?? ""} onChange={e => setS({ ...s, onEnterSequenceId: e.target.value || null })} title={`Enrol into this ${vocab.sequence.one.toLowerCase()} on entry`}>
         <option value="">No {vocab.sequence.one.toLowerCase()} on enter</option>
         {seqs.map(q => <option key={q.id} value={q.id}>Enrol: {q.name}</option>)}
       </select>
@@ -70,7 +70,7 @@ function StageManager({ stages, seqs, onChange }: { stages: PStage[]; seqs: { id
   }
   return (
     <div className="bg-white rounded-card border border-line p-4 space-y-2">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-bold text-ink-900">Manage stages</p>
         <button onClick={addStage} disabled={adding} className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60"><Plus className="w-3.5 h-3.5" /> Add stage</button>
       </div>
@@ -100,8 +100,8 @@ function AddLeadBox({ onPick, onClose }: { onPick: (contactId: string) => void; 
   return (
     <div className="border-2 border-brand-700/30 rounded-control p-2 space-y-1.5 bg-white">
       <div className="flex items-center gap-1.5">
-        <input autoFocus className={`${inp} flex-1`} placeholder="Search name / number…" value={q} onChange={e => setQ(e.target.value)} />
-        <button onClick={onClose} className="p-1 text-ink-400 hover:text-ink-900"><X className="w-4 h-4" /></button>
+        <input autoFocus className={`${inp} flex-1 min-w-0`} placeholder="Search name / number…" value={q} onChange={e => setQ(e.target.value)} />
+        <button onClick={onClose} aria-label="Close" className="p-2 sm:p-1 text-ink-400 hover:text-ink-900"><X className="w-4 h-4" /></button>
       </div>
       {res.map(c => (
         <button key={c.id} onClick={() => onPick(c.id)} className="w-full text-left px-2 py-1.5 rounded-control hover:bg-canvas">
@@ -151,8 +151,8 @@ export default function PipelineTab({ goTo }: { goTo: GoTo }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
+      <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><KanbanSquare className="w-5 h-5" /> {vocab.pipeline.one}</h2><PageInfo className="text-sm text-slate-500" lead={<>Drag a {vocab.lead.one.toLowerCase()} between stages.</>}>Each card is a {vocab.contact.one.toLowerCase()} with their latest WhatsApp message — moving it can auto-tag, start a {vocab.sequence.one.toLowerCase()}, and sync the stage to LeadSquared. {total} {(total === 1 ? vocab.lead.one : vocab.lead.many).toLowerCase()} on the board.</PageInfo>
         </div>
         <button onClick={() => setManage(m => !m)} className="shrink-0 px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5"><Settings className="w-3.5 h-3.5" /> {manage ? "Done" : "Manage stages"}</button>
@@ -161,7 +161,8 @@ export default function PipelineTab({ goTo }: { goTo: GoTo }) {
       {manage && <StageManager stages={stages} seqs={seqs} onChange={load} />}
 
       {loading ? <div className="flex items-center gap-2 text-sm text-ink-400 py-10"><Loader2 className="w-4 h-4 animate-spin" /> Loading board…</div> : (
-        <div className="flex gap-3 overflow-x-auto pb-4 items-start">
+        // On a phone the board snaps one stage at a time as you swipe across it.
+        <div className="flex gap-3 overflow-x-auto pb-4 items-start max-sm:snap-x max-sm:snap-mandatory">
           {stages.map(s => {
             const list = cards.filter(c => c.stageId === s.id);
             const accent = /^#[0-9a-fA-F]{6}$/.test(s.color || "") ? s.color! : "#64748b";
@@ -170,14 +171,14 @@ export default function PipelineTab({ goTo }: { goTo: GoTo }) {
                 onDragOver={e => { e.preventDefault(); setOverStage(s.id); }}
                 onDragLeave={() => setOverStage(o => (o === s.id ? null : o))}
                 onDrop={() => onDropTo(s.id)}
-                className={`w-72 shrink-0 rounded-card border bg-canvas/60 ${overStage === s.id ? "border-brand-600 ring-2 ring-brand-600/30" : "border-line"}`}>
+                className={`w-72 shrink-0 snap-start rounded-card border bg-canvas/60 ${overStage === s.id ? "border-brand-600 ring-2 ring-brand-600/30" : "border-line"}`}>
                 <div className="flex items-center gap-2 px-3 py-2 border-b border-line">
                   <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: accent }} />
                   <p className="text-sm font-bold text-ink-900 truncate flex-1">{s.name}{s.isWon && <Check className="inline w-3.5 h-3.5 ml-1 align-[-2px] text-emerald-600" />}{s.isLost && <X className="inline w-3.5 h-3.5 ml-1 align-[-2px] text-red-500" />}</p>
                   <span className="text-[11px] font-bold text-ink-400">{list.length}</span>
-                  <button onClick={() => setAddTo(a => (a === s.id ? null : s.id))} className="p-0.5 text-ink-400 hover:text-brand-700" title={`Add a ${vocab.lead.one.toLowerCase()} here`}><Plus className="w-4 h-4" /></button>
+                  <button onClick={() => setAddTo(a => (a === s.id ? null : s.id))} className="p-2 -m-1.5 sm:p-0.5 sm:m-0 text-ink-400 hover:text-brand-700" aria-label={`Add a ${vocab.lead.one.toLowerCase()} here`} title={`Add a ${vocab.lead.one.toLowerCase()} here`}><Plus className="w-4 h-4" /></button>
                 </div>
-                <div className="p-2 space-y-2 min-h-[80px] max-h-[calc(100vh-260px)] overflow-y-auto">
+                <div className="p-2 space-y-2 min-h-[80px] max-h-[calc(100dvh-260px)] overflow-y-auto">
                   {addTo === s.id && <AddLeadBox onPick={id => { move(id, s.id); setAddTo(null); }} onClose={() => setAddTo(null)} />}
                   {list.map(c => (
                     <div key={c.contactId} draggable
@@ -193,10 +194,10 @@ export default function PipelineTab({ goTo }: { goTo: GoTo }) {
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5 mt-2">
-                        <select className={`${inp} !py-1 text-[11px] flex-1`} value={c.stageId} onChange={e => move(c.contactId, e.target.value)} title="Move to stage">
+                        <select className={`${inp} !py-1 text-[11px] flex-1 min-w-0`} value={c.stageId} onChange={e => move(c.contactId, e.target.value)} title="Move to stage">
                           {stages.map(st => <option key={st.id} value={st.id}>{st.name}</option>)}
                         </select>
-                        <button onClick={() => goTo("livechat", { openPhone: c.phone })} className="p-1 rounded-control border border-line text-ink-500 hover:bg-canvas shrink-0" title="Open in Live Chat"><ExternalLink className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => goTo("livechat", { openPhone: c.phone })} className="p-2 sm:p-1 rounded-control border border-line text-ink-500 hover:bg-canvas shrink-0" aria-label="Open in Live Chat" title="Open in Live Chat"><ExternalLink className="w-3.5 h-3.5" /></button>
                       </div>
                     </div>
                   ))}
