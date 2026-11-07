@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireRoleAdmin, currentTenantId, currentUser, noSession } from "@/lib/auth";
 import { getTenant, ownerAudit } from "@/lib/tenants";
 import { getPlan } from "@/lib/plans";
+import { canPurchasePlan } from "@/lib/plan-eligibility";
 import { stripeConfigured, createCheckoutSession, getStripePriceSummary } from "@/lib/stripe";
 import { hasAutoRenewAck, AUTO_RENEW_ACK_REQUIRED, autoRenewAckDetail } from "@/lib/billing-consent";
 import { errorMessage } from "@/lib/errors";
@@ -25,6 +26,7 @@ export async function POST(req: Request) {
     if (!tenant) return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
     const plan = await getPlan(body.planKey.trim());
     if (!plan) return NextResponse.json({ error: "Plan not found" }, { status: 404 });
+    if (!(await canPurchasePlan(tenant, plan))) return NextResponse.json({ error: "This plan isn't available for your account." }, { status: 403 });
     if (!plan.stripePriceId) return NextResponse.json({ error: `"${plan.name}" isn't purchasable yet — no Stripe price configured.` }, { status: 400 });
     // Stripe charges the Price exactly as set in its dashboard; the page shows
     // that same Price. Refuse if it can't be read, or changed since the page

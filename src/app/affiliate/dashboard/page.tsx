@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Copy, Check, LogOut, Handshake } from "lucide-react";
+import { PayoutAccountCard } from "./_payout-account";
 
 type Stats = {
   affiliateId: string; name: string; email: string; code: string; commissionPct: number;
@@ -86,6 +87,8 @@ export default function AffiliateDashboardPage() {
           <Tile label="Pending commission" value={money(stats.pendingCents)} highlight={stats.pendingCents > 0} />
           <Tile label="Paid out" value={money(stats.paidCents)} />
         </div>
+
+        <PayoutAccountCard commissionPct={stats.commissionPct} />
 
         <div className="bg-white rounded-card border border-line overflow-hidden">
           <header className="px-4 py-3 border-b border-line"><h2 className="text-[13px] font-extrabold text-ink-900">Referred businesses</h2></header>

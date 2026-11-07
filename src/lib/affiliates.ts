@@ -9,6 +9,7 @@ import { hashPassword, verifyPassword } from "./team";
 import { ownerAudit } from "./tenants";
 import { sendEmail } from "./email";
 import { isReservedEmail, RESERVED_EMAIL_MESSAGE } from "./reserved-email";
+import { isSelfReferral, velocityFlag, VELOCITY_WINDOW_MS, payableAt, affiliateHoldDays } from "./affiliate-risk";
 
 export interface Affiliate {
   id: string; email: string; name: string; phone: string | null;
@@ -115,7 +116,7 @@ export async function listReferredTenants(affiliateId: string): Promise<Referred
 export interface CommissionRow {
   id: string; tenantId: string; company: string | null; plan: string;
   amountCents: number; commissionPct: number; commissionCents: number;
-  status: "pending" | "paid" | "void"; paidAt: string | null; createdAt: string;
+  status: "pending" | "processing" | "paid" | "void"; paidAt: string | null; createdAt: string;
 }
 
 export async function listCommissions(affiliateId: string): Promise<CommissionRow[]> {
@@ -161,7 +162,7 @@ export async function affiliateOwnStats(affiliateId: string): Promise<AffiliateS
   const affiliate = await getAffiliate(affiliateId);
   if (!affiliate) return null;
   const [referred, commissions] = await Promise.all([listReferredTenants(affiliateId), listCommissions(affiliateId)]);
-  const pendingCents = commissions.filter(c => c.status === "pending").reduce((s, c) => s + c.commissionCents, 0);
+  const pendingCents = commissions.filter(c => c.status === "pending" || c.status === "processing").reduce((s, c) => s + c.commissionCents, 0);
   const paidCents = commissions.filter(c => c.status === "paid").reduce((s, c) => s + c.commissionCents, 0);
   return {
     affiliateId: affiliate.id, name: affiliate.name, email: affiliate.email,
@@ -174,60 +175,118 @@ export async function affiliateOwnStats(affiliateId: string): Promise<AffiliateS
 function subjectForCommission(): string {
   return "You earned a commission — Talko AI";
 }
-function htmlForCommission(amountRupees: string, company: string): string {
+function htmlForCommission(amountRupees: string, company: string, holdDays: number): string {
   return `<div style="font-family:sans-serif;font-size:15px;color:#111">
     <p>Good news — <strong>${company}</strong> just made a subscription payment, and you earned <strong>₹${amountRupees}</strong> in commission.</p>
-    <p style="color:#666">It's recorded as pending in your affiliate dashboard. Payouts are handled manually — reach out any time to check status.</p>
+    <p style="color:#666">It's recorded as pending in your affiliate dashboard and becomes payable ${holdDays} days after the customer's payment, once the refund window has passed. Payouts are reviewed and sent to your verified payout account.</p>
   </div>`;
 }
 
 // Called after applySubscription() records an active payment. No-ops
 // immediately for the overwhelming majority of tenants (no referring
-// affiliate). Idempotent via the DB unique constraint — a redelivered Stripe
-// webhook can safely call this again for the same billing cycle.
+// affiliate). Idempotent twice over: the unique index on provider_payment_id
+// (one earning per gateway payment, however many times it is reported) and the
+// old (affiliate, tenant, subscription, period) key for Stripe.
+//
+// Fraud screening happens here: a self-referral or a burst of conversions sets
+// flagged + flag_reason, and a flagged row is never auto-paid (the owner clears
+// it). Every commission becomes payable only after the refund-window hold.
 export async function recordAffiliateCommission(tenantId: string, p: {
   amountCents: number; plan?: string; subscriptionId?: string | null; currentPeriodEnd?: string | null;
+  providerPaymentId?: string | null;
 }): Promise<void> {
-  const { data: tenant } = await db().from("tenants").select("referred_by_affiliate_id, company").eq("id", tenantId).maybeSingle();
+  if (!Number.isFinite(p.amountCents) || p.amountCents <= 0) return;
+  const { data: tenant } = await db().from("tenants").select("referred_by_affiliate_id, company, owner_email, owner_phone, created_at").eq("id", tenantId).maybeSingle();
   const affiliateId = tenant?.referred_by_affiliate_id as string | null | undefined;
   if (!affiliateId) return;
 
-  const affiliate = await getAffiliate(affiliateId);
-  if (!affiliate || affiliate.status !== "active") return;
+  const { data: arow } = await db().from("wa_affiliates").select("id, email, name, phone, status, commission_pct, created_at").eq("id", affiliateId).maybeSingle();
+  if (!arow || arow.status !== "active") return;
+  const commissionPct = Number(arow.commission_pct ?? 10);
 
-  const commissionCents = Math.round((p.amountCents * affiliate.commissionPct) / 100);
-  // Idempotency key: period_start must identify the BILLING CYCLE, not "when
-  // we happened to process this" — Stripe redelivers webhooks, and each
-  // redelivery must land on the same row, not a new one. currentPeriodEnd is
-  // the one value Stripe gives us that's fixed for a cycle and only advances
-  // on the next renewal, so it doubles as the cycle's start-of-record here.
+  const commissionCents = Math.round((p.amountCents * commissionPct) / 100);
+  if (commissionCents <= 0) return;
+
+  const paymentId = p.providerPaymentId?.trim() || null;
+  if (paymentId) {
+    const dup = await db().from("wa_affiliate_commissions").select("id").eq("provider_payment_id", paymentId).eq("kind", "earning").maybeSingle();
+    if (dup.data) return;
+  }
+
+  const now = new Date();
+  const reasons = [...isSelfReferral(
+    { email: arow.email as string, phone: arow.phone as string | null, createdAt: arow.created_at as string },
+    { email: tenant?.owner_email as string | null, phone: tenant?.owner_phone as string | null, createdAt: tenant?.created_at as string },
+  ).reasons];
+  try {
+    // One timestamp per referred business: its first earning in the last 24h.
+    const since = new Date(now.getTime() - VELOCITY_WINDOW_MS).toISOString();
+    const recent = await db().from("wa_affiliate_commissions").select("tenant_id, created_at")
+      .eq("affiliate_id", affiliateId).eq("kind", "earning").gte("created_at", since).order("created_at", { ascending: true });
+    const firstByTenant = new Map<string, string>();
+    for (const r of (recent.data ?? []) as { tenant_id: string; created_at: string }[]) if (!firstByTenant.has(r.tenant_id)) firstByTenant.set(r.tenant_id, r.created_at);
+    if (!firstByTenant.has(tenantId)) firstByTenant.set(tenantId, now.toISOString());
+    if (velocityFlag([...firstByTenant.values()])) reasons.push("conversion_velocity");
+  } catch { /* velocity is a screening aid; never block recording a commission on it */ }
+
+  // Idempotency key for the legacy path: period_start must identify the
+  // BILLING CYCLE, not "when we happened to process this" (Stripe redelivers
+  // webhooks; currentPeriodEnd is fixed for a cycle).
   const { error } = await db().from("wa_affiliate_commissions").insert({
     affiliate_id: affiliateId, tenant_id: tenantId,
     stripe_subscription_id: p.subscriptionId ?? null,
     period_start: p.currentPeriodEnd ?? null, period_end: p.currentPeriodEnd ?? null,
     plan: p.plan ?? "unknown", amount_cents: p.amountCents,
-    commission_pct: affiliate.commissionPct, commission_cents: commissionCents,
+    commission_pct: commissionPct, commission_cents: commissionCents,
+    provider_payment_id: paymentId, payable_at: payableAt(now).toISOString(),
+    flagged: reasons.length > 0, flag_reason: reasons.length ? reasons.join(",") : null,
   });
-  // 23505 = unique_violation — this billing cycle was already recorded
-  // (webhook redelivery). Not an error; just don't double-count it.
+  // 23505 = unique_violation: this payment/cycle was already recorded.
   if (error && (error as { code?: string }).code !== "23505") throw error;
   if (error) return;
 
+  if (reasons.length) await ownerAudit("system", "affiliate.commission_flagged", tenantId, `Commission held for review (${reasons.join(", ")}) for affiliate ${affiliateId}`);
+
   try {
     await sendEmail({
-      to: affiliate.email,
+      to: arow.email as string,
       subject: subjectForCommission(),
-      html: htmlForCommission((commissionCents / 100).toFixed(2), (tenant?.company as string) || "A referred business"),
+      html: htmlForCommission((commissionCents / 100).toFixed(2), (tenant?.company as string) || "A referred business", affiliateHoldDays()),
       type: "affiliate_commission",   // recipient is the affiliate, not the referred tenant — tenantId left unset
     });
   } catch { /* commission is recorded regardless of email delivery */ }
 }
 
-export async function markCommissionsPaid(affiliateId: string, commissionIds: string[], actorEmail: string): Promise<void> {
+// EMERGENCY manual path (the owner paid off-platform). Without manualOverride
+// it only accepts plain, payable, unflagged earnings that are in no payout:
+// anything flagged, still inside the hold, already in a payout, a clawback, or
+// not pending is refused. With manualOverride it accepts flagged and in-hold
+// earnings too (still never rows inside a payout, which only the payout flow
+// settles), and the override and its reason are written to the audit log.
+export async function markCommissionsPaid(affiliateId: string, commissionIds: string[], actorEmail: string, opts: { manualOverride?: boolean; reason?: string } = {}): Promise<void> {
   if (!commissionIds.length) return;
-  const { error } = await db().from("wa_affiliate_commissions")
+  const override = opts.manualOverride === true;
+  if (override && !opts.reason?.trim()) throw new Error("A reason is required for a manual override");
+  const { data: rows, error: readErr } = await db().from("wa_affiliate_commissions")
+    .select("id, status, kind, flagged, flag_reason, payout_id, payable_at, commission_cents")
+    .eq("affiliate_id", affiliateId).in("id", commissionIds);
+  if (readErr) throw readErr;
+  const found = (rows ?? []) as { id: string; status: string; kind: string; flagged: boolean; flag_reason: string | null; payout_id: string | null; payable_at: string | null; commission_cents: number }[];
+  if (found.length !== new Set(commissionIds).size) throw new Error("Some commissions were not found for this affiliate");
+  const nowMs = Date.now();
+  const problems: string[] = [];
+  let overridden = 0;
+  for (const r of found) {
+    if (r.status !== "pending" || r.payout_id || r.kind !== "earning") { problems.push(`${r.id}: not a pending, unpaid earning`); continue; }
+    const needsOverride = r.flagged || (r.payable_at !== null && Date.parse(r.payable_at) > nowMs);
+    if (needsOverride) { if (!override) problems.push(`${r.id}: ${r.flagged ? "flagged for review" : "still inside the refund-window hold"}`); else overridden++; }
+  }
+  if (problems.length) throw new Error(`Refused: ${problems.join("; ")}`);
+  const { data: upd, error } = await db().from("wa_affiliate_commissions")
     .update({ status: "paid", paid_at: new Date().toISOString() })
-    .eq("affiliate_id", affiliateId).in("id", commissionIds).eq("status", "pending");
+    .eq("affiliate_id", affiliateId).in("id", commissionIds).eq("status", "pending").is("payout_id", null).select("id");
   if (error) throw error;
-  await ownerAudit(actorEmail, "affiliate.payout", null, `Marked ${commissionIds.length} commission(s) paid for affiliate ${affiliateId}`);
+  if ((upd ?? []).length !== found.length) throw new Error("Some commissions changed while being marked paid; reload and retry");
+  await ownerAudit(actorEmail, override ? "affiliate.payout_manual_override" : "affiliate.payout",
+    null, `Marked ${commissionIds.length} commission(s) paid for affiliate ${affiliateId}${override ? ` MANUAL OVERRIDE (${overridden} flagged/held): ${opts.reason!.trim().slice(0, 300)}` : ""}`);
 }

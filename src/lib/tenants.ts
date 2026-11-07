@@ -198,6 +198,10 @@ export async function applySubscription(tenantId: string, p: {
   // the fee Razorpay takes. Omit both when amountCents already IS the base
   // (e.g. no tax/fee model applies, such as Stripe's pre-GST checkout).
   baseAmountCents?: number; taxCents?: number; gatewayFeeEstimateCents?: number;
+  // The gateway's id for THIS payment (Razorpay pay_...). Lets affiliate
+  // commission dedupe per payment and be refunded per payment. Optional: the
+  // Stripe path omits it and keeps its (subscription, period) dedupe key.
+  providerPaymentId?: string | null;
 }): Promise<void> {
   const provider = p.provider ?? "stripe";
   const row: Record<string, unknown> = { payment_status: p.paymentStatus };
@@ -223,6 +227,7 @@ export async function applySubscription(tenantId: string, p: {
     const { recordAffiliateCommission } = await import("./affiliates");
     await recordAffiliateCommission(tenantId, {
       amountCents: commissionBaseCents, plan: p.plan, subscriptionId: p.subscriptionId, currentPeriodEnd: p.currentPeriodEnd,
+      providerPaymentId: p.providerPaymentId,
     }).catch(err => console.error(JSON.stringify({ at: "applySubscription.affiliateCommission", tenantId, error: err instanceof Error ? err.message : String(err) })));
   }
 }

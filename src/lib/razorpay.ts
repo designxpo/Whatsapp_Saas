@@ -51,6 +51,17 @@ import { computeChargeBreakdown } from "./billing-tax";
 // to render.
 const INDEFINITE_CYCLES = 360;
 
+// total_count for a plan billed every `intervalMonths` months. The 30-year
+// ceiling above is a DURATION, so the cycle count shrinks as the cycle grows:
+// 360 cycles of a 6-month plan would be a 180-year mandate, past both NPCI
+// ceilings and Razorpay's own stated 100-year maximum. floor(360 / months)
+// cycles is exactly 30 years at most (6 months -> 60, 12 -> 30, 3 -> 120).
+// For a single month this is 360, i.e. unchanged.
+export function indefiniteCycles(intervalMonths = 1): number {
+  const m = Number.isFinite(intervalMonths) && intervalMonths >= 1 ? Math.floor(intervalMonths) : 1;
+  return Math.max(1, Math.floor(INDEFINITE_CYCLES / m));
+}
+
 export function razorpayConfigured(): boolean {
   return !!process.env.RAZORPAY_KEY_ID && !!process.env.RAZORPAY_KEY_SECRET;
 }
@@ -90,9 +101,10 @@ export async function getOrCreateRazorpayPlan(plan: Plan): Promise<string> {
   return (await resolveRazorpayPlan(plan)).planId;
 }
 
-// Every Razorpay Plan this app mints bills monthly (period "monthly",
-// interval 1 below), whatever wa_plans.interval says — so the billing page
-// quotes "/month" for Razorpay rather than the plan row's interval.
+// Every Razorpay Plan this app mints uses period "monthly" with interval =
+// wa_plans.billing_months (1 for ordinary plans, 6 for the 6-month plans), whatever
+// wa_plans.interval says — so the billing page quotes "month" (with an interval
+// count) for Razorpay rather than the plan row's interval.
 export const RAZORPAY_INTERVAL = "month";
 
 export interface ResolvedRazorpayPlan {
@@ -115,17 +127,18 @@ export async function resolveRazorpayPlan(plan: Plan): Promise<ResolvedRazorpayP
       period: p.period ?? "monthly", interval: p.interval ?? 1,
     };
   }
+  const months = plan.billingMonths ?? 1;
   const { totalChargedCents } = computeChargeBreakdown(plan.priceCents);
   const created = await rzp<{ id: string }>("/plans", {
     method: "POST",
     body: JSON.stringify({
-      period: "monthly", interval: 1,
+      period: "monthly", interval: months,
       item: { name: `Talko AI — ${plan.name}`, amount: totalChargedCents, currency: plan.currency },
       notes: { plan_key: plan.key },
     }),
   });
   await setRazorpayPlanId(plan.key, created.id);
-  return { planId: created.id, amountCents: totalChargedCents, currency: plan.currency, period: "monthly", interval: 1 };
+  return { planId: created.id, amountCents: totalChargedCents, currency: plan.currency, period: "monthly", interval: months };
 }
 
 export async function getOrCreateRazorpayCustomer(tenant: Tenant): Promise<string | undefined> {
@@ -156,7 +169,7 @@ export async function createSubscription(tenant: Tenant, plan: Plan, planId?: st
   const sub = await rzp<{ id: string; short_url: string }>("/subscriptions", {
     method: "POST",
     body: JSON.stringify({
-      plan_id: planId, total_count: INDEFINITE_CYCLES, customer_notify: true,
+      plan_id: planId, total_count: indefiniteCycles(plan.billingMonths ?? 1), customer_notify: true,
       ...(customerId ? { customer_id: customerId } : {}),
       notes: { tenant_id: tenant.id, plan: plan.key },
     }),

@@ -50,7 +50,7 @@ export async function POST(req: Request) {
     const plan = detail.planKey ? await getPlan(detail.planKey) : null;
     const breakdown = computeChargeBreakdown(plan?.priceCents ?? detail.amountCents);
     await applySubscription(tid, {
-      paymentStatus: "active", status: "active", subscriptionId, provider: "razorpay",
+      paymentStatus: "active", status: "active", subscriptionId, providerPaymentId: paymentId, provider: "razorpay",
       plan: detail.planKey ?? undefined, amountCents: breakdown.totalChargedCents, currency: detail.currency,
       currentPeriodEnd: detail.currentPeriodEnd,
       baseAmountCents: breakdown.baseAmountCents, taxCents: breakdown.taxCents, gatewayFeeEstimateCents: breakdown.gatewayFeeEstimateCents,

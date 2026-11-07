@@ -8,6 +8,7 @@ import { sendInvoiceEmail } from "@/lib/invoice-email";
 import { notifyPaymentFailed, notifyServiceSuspended } from "@/lib/dunning";
 import { recordCancelAt } from "@/lib/billing-cancel";
 import { errorMessage } from "@/lib/errors";
+import { applyPaymentReversal, type ReversalEvent } from "@/lib/affiliate-payouts";
 
 export const dynamic = "force-dynamic";
 
@@ -49,8 +50,20 @@ interface RzpWebhookBody {
     // "netbanking"…), which a Rule 46 document has to name and which this
     // payload is the only place we ever learn it from.
     payment?: { entity?: { id?: string; amount?: number; currency?: string; fee?: number; tax?: number; method?: string } };
+    // refund.processed / payment.dispute.*: used only to reverse affiliate commission.
+    refund?: { entity?: { id?: string; payment_id?: string; amount?: number } };
+    dispute?: { entity?: { id?: string; payment_id?: string; amount?: number } };
   };
 }
+
+// Events that undo a referred customer's payment. They are not subscription
+// events, so they are handled before the subscription lookup below. Enable
+// refund.processed, payment.dispute.created, payment.dispute.won and
+// payment.dispute.lost on this webhook in the Razorpay dashboard.
+const REVERSAL_EVENTS: Record<string, ReversalEvent> = {
+  "refund.processed": "refund", "payment.dispute.created": "dispute_created",
+  "payment.dispute.won": "dispute_won", "payment.dispute.lost": "dispute_lost",
+};
 
 export async function POST(req: Request) {
   const raw = await req.text();
@@ -61,6 +74,27 @@ export async function POST(req: Request) {
 
   let event: RzpWebhookBody;
   try { event = JSON.parse(raw); } catch { return NextResponse.json({ error: "invalid json" }, { status: 400 }); }
+
+  const reversal = REVERSAL_EVENTS[event.event];
+  if (reversal) {
+    try {
+      const paymentId = event.payload?.refund?.entity?.payment_id ?? event.payload?.dispute?.entity?.payment_id ?? event.payload?.payment?.entity?.id;
+      if (paymentId) {
+        await applyPaymentReversal({
+          paymentId, event: reversal,
+          refundAmount: event.payload?.refund?.entity?.amount ?? null,
+          paymentAmount: event.payload?.payment?.entity?.amount ?? null,
+        });
+      }
+    } catch (err) {
+      // Unlike the subscription events below, a failure here returns 500 so Razorpay
+      // retries: a lost refund would leave a refunded commission payable. The
+      // handler is idempotent, so a retry is safe.
+      console.error("[razorpay subscriptions webhook] reversal", event.event, err);
+      return NextResponse.json({ error: "reversal processing failed" }, { status: 500 });
+    }
+    return NextResponse.json({ received: true });
+  }
 
   const HANDLED = new Set([
     "subscription.authenticated", "subscription.activated", "subscription.charged",
@@ -118,6 +152,8 @@ export async function POST(req: Request) {
       amountCents: breakdown?.totalChargedCents,
       baseAmountCents: breakdown?.baseAmountCents, taxCents: breakdown?.taxCents, gatewayFeeEstimateCents: breakdown?.gatewayFeeEstimateCents,
       currency: pay?.currency ? pay.currency.toUpperCase() : undefined,
+      // Lets affiliate commission dedupe per gateway payment and be reversed on refund.
+      providerPaymentId: isCharge ? pay?.id : undefined,
     });
 
     if (isCharge && breakdown) {

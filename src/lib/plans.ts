@@ -12,6 +12,29 @@ export interface Plan {
   limits: PlanLimits; features: PlanFeatures; sort: number; active: boolean;
   stripePriceId: string | null;     // Stripe Price this plan maps to (null → not purchasable via Stripe)
   razorpayPlanId: string | null;    // Razorpay Plan this maps to (null → not purchasable via Razorpay yet)
+  // Months one charge covers (1, 3, 6 or 12). priceCents is the base price for that
+  // WHOLE period. Absent/legacy rows read as 1 (monthly).
+  billingMonths: number;
+  // Hidden and unpurchasable unless eligible — see plan-eligibility.ts.
+  inviteOnly: boolean;
+}
+
+export const BILLING_MONTHS = [1, 3, 6, 12] as const;
+
+/**
+ * Base price (paise) of an N-month plan: N x monthly x (1 - discountPct/100),
+ * rounded to whole paise. The 6-month seeds in migration
+ * 20261107130000_multi_month_plans.sql use 10% (regular) and 20% (partner:
+ * 10% founding + 10% partner, off the monthly rate); this is the same formula.
+ */
+export function multiMonthPriceCents(monthlyCents: number, months: number, discountPct: number): number {
+  return Math.round(monthlyCents * months * (100 - discountPct) / 100);
+}
+
+/** What a plan's per-month equivalent saves against the monthly plan, as a whole percent. */
+export function savingsPercent(monthlyCents: number, planCents: number, months: number): number {
+  if (monthlyCents <= 0 || months <= 0) return 0;
+  return Math.round((1 - planCents / months / monthlyCents) * 100);
 }
 
 // yt_comment_replies_per_day: 0 = "use the platform default" (YT_REPLY_DAILY_CAP),
@@ -29,6 +52,8 @@ function mapPlan(r: Record<string, unknown>): Plan {
     sort: (r.sort as number) ?? 0, active: (r.active as boolean) ?? true,
     stripePriceId: (r.stripe_price_id as string | null) ?? null,
     razorpayPlanId: (r.razorpay_plan_id as string | null) ?? null,
+    billingMonths: (r.billing_months as number | null) ?? 1,
+    inviteOnly: (r.invite_only as boolean | null) ?? false,
   };
 }
 
@@ -70,6 +95,8 @@ export async function savePlan(p: Partial<Plan> & { key: string; name: string })
     price_cents: p.priceCents ?? 0, currency: p.currency ?? "INR", interval: p.interval ?? "month",
     limits: p.limits ?? DEF_LIMITS, features: p.features ?? DEF_FEATURES, sort: p.sort ?? 0, active: p.active ?? true,
     ...(p.stripePriceId !== undefined ? { stripe_price_id: p.stripePriceId || null } : {}),
+    ...(p.billingMonths !== undefined ? { billing_months: p.billingMonths } : {}),
+    ...(p.inviteOnly !== undefined ? { invite_only: p.inviteOnly } : {}),
   };
   const { data, error } = await db().from("wa_plans").upsert(row, { onConflict: "key" }).select().single();
   if (error) throw error;

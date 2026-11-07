@@ -14,7 +14,7 @@ declare global {
 
 type Limits = { contacts: number; conversations_per_month?: number; messages_per_month: number; channels: number; team_seats: number };
 type StripePrice = { amountCents: number; currency: string; interval: string; intervalCount: number };
-type PlanRow = { key: string; name: string; priceCents: number; currency: string; interval: string; limits: Limits; features?: Record<string, boolean>; purchasable: boolean; purchasableViaRazorpay: boolean; baseAmountCents: number; taxCents: number; gatewayFeeEstimateCents: number; totalChargedCents: number; stripe?: StripePrice | null; razorpayInterval?: string };
+type PlanRow = { key: string; name: string; priceCents: number; currency: string; interval: string; limits: Limits; features?: Record<string, boolean>; purchasable: boolean; purchasableViaRazorpay: boolean; baseAmountCents: number; taxCents: number; gatewayFeeEstimateCents: number; totalChargedCents: number; stripe?: StripePrice | null; razorpayInterval?: string; billingMonths?: number; perMonthCents?: number; savingsPercent?: number };
 type Current = { plan: string; paymentStatus: string; amountCents: number; currency: string; trialEndsAt: string | null; currentPeriodEnd: string | null; hasSubscription: boolean; hasCustomer: boolean; provider?: "razorpay" | "stripe" | null; cancelAt?: string | null; canCancel?: boolean };
 // How a plan would be paid for on this page, and EXACTLY what that provider
 // charges — the number on the card, in the renewal statement and in the
@@ -129,7 +129,7 @@ function Billing() {
   // Razorpay bills the all-inclusive total, monthly.
   function offerFor(p: PlanRow): Offer | null {
     if (stripeOn && p.purchasable && p.stripe) return { via: "stripe", ...p.stripe };
-    if (razorpayOn && p.purchasableViaRazorpay) return { via: "razorpay", amountCents: p.totalChargedCents, currency: p.currency, interval: p.razorpayInterval ?? "month", intervalCount: 1 };
+    if (razorpayOn && p.purchasableViaRazorpay) return { via: "razorpay", amountCents: p.totalChargedCents, currency: p.currency, interval: p.razorpayInterval ?? "month", intervalCount: p.billingMonths ?? 1 };
     return null;
   }
 
@@ -215,7 +215,7 @@ function Billing() {
         name: "Talko AI",
         // Razorpay's modal shows only its own total, so the renewal terms are
         // repeated where the payment is actually made.
-        description: `${planName} — renews automatically at ${money(d.amountCents ?? offer.amountCents, offer.currency)} ${everyText(offer.interval)} until you cancel`,
+        description: `${planName} — renews automatically at ${money(d.amountCents ?? offer.amountCents, offer.currency)} ${everyText(offer.interval, offer.intervalCount)} until you cancel`,
         handler: async (resp: { razorpay_payment_id: string; razorpay_subscription_id: string; razorpay_signature: string }) => {
           try {
             const v = await fetch("/api/admin/billing/razorpay/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(resp) });
@@ -452,6 +452,13 @@ function Billing() {
                     and no separate fee line to disclose, so showing one number
                     is both simpler and the only honest presentation. */}
                 <p className="text-2xl font-extrabold text-ink-900 mt-1">{shownCents === 0 ? "Free" : money(shownCents, shownCurrency)}<span className="text-xs font-medium text-ink-400">{shownCents ? `/${shownInterval}` : ""}</span></p>
+                {shownCents > 0 && (p.billingMonths ?? 1) > 1 && offer?.via !== "stripe" && (
+                  <p className="text-[11px] text-ink-600 mt-0.5">
+                    For {p.billingMonths} months, billed every {p.billingMonths} months.
+                    {p.perMonthCents ? ` Works out to ${money(p.perMonthCents, shownCurrency)}/month` : ""}
+                    {p.perMonthCents && p.savingsPercent && p.savingsPercent > 0 ? `, you save ${p.savingsPercent}%.` : p.perMonthCents ? "." : ""}
+                  </p>
+                )}
                 {shownCents > 0 && (
                   <p className="text-[11px] text-ink-400 mt-0.5">All-inclusive — no tax or processing charges added at checkout.</p>
                 )}

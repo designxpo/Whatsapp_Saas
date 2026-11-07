@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireRoleAdmin, currentTenantId, currentUser, noSession } from "@/lib/auth";
 import { getTenant, ownerAudit, hasBillingIdentity } from "@/lib/tenants";
 import { getPlan } from "@/lib/plans";
+import { canPurchasePlan } from "@/lib/plan-eligibility";
 import { razorpayConfigured, createSubscription, resolveRazorpayPlan, RAZORPAY_INTERVAL } from "@/lib/razorpay";
 import { computeChargeBreakdown } from "@/lib/billing-tax";
 import { hasAutoRenewAck, AUTO_RENEW_ACK_REQUIRED, autoRenewAckDetail } from "@/lib/billing-consent";
@@ -55,24 +56,29 @@ export async function POST(req: Request) {
 
     const plan = await getPlan(body.planKey.trim());
     if (!plan) return NextResponse.json({ error: "Plan not found" }, { status: 404 });
+    // Invite-only plans: refuse a hand-typed key. Same 404-free wording either
+    // way would hide existence, but the key must exist to get here, so a plain 403.
+    if (!(await canPurchasePlan(tenant, plan))) return NextResponse.json({ error: "This plan isn't available for your account." }, { status: 403 });
+    const months = plan.billingMonths ?? 1;
+    const per = months > 1 ? `${months} months` : "month";
 
     // The amount Razorpay will charge must be the amount the card showed. A
     // cached Razorpay Plan keeps whatever price it was created at, so read it
     // back and refuse — before any subscription exists — if it has drifted.
     const shown = computeChargeBreakdown(plan.priceCents).totalChargedCents;
     const rp = await resolveRazorpayPlan(plan);
-    if (rp.amountCents !== shown || rp.period !== "monthly" || rp.interval !== 1) {
-      console.error(JSON.stringify({ at: "billing.razorpay.checkout.priceMismatch", plan: plan.key, razorpayPlanId: rp.planId, razorpayAmount: rp.amountCents, period: rp.period, interval: rp.interval, shown }));
-      return NextResponse.json({ error: `This plan's checkout price doesn't match the ${rupees(shown)}/month shown, so we've stopped before charging anything. Please contact support.` }, { status: 409 });
+    if (rp.amountCents !== shown || rp.period !== "monthly" || rp.interval !== months) {
+      console.error(JSON.stringify({ at: "billing.razorpay.checkout.priceMismatch", plan: plan.key, razorpayPlanId: rp.planId, razorpayAmount: rp.amountCents, period: rp.period, interval: rp.interval, expectedInterval: months, shown }));
+      return NextResponse.json({ error: `This plan's checkout price doesn't match the ${rupees(shown)}/${per} shown, so we've stopped before charging anything. Please contact support.` }, { status: 409 });
     }
     if (typeof body.displayedAmountCents === "number" && body.displayedAmountCents !== rp.amountCents) {
-      return NextResponse.json({ error: `The price for ${plan.name} is now ${rupees(rp.amountCents)}/month. Please refresh the page and confirm again.`, priceChanged: true }, { status: 409 });
+      return NextResponse.json({ error: `The price for ${plan.name} is now ${rupees(rp.amountCents)}/${per}. Please refresh the page and confirm again.`, priceChanged: true }, { status: 409 });
     }
 
     const actor = (await currentUser())?.email ?? "tenant";
     // What they agreed to, in the words they saw, with the time.
     await ownerAudit(actor, "billing.auto_renew_ack", tid, autoRenewAckDetail({
-      planKey: plan.key, provider: "razorpay", amountCents: rp.amountCents, currency: rp.currency, interval: RAZORPAY_INTERVAL,
+      planKey: plan.key, provider: "razorpay", amountCents: rp.amountCents, currency: rp.currency, interval: RAZORPAY_INTERVAL, intervalCount: months,
     }));
     const { subscriptionId } = await createSubscription(tenant, plan, rp.planId);
     await ownerAudit(actor, "billing.razorpay_checkout", tid, plan.key);

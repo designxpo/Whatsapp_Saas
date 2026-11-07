@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { currentTenantId, noSession } from "@/lib/auth";
 import { getTenant } from "@/lib/tenants";
-import { listPlans } from "@/lib/plans";
+import { listPlans, savingsPercent } from "@/lib/plans";
+import { filterPurchasablePlans } from "@/lib/plan-eligibility";
 import { stripeConfigured, getStripePriceSummary } from "@/lib/stripe";
 import { razorpayConfigured, RAZORPAY_INTERVAL } from "@/lib/razorpay";
 import { computeChargeBreakdown } from "@/lib/billing-tax";
@@ -16,7 +17,17 @@ export async function GET() {
     const tid = await currentTenantId();
     if (!tid) return noSession();
     const tenant = await getTenant(tid);
-    const plans = (await listPlans()).filter(p => p.active);
+    const allPlans = (await listPlans()).filter(p => p.active);
+    // Invite-only plans the tenant can't buy are dropped here, server-side —
+    // never sent to the client at all.
+    const plans = await filterPurchasablePlans(tenant, allPlans);
+    // Per-month equivalent is derived from the plan's own monthly sibling (the
+    // same plan family, billingMonths 1), never invented: key "creator-6m" /
+    // "creator-6m-partner" -> "creator".
+    // Longest matching key wins: "creator-pro-6m" is Creator Pro's, not Creator's.
+    const monthlyBase = (p: { key: string }) => allPlans
+      .filter(m => (m.billingMonths ?? 1) === 1 && p.key.startsWith(`${m.key}-`))
+      .sort((x, y) => y.key.length - x.key.length)[0] ?? null;
     const stripeOn = stripeConfigured();
     // What Stripe will really charge for each plan — its Price, as set in the
     // Stripe dashboard. Not the Razorpay gross-up below: Stripe Checkout bills
@@ -46,6 +57,16 @@ export async function GET() {
       } : null,
       plans: plans.map(p => ({
         key: p.key, name: p.name, priceCents: p.priceCents, currency: p.currency, interval: p.interval,
+        billingMonths: p.billingMonths ?? 1,
+        // Multi-month plans only: what one month works out to, and the saving,
+        // both off the monthly plan's all-inclusive price (what is really charged).
+        ...(() => {
+          const m = (p.billingMonths ?? 1) > 1 ? monthlyBase(p) : null;
+          if (!m) return {};
+          const monthlyTotal = computeChargeBreakdown(m.priceCents).totalChargedCents;
+          const total = computeChargeBreakdown(p.priceCents).totalChargedCents;
+          return { perMonthCents: Math.round(total / p.billingMonths), savingsPercent: savingsPercent(monthlyTotal, total, p.billingMonths) };
+        })(),
         limits: p.limits, features: p.features, purchasable: !!p.stripePriceId && !!stripePrices.get(p.key),
         // The exact amount and cadence Stripe charges, or null (not offered via Stripe).
         stripe: stripePrices.get(p.key) ?? null,
